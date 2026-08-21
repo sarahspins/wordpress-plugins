@@ -137,6 +137,7 @@ class IFPROG_Preview {
                                 $companion_options = [
                                     'sync_participants' => !empty($_POST['ifprog_sync_production_participants']),
                                 ];
+                                $classification = (array) wp_unslash($_POST['ifprog_classification'] ?? []);
                                 $sync_result = IFPROG_Sync::run(
                                     $preview,
                                     $team_ids,
@@ -144,7 +145,8 @@ class IFPROG_Preview {
                                     $season_only,
                                     $level_ids,
                                     $presentation_updates,
-                                    $companion_options
+                                    $companion_options,
+                                    $classification
                                 );
                                 if (is_wp_error($sync_result)) {
                                     $error = $sync_result;
@@ -906,6 +908,7 @@ class IFPROG_Preview {
                         <div>
                             <h3>3. Import Season safely</h3>
                             <p>The Season will be created as a draft or its linked Dash facts will be refreshed. No placeholder Levels or Programs will be created.</p>
+                            <?php self::render_classification_choices($preview); ?>
                             <fieldset class="ifprog-sync-options">
                                 <legend>Optional Dash presentation updates</legend>
                                 <div class="ifprog-sync-options__grid">
@@ -1040,6 +1043,7 @@ class IFPROG_Preview {
                         <div>
                             <h3>3. Import selected safely</h3>
                             <p>Linked records receive refreshed Dash facts while your local presentation remains protected. Optional replacements are unchecked by default and apply only to existing records included in this sync.</p>
+                            <?php self::render_classification_choices($preview); ?>
                             <fieldset class="ifprog-sync-options">
                                 <legend>Optional Dash presentation updates</legend>
                                 <div class="ifprog-sync-options__grid">
@@ -1090,6 +1094,73 @@ class IFPROG_Preview {
             <?php endif; ?>
         </section>
         <?php
+    }
+
+    private static function render_classification_choices($preview) {
+        $guesses = self::classification_guesses($preview);
+        $taxonomies = [
+            'sport' => ['taxonomy' => 'ifprog_sport', 'label' => 'Sport'],
+            'format' => ['taxonomy' => 'ifprog_format', 'label' => 'Format'],
+            'category' => ['taxonomy' => 'ifprog_category', 'label' => 'Category'],
+        ];
+        ?>
+        <fieldset class="ifprog-classification-options">
+            <legend>Bulk classification</legend>
+            <p class="description">Programming has preselected its best guess. Adjust it once here; the selected values will replace Sport, Format, and Category on the Season and every Level and Program selected in this import.</p>
+            <div class="ifprog-classification-options__grid">
+                <?php foreach ($taxonomies as $key => $config): ?>
+                    <?php $terms = get_terms(['taxonomy' => $config['taxonomy'], 'hide_empty' => false]); ?>
+                    <div class="ifprog-classification-group">
+                        <strong><?php echo esc_html($config['label']); ?></strong>
+                        <?php if (is_wp_error($terms) || !$terms): ?>
+                            <span class="description">No choices available.</span>
+                        <?php else: ?>
+                            <?php foreach ($terms as $term): ?>
+                                <label><input type="checkbox" name="ifprog_classification[<?php echo esc_attr($key); ?>][]" value="<?php echo esc_attr($term->term_id); ?>" <?php checked(in_array($term->term_id, $guesses[$key], true)); ?>> <?php echo esc_html($term->name); ?></label>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+        </fieldset>
+        <?php
+    }
+
+    private static function classification_guesses($preview) {
+        $season = (array) ($preview['season'] ?? []);
+        $rows = (array) ($preview['rows'] ?? []);
+        $classification = self::season_classification($season, $rows);
+        $category_slugs = self::category_guesses($season, $rows, $classification['formats']);
+        $guesses = [
+            'sport' => IFPROG_Post_Types::assignment_term_ids('ifprog_sport', $classification['sports']),
+            'format' => IFPROG_Post_Types::assignment_term_ids('ifprog_format', $classification['formats']),
+            'category' => IFPROG_Post_Types::assignment_term_ids('ifprog_category', $category_slugs),
+        ];
+        $existing_season_id = absint($preview['existing_season_id'] ?? 0);
+        if ($existing_season_id) {
+            foreach (['sport' => 'ifprog_sport', 'format' => 'ifprog_format', 'category' => 'ifprog_category'] as $key => $taxonomy) {
+                $existing = wp_get_object_terms($existing_season_id, $taxonomy, ['fields' => 'ids']);
+                if (!is_wp_error($existing) && $existing) $guesses[$key] = array_map('absint', $existing);
+            }
+        }
+        return $guesses;
+    }
+
+    private static function category_guesses($season, $rows, $formats) {
+        $parts = [(string) ($season['name'] ?? ''), (string) ($season['description'] ?? '')];
+        foreach ((array) $rows as $row) {
+            $parts[] = (string) ($row['title'] ?? '');
+            $parts[] = (string) ($row['level'] ?? '');
+        }
+        $haystack = strtolower(implode(' ', $parts));
+        $slugs = [];
+        if (strpos($haystack, 'learn to skate') !== false || strpos($haystack, 'snowplow') !== false || preg_match('/\bbasic\s*[1-8]?\b/i', $haystack)) $slugs[] = 'learn-to-skate';
+        if (strpos($haystack, 'learn to play') !== false) $slugs[] = 'learn-to-play';
+        if (strpos($haystack, 'specialty') !== false) $slugs[] = 'specialty-classes';
+        if (in_array('camp', (array) $formats, true) || in_array('clinic', (array) $formats, true)) $slugs[] = 'camps-clinics';
+        if (strpos($haystack, 'homeschool') !== false || preg_match('/(^|\s)hs\b/i', $haystack)) $slugs[] = 'homeschool';
+        if (strpos($haystack, 'adaptive') !== false) $slugs[] = 'adaptive';
+        return array_values(array_unique($slugs));
     }
 
     private static function collection_data($result) {
