@@ -1466,6 +1466,14 @@ class IFPROG_Preview {
             }
         }
 
+        $identity = strtolower(implode(' ', [
+            (string) ($team['name'] ?? ''),
+            (string) ($team['description'] ?? ''),
+            (string) ($league['name'] ?? ''),
+            (string) ($league['description'] ?? ''),
+        ]));
+        if (preg_match('/\b(camp|clinic)\b/', $identity)) return 'day';
+
         $start = IFPROG_Status::timestamp($team['start_date'] ?? '');
         $end = IFPROG_Status::timestamp($team['end_date'] ?? '');
         if ($start && $end && $end >= $start && $class_count > 1) {
@@ -1477,14 +1485,6 @@ class IFPROG_Preview {
         preg_match_all('/su|mo|tu|we|th|fr|sa/', strtolower((string) ($team['days_of_week'] ?? '')), $matches);
         $scheduled_days = array_values(array_unique($matches[0] ?? []));
         if (count($scheduled_days) > 1) return 'day';
-
-        $identity = strtolower(implode(' ', [
-            (string) ($team['name'] ?? ''),
-            (string) ($team['description'] ?? ''),
-            (string) ($league['name'] ?? ''),
-            (string) ($league['description'] ?? ''),
-        ]));
-        if (preg_match('/\b(camp|clinic)\b/', $identity)) return 'day';
 
         return 'week';
     }
