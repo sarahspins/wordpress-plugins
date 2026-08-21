@@ -538,6 +538,7 @@ class IFPROG_Shortcodes {
         $duration_unit = IFPROG_Fields::get($post_id, 'duration_unit', 'week') === 'day' ? 'day' : 'week';
         $is_single_class = $weeks === 1;
         $is_drop_in = self::object_matches_terms($post_id, 'ifprog_format', ['drop-in']);
+        $is_camp = self::object_matches_terms($post_id, 'ifprog_format', ['camp']);
         $numeric_price = preg_replace('/[^0-9.\-]/', '', (string) $price);
         $is_free_one_day = $is_single_class
             && $numeric_price !== ''
@@ -565,7 +566,18 @@ class IFPROG_Shortcodes {
         }
         $show_price = $display['show_price'] && !$is_free_one_day;
         $schedule_label = 'Day & Time';
-        if ($is_free_one_day) {
+        if ($is_camp) {
+            $camp_dates = self::date_range(
+                IFPROG_Fields::get($post_id, 'start_date'),
+                IFPROG_Fields::get($post_id, 'end_date')
+            );
+            $time_range = preg_replace('/^[^,]+,\s*/', '', (string) $schedule);
+            $schedule_label = 'Dates & Time';
+            if ($camp_dates !== '') {
+                $schedule = $camp_dates;
+                if ($time_range !== '') $schedule .= ' at ' . $time_range;
+            }
+        } elseif ($is_free_one_day) {
             $start_timestamp = IFPROG_Status::timestamp(IFPROG_Fields::get($post_id, 'start_date'));
             if ($start_timestamp) {
                 $schedule_label = 'Event Date & Time';
