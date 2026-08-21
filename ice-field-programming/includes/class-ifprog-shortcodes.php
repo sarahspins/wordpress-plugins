@@ -1205,6 +1205,7 @@ class IFPROG_Shortcodes {
         $groups = self::sort_level_records($groups, $sort_by_age);
 
         foreach ($groups as &$group) {
+            $group['programs'] = self::sort_programs_by_schedule($group['programs']);
             $group['registration_state'] = self::level_program_state($group['programs']);
             $group['registration_url'] = self::level_registration_url(
                 $group['level_id'],
@@ -1294,6 +1295,9 @@ class IFPROG_Shortcodes {
         }
 
         usort($sortable, function($a, $b) {
+            if ($a['key']['camp'] && $b['key']['camp'] && $a['key']['start'] !== $b['key']['start']) {
+                return $a['key']['start'] <=> $b['key']['start'];
+            }
             foreach (['day','time','order'] as $field) {
                 if ($a['key'][$field] !== $b['key'][$field]) {
                     return $a['key'][$field] <=> $b['key'][$field];
@@ -1336,6 +1340,8 @@ class IFPROG_Shortcodes {
         }
 
         return [
+            'camp' => self::object_matches_terms($program->ID, 'ifprog_format', ['camp']),
+            'start' => IFPROG_Status::timestamp(IFPROG_Fields::get($program->ID, 'start_date')) ?: PHP_INT_MAX,
             'day' => $day,
             'time' => $time,
             'order' => absint($program->menu_order),
