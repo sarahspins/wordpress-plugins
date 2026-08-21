@@ -2,7 +2,7 @@
 /*
 Plugin Name: Ice & Field Rink Displays
 Description: Combined Dash/DaySmart schedule display and rink participants/check-in display for Ice & Field.
-Version: 2.7.8
+Version: 2.7.9
 Author: Ice & Field
 Requires Plugins: ice-field-dash-connector
 Update URI: https://github.com/sarahspins/wordpress-plugins/tree/main/ice-field-rink-displays
@@ -308,7 +308,7 @@ class IFRD_Scheduled_Media {
         <div class="ifrd-scheduled-media-row">
             <label>
                 <strong>Switch date and time</strong><br>
-                <input type="datetime-local" name="<?php echo esc_attr($prefix); ?>[starts_at]" value="<?php echo esc_attr((string) ($row['starts_at'] ?? '')); ?>">
+                <input type="datetime-local" step="900" name="<?php echo esc_attr($prefix); ?>[starts_at]" value="<?php echo esc_attr((string) ($row['starts_at'] ?? '')); ?>">
             </label>
             <div class="ifrd-media-picker" data-media-types="video" data-media-title="Choose scheduled video" data-media-button="Use this video">
                 <input class="large-text ifrd-media-url" name="<?php echo esc_attr($prefix); ?>[video_url]" value="<?php echo esc_attr((string) ($row['video_url'] ?? '')); ?>" placeholder="Select a video or paste its URL">
@@ -360,7 +360,7 @@ class IFRD_Video_For_Screens {
     const OPTION = 'ifrd_video_screen_settings';
     const REFRESH_OPTION = 'ifrd_video_screen_refresh_version';
     const PLUGIN_VERSION_OPTION = 'ifrd_plugin_version';
-    const PLUGIN_VERSION = '2.7.8';
+    const PLUGIN_VERSION = '2.7.9';
     const AJAX_ACTION = 'ifrd_video_screen_refresh_status';
     const CAPABILITY = 'edit_pages';
 
@@ -2734,8 +2734,8 @@ class IFRD_Schedule_Calendar {
 
     public function register_assets() {
         $base = plugin_dir_url(__FILE__) . 'assets/';
-        wp_register_style('ifrd-schedule-calendar', $base . 'schedule-calendar.css', array(), '2.7.8');
-        wp_register_script('ifrd-schedule-calendar', $base . 'schedule-calendar.js', array(), '2.7.8', true);
+        wp_register_style('ifrd-schedule-calendar', $base . 'schedule-calendar.css', array(), '2.7.9');
+        wp_register_script('ifrd-schedule-calendar', $base . 'schedule-calendar.js', array(), '2.7.9', true);
     }
 
     private function next_cache_warm_timestamp() {
