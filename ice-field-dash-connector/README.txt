@@ -1,7 +1,12 @@
 Ice & Field Dash Connector
-Version 1.6.0
+Version 1.6.1
 
 Shared Dash/DaySmart connection for Ice & Field WordPress plugins.
+
+1.6.1 adds:
+- A dedicated Dash Connector > Check GitHub Releases menu item
+- Immediate redirect to WordPress Updates after checking the private release feed
+- Clear success or configuration guidance on the Updates screen
 
 1.6.0 adds:
 - Private GitHub Release updates for all Ice & Field plugins and the Productions Theme

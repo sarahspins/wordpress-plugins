@@ -16,6 +16,17 @@ class IFDC_GitHub_Updater {
         add_filter('pre_set_site_transient_update_themes', [__CLASS__, 'theme_updates']);
         add_filter('upgrader_pre_download', [__CLASS__, 'download'], 10, 4);
         add_action('admin_post_ifdc_check_github_updates', [__CLASS__, 'check_now']);
+        add_action('admin_notices', [__CLASS__, 'admin_notice']);
+    }
+
+    public static function menu() {
+        global $submenu;
+        if (!current_user_can('update_plugins')) return;
+        $submenu['ifdc-dashboard'][] = [
+            'Check GitHub Releases',
+            'update_plugins',
+            wp_nonce_url(admin_url('admin-post.php?action=ifdc_check_github_updates'), 'ifdc_check_github_updates'),
+        ];
     }
 
     public static function defaults() {
@@ -57,9 +68,8 @@ class IFDC_GitHub_Updater {
                 </td>
             </tr>
         </table>
-        <?php if (self::configured()): ?>
-            <p><a class="button" href="<?php echo esc_url(wp_nonce_url(admin_url('admin-post.php?action=ifdc_check_github_updates'), 'ifdc_check_github_updates')); ?>">Check GitHub releases now</a></p>
-        <?php endif;
+        <p class="description">Use <strong>Dash Connector → Check GitHub Releases</strong> whenever you want WordPress to check immediately.</p>
+        <?php
     }
 
     private static function components() {
@@ -190,7 +200,17 @@ class IFDC_GitHub_Updater {
         delete_site_transient('update_themes');
         wp_update_plugins();
         wp_update_themes();
-        wp_safe_redirect(add_query_arg('ifdc_updates_checked', '1', admin_url('admin.php?page=ifdc-settings')));
+        wp_safe_redirect(add_query_arg('ifdc_updates_checked', self::configured() ? '1' : 'not-configured', admin_url('update-core.php')));
         exit;
+    }
+
+    public static function admin_notice() {
+        if (!current_user_can('update_plugins')) return;
+        $status = sanitize_key((string) wp_unslash($_GET['ifdc_updates_checked'] ?? ''));
+        if ($status === '1') {
+            echo '<div class="notice notice-success is-dismissible"><p><strong>Ice &amp; Field:</strong> GitHub releases were checked. Available plugin and theme updates are shown below.</p></div>';
+        } elseif ($status === 'not-configured') {
+            echo '<div class="notice notice-warning"><p><strong>Ice &amp; Field:</strong> Private GitHub updates are not configured. <a href="' . esc_url(admin_url('admin.php?page=ifdc-settings')) . '">Open Dash Connector Settings</a>.</p></div>';
+        }
     }
 }
