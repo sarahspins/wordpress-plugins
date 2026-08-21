@@ -328,8 +328,15 @@ class IFPROG_Meta {
             <p><label><strong>Price</strong><br>
                 <input class="widefat" type="text" name="ifprog_price" value="<?php echo esc_attr(IFPROG_Fields::get($post->ID, 'price')); ?>" placeholder="$175">
             </label></p>
-            <p><label><strong>Session Length (Weeks)</strong><br>
+            <p><label><strong>Session Occurrences</strong><br>
                 <input class="widefat" type="number" min="0" name="ifprog_weeks" value="<?php echo esc_attr(IFPROG_Fields::get($post->ID, 'weeks')); ?>" placeholder="8">
+            </label></p>
+            <p><label><strong>Session Duration Unit</strong><br>
+                <?php $duration_unit = IFPROG_Fields::get($post->ID, 'duration_unit', 'week'); ?>
+                <select class="widefat" name="ifprog_duration_unit">
+                    <option value="week" <?php selected($duration_unit, 'week'); ?>>Weeks</option>
+                    <option value="day" <?php selected($duration_unit, 'day'); ?>>Days</option>
+                </select>
             </label></p>
             <p><label><strong>Registration Button Text</strong><br>
                 <input class="widefat" type="text" name="ifprog_button_label" value="<?php echo esc_attr(IFPROG_Fields::get($post->ID, 'button_label')); ?>" placeholder="Register Now">
@@ -437,6 +444,7 @@ class IFPROG_Meta {
             'location' => sanitize_text_field(wp_unslash($_POST['ifprog_location'] ?? '')),
             'price' => sanitize_text_field(wp_unslash($_POST['ifprog_price'] ?? '')),
             'weeks' => absint($_POST['ifprog_weeks'] ?? 0),
+            'duration_unit' => sanitize_key(wp_unslash($_POST['ifprog_duration_unit'] ?? 'week')) === 'day' ? 'day' : 'week',
             'registration_url' => esc_url_raw(wp_unslash($_POST['ifprog_registration_url'] ?? '')),
             'button_label' => sanitize_text_field(wp_unslash($_POST['ifprog_button_label'] ?? '')),
             'availability_note' => sanitize_textarea_field(wp_unslash($_POST['ifprog_availability_note'] ?? '')),
