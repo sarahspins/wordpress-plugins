@@ -313,7 +313,8 @@ class IFPROG_Preview {
                 'level_registration_url' => $level_registration_url,
                 'existing_id' => absint($existing[$team_id] ?? 0),
                 'existing_level_id' => absint($existing_levels[$league_id] ?? 0),
-                'eligible' => $is_active && $sport['slug'] !== '' && !empty($league),
+                'eligible' => $is_active && !empty($league),
+                'sport_mapping_required' => $sport['slug'] === '',
                 'warnings' => $warnings,
                 'source_values' => [
                     'start_date' => $start_date,
@@ -401,7 +402,8 @@ class IFPROG_Preview {
                 'level_registration_url' => $level_registration_url,
                 'existing_id' => 0,
                 'existing_level_id' => absint($existing_levels[$league_id] ?? 0),
-                'eligible' => !$explicitly_inactive && $sport['slug'] !== '',
+                'eligible' => !$explicitly_inactive,
+                'sport_mapping_required' => $sport['slug'] === '',
                 'warnings' => $warnings,
                 'source_values' => [],
                 'source_payload' => [
