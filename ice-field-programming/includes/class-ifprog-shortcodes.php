@@ -524,6 +524,7 @@ class IFPROG_Shortcodes {
         }
         $price = IFPROG_Fields::get($post_id, 'price');
         $weeks = absint(IFPROG_Fields::get($post_id, 'weeks'));
+        $duration_unit = IFPROG_Fields::get($post_id, 'duration_unit', 'week') === 'day' ? 'day' : 'week';
         $is_single_class = $weeks === 1;
         $is_drop_in = self::object_matches_terms($post_id, 'ifprog_format', ['drop-in']);
         $numeric_price = preg_replace('/[^0-9.\-]/', '', (string) $price);
@@ -601,7 +602,7 @@ class IFPROG_Shortcodes {
                                 <span class="ifprog-class__price-option">
                                     <span class="ifprog-class__price-or">or</span>
                                     <strong><?php echo esc_html($drop_in_remaining_price); ?></strong>
-                                    <em class="ifprog-class__price-duration">for remaining <?php echo esc_html($drop_in_remaining_classes); ?> <?php echo $drop_in_remaining_classes === 1 ? 'week' : 'weeks'; ?></em>
+                                    <em class="ifprog-class__price-duration">for remaining <?php echo esc_html($drop_in_remaining_classes); ?> <?php echo esc_html($drop_in_remaining_classes === 1 ? $duration_unit : $duration_unit . 's'); ?></em>
                                 </span>
                             <?php endif; ?>
                         </span>
@@ -610,7 +611,7 @@ class IFPROG_Shortcodes {
                         <span class="ifprog-class__price-value">
                             <strong><?php echo esc_html($price ?: 'TBA'); ?></strong>
                             <?php if ($weeks > 1): ?>
-                                <em class="ifprog-class__price-duration">for <?php echo esc_html($weeks); ?> weeks</em>
+                                <em class="ifprog-class__price-duration">for <?php echo esc_html($weeks); ?> <?php echo esc_html($duration_unit . 's'); ?></em>
                             <?php endif; ?>
                         </span>
                     <?php endif; ?>
