@@ -1462,7 +1462,7 @@ class IFPROG_Preview {
             if ($gaps) {
                 sort($gaps, SORT_NUMERIC);
                 $typical_gap = $gaps[(int) floor((count($gaps) - 1) / 2)];
-                return $typical_gap <= 2 ? 'day' : 'week';
+                return $typical_gap <= 3 ? 'day' : 'week';
             }
         }
 
