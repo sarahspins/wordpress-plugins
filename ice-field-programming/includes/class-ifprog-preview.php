@@ -262,11 +262,15 @@ class IFPROG_Preview {
             $format = self::format($season_attrs, $league, $team);
             $schedule = self::schedule($team);
             $start_date = self::date_only($team['start_date'] ?? '');
-            $end_date = self::date_only($team['end_date'] ?? ($season_attrs['end_date'] ?? ''));
+            $event_starts = $events_by_team[$team_id] ?? [];
+            if (!$event_starts && sanitize_title($format) === 'camp') {
+                $event_starts = self::team_event_starts($team_id, $season_attrs, $shared_args);
+            }
+            $end_date = self::program_end_date($team, $format, $event_starts);
             $registration_open = self::datetime_local($season_attrs['signup_start'] ?? '');
             $registration_close = self::datetime_local($season_attrs['signup_end'] ?? '');
             $age_range = IFPROG_Dash::age_range_label($league);
-            $session_price = self::session_price($product, $team, $league, $events_by_team[$team_id] ?? []);
+            $session_price = self::session_price($product, $team, $league, $event_starts);
             $availability_label = self::availability($registration);
             $availability_note = self::availability_note($registration);
             $registration_status = sanitize_key((string) ($registration['registration_status'] ?? ''));
@@ -1483,6 +1487,48 @@ class IFPROG_Preview {
         if (preg_match('/\b(camp|clinic)\b/', $identity)) return 'day';
 
         return 'week';
+    }
+
+    private static function team_event_starts($team_id, $season, $args = []) {
+        $team_id = absint($team_id);
+        $start = self::date_only($season['start_date'] ?? '');
+        $end = self::date_only($season['end_date'] ?? '');
+        if (!$team_id || $start === '' || $end === '') return [];
+
+        $result = IFPROG_Dash::events([
+            'filter[hteam_id]' => $team_id,
+            'filter[start__gte]' => $start . 'T00:00:00',
+            'filter[start__lte]' => $end . 'T23:59:59',
+            'sort' => 'start',
+            'page[size]' => 100,
+        ], wp_parse_args($args, ['max_pages' => 5]));
+        if (is_wp_error($result)) return [];
+
+        $starts = [];
+        foreach (self::collection_data($result) as $record) {
+            $event = self::attributes($record);
+            if (absint($event['hteam_id'] ?? 0) !== $team_id) continue;
+            $timestamp = IFPROG_Status::timestamp($event['start'] ?? '');
+            if ($timestamp) $starts[] = $timestamp;
+        }
+        $starts = array_values(array_unique(array_map('intval', $starts)));
+        sort($starts, SORT_NUMERIC);
+        return $starts;
+    }
+
+    private static function program_end_date($team, $format, $event_starts = []) {
+        $starts = array_values(array_unique(array_filter(array_map('intval', (array) $event_starts))));
+        sort($starts, SORT_NUMERIC);
+        if ($starts) return wp_date('Y-m-d', end($starts));
+
+        $team_end = self::date_only($team['end_date'] ?? '');
+        if ($team_end !== '') return $team_end;
+        if (sanitize_title((string) $format) !== 'camp') return '';
+
+        $start = IFPROG_Status::timestamp($team['start_date'] ?? '');
+        $count = absint($team['num_games'] ?? 0);
+        if (!$start || !$count) return '';
+        return wp_date('Y-m-d', $start + (($count - 1) * DAY_IN_SECONDS));
     }
 
     private static function availability($registration) {
