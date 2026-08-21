@@ -1,0 +1,33 @@
+name: Publish WordPress release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build component packages and update manifest
+        run: python3 .github/scripts/build_release.py
+
+      - name: Verify packages
+        run: |
+          for package in dist/*.zip; do
+            unzip -t "$package"
+          done
+
+      - name: Publish private release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: suite-${{ github.run_number }}
+        run: |
+          gh release create "$RELEASE_TAG" dist/* \
+            --repo "${{ github.repository }}" \
+            --target "${{ github.sha }}" \
+            --title "Ice & Field WordPress ${RELEASE_TAG}" \
+            --notes "Private WordPress update packages built from commit ${{ github.sha }}."

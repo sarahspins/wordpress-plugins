@@ -57,6 +57,11 @@ class IFDC_Admin {
             'sanitize_callback' => [__CLASS__, 'sanitize'],
             'default' => IFDC_Client::defaults(),
         ]);
+        register_setting('ifdc_group', IFDC_GitHub_Updater::OPTION, [
+            'type'=>'array',
+            'sanitize_callback'=>['IFDC_GitHub_Updater', 'sanitize'],
+            'default'=>IFDC_GitHub_Updater::defaults(),
+        ]);
     }
 
     public static function sanitize($input) {
@@ -182,6 +187,7 @@ class IFDC_Admin {
                     <tr><th>Timeout</th><td><input type="number" min="5" max="60" name="<?php echo esc_attr(IFDC_Client::OPTION); ?>[timeout]" value="<?php echo esc_attr($s['timeout']); ?>"> seconds</td></tr>
                     <tr><th>Default API Cache</th><td><input type="number" min="0" max="86400" name="<?php echo esc_attr(IFDC_Client::OPTION); ?>[cache_ttl]" value="<?php echo esc_attr($s['cache_ttl']); ?>"> seconds<p class="description">Use 0 to disable response caching. Consumers may override this per request.</p></td></tr>
                 </table>
+                <?php IFDC_GitHub_Updater::render_settings(); ?>
                 <?php submit_button(); ?>
             </form>
         </div>
