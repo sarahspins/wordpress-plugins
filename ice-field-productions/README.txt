@@ -1,5 +1,5 @@
 === Ice & Field Productions ===
-Stable tag: 3.6.5
+Stable tag: 3.7.0
 Requires at least: 6.5
 Requires PHP: 7.4
 

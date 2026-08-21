@@ -2,35 +2,13 @@
 if (!defined('ABSPATH')) exit;
 
 class IFP_Dash_Production_Import {
-    const NONCE = 'ifp_dash_import_production';
-
     public static function init() {
-        add_action('admin_menu', [__CLASS__, 'menu'], 25);
-        add_action('admin_post_ifp_dash_import_production', [__CLASS__, 'import']);
         add_action('admin_post_ifp_dash_link_production', [__CLASS__, 'link_production']);
         add_action('add_meta_boxes', [__CLASS__, 'production_box']);
         add_action('admin_footer-post.php', [__CLASS__, 'relink_form_shell']);
     }
 
-    public static function menu() {
-        add_submenu_page('ifp-dashboard', 'Legacy Production Import', 'Legacy Import', 'manage_options', 'ifp-dash-production-import', [__CLASS__, 'page']);
-    }
-
     private static function ready() { return class_exists('IFDC_Client') && IFDC_Client::is_configured(); }
-    private static function managed_programming_season($dash_season_id) {
-        if (!post_type_exists('ifprog_season')) return 0;
-        $ids = get_posts([
-            'post_type' => 'ifprog_season', 'post_status' => 'any', 'posts_per_page' => 1, 'fields' => 'ids',
-            'meta_key' => '_ifprog_dash_season_id', 'meta_value' => absint($dash_season_id),
-        ]);
-        if (!$ids) return 0;
-        $season_id = absint($ids[0]);
-        $production_id = absint(get_post_meta($season_id, '_ifprog_production_id', true));
-        return get_post_meta($season_id, '_ifprog_is_production', true) === '1' &&
-            $production_id && get_post_type($production_id) === 'ifp_production'
-            ? $season_id
-            : 0;
-    }
     private static function collection($path, $force = false) {
         return IFDC_Client::get_collection($path, [], ['force'=>$force, 'cache_ttl'=>300, 'max_pages'=>50]);
     }
@@ -40,11 +18,6 @@ class IFP_Dash_Production_Import {
         foreach (['name','title','description','season_name','league_name'] as $key) if (!empty($a[$key])) return (string)$a[$key];
         return $fallback . ' ' . absint($item['id'] ?? 0);
     }
-    private static function season_id_for($item) {
-        $a = self::attrs($item);
-        return absint($a['season_id'] ?? $a['seasonId'] ?? 0);
-    }
-
     private static function company_slug() {
         static $company = null;
         if ($company !== null) return $company;
@@ -101,31 +74,6 @@ class IFP_Dash_Production_Import {
         ));
     }
 
-    private static function division_registration_url($league) {
-        $explicit = self::explicit_registration_url($league);
-        if ($explicit !== '') return $explicit;
-
-        $league_id = absint($league['id'] ?? 0);
-        $attributes = self::attrs($league);
-        $facility_id = absint($attributes['facility_id'] ?? $attributes['facilityId'] ?? 0);
-        $company = self::company_slug();
-        if (!$league_id || $company === '') return '';
-
-        $url = 'https://apps.daysmartrecreation.com/dash/x/'
-            . rawurlencode($company)
-            . '/programs/level/'
-            . $league_id;
-        if ($facility_id) $url .= '?facility_ids=' . $facility_id;
-
-        return esc_url_raw((string) apply_filters(
-            'ifp_dash_division_registration_url',
-            $url,
-            $league_id,
-            $facility_id,
-            $company
-        ));
-    }
-
     private static function group_registration_url($team) {
         $explicit = self::explicit_registration_url($team);
         if ($explicit !== '') return $explicit;
@@ -166,264 +114,6 @@ class IFP_Dash_Production_Import {
         $post_id = absint($post_id);
         if (!$post_id || !is_array($team)) return;
         self::sync_registration_url($post_id, self::group_registration_url($team));
-    }
-
-    public static function page() {
-        if (!current_user_can('manage_options')) return;
-        wp_enqueue_style('ifp-admin', IFP_URL . 'assets/admin.css', [], IFP_VERSION);
-        $recovery_mode = !empty($_GET['ifp_legacy_recovery']);
-        if (!$recovery_mode) {
-            ?>
-            <div class="wrap ifp-dashboard">
-                <div class="ifp-page-header"><div>
-                    <p class="ifp-kicker">Retired workflow</p>
-                    <h1>Legacy Production Import</h1>
-                    <p class="ifp-lead">Full Production imports now run through Programming Season Discovery &amp; Sync.</p>
-                </div></div>
-                <section class="ifp-current-card" style="display:block;padding:26px">
-                    <h2>Use Programming for Production synchronization</h2>
-                    <p>Programming provides the protected Dash preview and projects Production companions after a clean sync.</p>
-                    <p><a class="button button-primary" href="<?php echo esc_url(admin_url('admin.php?page=ifprog-preview')); ?>">Open Programming Season Discovery &amp; Sync</a></p>
-                    <p class="description">For this release, administrators can still enter recovery mode from the Dash panel of an unaligned Production. Aligned Seasons remain blocked.</p>
-                </section>
-            </div>
-            <?php
-            return;
-        }
-        $selected = absint($_GET['season_id'] ?? 0);
-        $force = !empty($_GET['refresh']);
-        $seasons = $leagues = $teams = [];
-        $error = null;
-        if (self::ready()) {
-            $res = self::collection('seasons', $force);
-            if (is_wp_error($res)) $error = $res; else $seasons = $res['data'] ?? [];
-            if ($selected && !$error) {
-                $lr = self::collection('leagues', $force);
-                $tr = IFDC_Client::get_teams(['season_id'=>$selected], ['force'=>$force, 'cache_ttl'=>300]);
-                if (is_wp_error($lr)) $error = $lr; elseif (is_wp_error($tr)) $error = $tr;
-                else {
-                    $leagues = array_values(array_filter($lr['data'] ?? [], function($x) use ($selected) { return self::season_id_for($x) === $selected; }));
-                    $teams = $tr['data'] ?? [];
-                }
-            }
-        }
-        usort($seasons, function($a,$b){ return strcasecmp(self::name($b,'Season'), self::name($a,'Season')); });
-        $managed_season_id = $selected ? self::managed_programming_season($selected) : 0;
-        ?>
-        <div class="wrap ifp-dashboard">
-          <div class="ifp-page-header"><div><p class="ifp-kicker">Legacy recovery tool · Ice &amp; Field Productions <?php echo esc_html(IFP_VERSION); ?></p><h1>Legacy Production Import</h1><p class="ifp-lead">Use this only for Productions that have not been aligned with Programming. Programming Season Discovery &amp; Sync is the primary workflow.</p></div></div>
-          <div class="notice notice-info"><p><strong>Primary sync moved to Programming.</strong> <a href="<?php echo esc_url(admin_url('admin.php?page=ifprog-preview')); ?>">Open Programming Season Discovery &amp; Sync</a>.</p></div>
-          <?php if (!empty($_GET['imported'])): ?><div class="notice notice-success is-dismissible"><p><strong>Production imported.</strong> <?php echo esc_html(absint($_GET['divisions'] ?? 0)); ?> divisions, <?php echo esc_html(absint($_GET['groups'] ?? 0)); ?> groups, and <?php echo esc_html(absint($_GET['people'] ?? 0)); ?> roster records synchronized.</p></div><?php endif; ?>
-          <?php if (!empty($_GET['error'])): ?><div class="notice notice-error"><p><?php echo esc_html(sanitize_text_field(wp_unslash($_GET['error']))); ?></p></div><?php endif; ?>
-          <?php if (!self::ready()): ?><div class="notice notice-warning"><p>The shared Dash Connector must be installed and configured first.</p></div>
-          <?php elseif ($error): ?><div class="notice notice-error"><p><?php echo esc_html($error->get_error_message()); ?></p></div>
-          <?php else: ?>
-          <section class="ifp-current-card" style="display:block;padding:26px">
-            <h2>1. Choose a Dash Season</h2>
-            <form method="get" action="<?php echo esc_url(admin_url('admin.php')); ?>">
-              <input type="hidden" name="page" value="ifp-dash-production-import">
-              <input type="hidden" name="ifp_legacy_recovery" value="1">
-              <select name="season_id" style="min-width:360px">
-                <option value="0">— Select a season —</option>
-                <?php foreach ($seasons as $season): $id=absint($season['id']??0); ?><option value="<?php echo esc_attr($id); ?>" <?php selected($selected,$id); ?>><?php echo esc_html(self::name($season,'Season') . ' (#' . $id . ')'); ?></option><?php endforeach; ?>
-              </select>
-              <button class="button button-primary">Preview Production</button>
-              <?php if ($selected): ?><a class="button" href="<?php echo esc_url(add_query_arg(['page'=>'ifp-dash-production-import','season_id'=>$selected,'refresh'=>1,'ifp_legacy_recovery'=>1],admin_url('admin.php'))); ?>">Refresh from Dash</a><?php endif; ?>
-            </form>
-          </section>
-          <?php if ($selected):
-            $season = null; foreach ($seasons as $s) if (absint($s['id']??0)===$selected) {$season=$s;break;}
-            $season_name = $season ? self::name($season,'Season') : 'Season '.$selected;
-            $league_names=[]; foreach($leagues as $l)$league_names[absint($l['id']??0)]=self::name($l,'League');
-            $season_link_ready = $season && self::season_registration_url($season) !== '';
-            $division_link_count = count(array_filter($leagues, function($league) { return self::division_registration_url($league) !== ''; }));
-            $group_link_count = count(array_filter($teams, function($team) { return self::group_registration_url($team) !== ''; }));
-          ?>
-          <section class="ifp-current-card" style="display:block;padding:26px;margin-top:22px">
-            <h2>2. Review Import</h2><h3><?php echo esc_html($season_name); ?></h3>
-            <p><strong><?php echo count($leagues); ?></strong> division(s) · <strong><?php echo count($teams); ?></strong> group(s)</p>
-            <p><strong>Registration links:</strong> <?php echo $season_link_ready ? 'Production ready' : 'Production unavailable'; ?> · <?php echo esc_html($division_link_count); ?> division(s) ready · <?php echo esc_html($group_link_count); ?> group(s) ready</p>
-            <?php if ($leagues): ?><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px;margin:20px 0">
-              <?php foreach($leagues as $league): $lid=absint($league['id']??0); $count=0; foreach($teams as $team) if(absint((self::attrs($team)['league_id']??0))===$lid)$count++; ?>
-              <div style="border:1px solid #dcdcde;border-radius:8px;padding:16px;background:#fff"><strong><?php echo esc_html(self::name($league,'League')); ?></strong><br><span class="description">Dash League <?php echo esc_html($lid); ?> · <?php echo esc_html($count); ?> groups</span></div>
-              <?php endforeach; ?></div><?php endif; ?>
-            <details><summary><strong>View groups</strong></summary><ul style="columns:2;max-width:900px"><?php foreach($teams as $team): $a=self::attrs($team); ?><li><?php echo esc_html(self::name($team,'Team')); ?> <span class="description">— <?php echo esc_html($league_names[absint($a['league_id']??0)] ?? ('League '.absint($a['league_id']??0))); ?></span></li><?php endforeach; ?></ul></details>
-            <?php if ($managed_season_id): ?>
-              <div class="notice notice-warning inline"><p><strong>Legacy import blocked.</strong> This Dash Season is already managed by <a href="<?php echo esc_url(get_edit_post_link($managed_season_id)); ?>"><?php echo esc_html(get_the_title($managed_season_id)); ?></a> in Programming. Use the primary Programming sync to prevent competing updates.</p></div>
-            <?php endif; ?>
-            <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="margin-top:24px">
-              <input type="hidden" name="action" value="ifp_dash_import_production"><input type="hidden" name="season_id" value="<?php echo esc_attr($selected); ?>"><input type="hidden" name="ifp_legacy_recovery" value="1"><?php wp_nonce_field(self::NONCE); ?>
-              <h3>3. Import Options</h3>
-              <p><label><input type="checkbox" name="import_people" value="1" checked> Import/synchronize registered People</label></p>
-              <p class="description">Records already linked by Dash ID are updated automatically. Their WordPress publication status and local visibility settings are preserved.</p>
-              <p><strong>New item status:</strong> <label><input type="radio" name="status" value="draft" checked> Draft</label> &nbsp; <label><input type="radio" name="status" value="private"> Private</label> &nbsp; <label><input type="radio" name="status" value="publish"> Public</label></p>
-              <?php submit_button($managed_season_id ? 'Managed by Programming' : 'Run Legacy Import', 'primary button-hero', 'submit', false, $managed_season_id ? ['disabled'=>'disabled'] : []); ?>
-            </form>
-          </section><?php endif; endif; ?>
-        </div><?php
-    }
-
-    public static function import() {
-        if (!current_user_can('manage_options')) wp_die('Permission denied.');
-        check_admin_referer(self::NONCE);
-        if (empty($_POST['ifp_legacy_recovery'])) wp_die('Legacy recovery mode was not explicitly enabled.');
-        $season_id=absint($_POST['season_id']??0); $status=sanitize_key($_POST['status']??'draft');
-        if(!in_array($status,['draft','private','publish'],true))$status='draft';
-        $redirect=admin_url('admin.php?page=ifp-dash-production-import&ifp_legacy_recovery=1&season_id='.$season_id);
-        if(!$season_id||!self::ready()){wp_safe_redirect(add_query_arg('error','Missing season or Dash Connector is unavailable.',$redirect));exit;}
-        if (self::managed_programming_season($season_id)) {
-            wp_safe_redirect(add_query_arg('error', 'Legacy import is blocked because this Season is already managed through Programming.', $redirect));
-            exit;
-        }
-        $sr=IFDC_Client::get_data('seasons/'.$season_id,[],['force'=>true,'cache'=>false]);
-        $lr=self::collection('leagues',true); $tr=IFDC_Client::get_teams(['season_id'=>$season_id],['force'=>true,'cache_ttl'=>1]);
-        if(is_wp_error($sr)||is_wp_error($lr)||is_wp_error($tr)){ $e=is_wp_error($sr)?$sr:(is_wp_error($lr)?$lr:$tr); wp_safe_redirect(add_query_arg('error',$e->get_error_message(),$redirect));exit; }
-        $season=is_array($sr['data']??null)?$sr['data']:$sr; $production_id=self::upsert_production($season,$status);
-        if(is_wp_error($production_id)){wp_safe_redirect(add_query_arg('error',$production_id->get_error_message(),$redirect));exit;}
-        $leagues=array_values(array_filter($lr['data']??[],function($x)use($season_id){return self::season_id_for($x)===$season_id;}));
-        $division_map=[]; foreach($leagues as $league){$did=self::upsert_division($league,$production_id,$status);if(!is_wp_error($did))$division_map[absint($league['id']??0)]=$did;}
-        $group_count=0;$people_count=0; foreach($tr['data']??[] as $team){$a=self::attrs($team);$gid=self::upsert_group($team,$production_id,$division_map[absint($a['league_id']??0)]??0,$status);if(!is_wp_error($gid)){$group_count++;if(!empty($_POST['import_people'])){$sync=IFP_Dash_Integration::sync_group_participants($gid,true);if(!is_wp_error($sync))$people_count+=absint($sync['count']??0);}}}
-        update_post_meta($production_id,'_ifp_dash_last_sync',current_time('mysql'));
-        wp_safe_redirect(add_query_arg(['imported'=>1,'divisions'=>count($division_map),'groups'=>$group_count,'people'=>$people_count],$redirect));exit;
-    }
-
-    private static function find($type, $key, $value) {
-        $ids = get_posts([
-            'post_type' => $type,
-            'post_status' => 'any',
-            'posts_per_page' => 1,
-            'fields' => 'ids',
-            'meta_key' => $key,
-            'meta_value' => $value,
-        ]);
-        return $ids ? absint($ids[0]) : 0;
-    }
-
-    private static function imported_post_status($post_id, $new_status) {
-        if (!$post_id) return $new_status;
-        $existing = get_post_status($post_id);
-        return in_array($existing, ['draft','pending','private','publish','future'], true)
-            ? $existing
-            : $new_status;
-    }
-
-    private static function upsert_production($season, $status) {
-        $dash_id = absint($season['id'] ?? 0);
-        $attributes = self::attrs($season);
-        $post_id = self::find('ifp_production', '_ifp_dash_season_id', $dash_id);
-        $postarr = [
-            'post_type' => 'ifp_production',
-            'post_title' => sanitize_text_field(self::name($season, 'Production')),
-            'post_status' => self::imported_post_status($post_id, $status),
-        ];
-        if ($post_id) $postarr['ID'] = $post_id;
-
-        $result = $post_id
-            ? wp_update_post(wp_slash($postarr), true)
-            : wp_insert_post(wp_slash($postarr), true);
-        if (is_wp_error($result)) return $result;
-
-        $post_id = absint($result);
-        update_post_meta($post_id, '_ifp_dash_season_id', $dash_id);
-        update_post_meta($post_id, '_ifp_dash_season_payload', $season);
-        update_post_meta($post_id, '_ifp_dash_last_sync', current_time('mysql'));
-        update_post_meta($post_id, '_ifp_dash_program_id', absint($attributes['program_id'] ?? $attributes['programId'] ?? 0));
-        update_post_meta($post_id, '_ifp_dash_facility_id', absint($attributes['facility_id'] ?? $attributes['facilityId'] ?? 0));
-        self::sync_registration_url($post_id, self::season_registration_url($season));
-
-        if (!get_post_meta($post_id, '_ifp_production_status', true)) {
-            IFP_Production_Status::set($post_id, 'upcoming');
-        }
-
-        foreach (['start_date','end_date','registration_start','registration_end'] as $key) {
-            if (!empty($attributes[$key])) {
-                update_post_meta($post_id, '_ifp_dash_' . $key, sanitize_text_field($attributes[$key]));
-            }
-        }
-        if (!get_post_meta($post_id, '_ifp_opening_date', true) && !empty($attributes['start_date'])) {
-            update_post_meta($post_id, '_ifp_opening_date', sanitize_text_field($attributes['start_date']));
-        }
-        if (!get_post_meta($post_id, '_ifp_closing_date', true) && !empty($attributes['end_date'])) {
-            update_post_meta($post_id, '_ifp_closing_date', sanitize_text_field($attributes['end_date']));
-        }
-        return $post_id;
-    }
-
-    private static function upsert_division($league, $production_id, $status) {
-        $dash_id = absint($league['id'] ?? 0);
-        $post_id = self::find('ifp_division', '_ifp_dash_league_id', $dash_id);
-        $postarr = [
-            'post_type' => 'ifp_division',
-            'post_title' => sanitize_text_field(self::name($league, 'Division')),
-            'post_status' => self::imported_post_status($post_id, $status),
-        ];
-        if ($post_id) $postarr['ID'] = $post_id;
-
-        $result = $post_id
-            ? wp_update_post(wp_slash($postarr), true)
-            : wp_insert_post(wp_slash($postarr), true);
-        if (is_wp_error($result)) return $result;
-
-        $post_id = absint($result);
-        update_post_meta($post_id, '_ifp_division_production_id', $production_id);
-        update_post_meta($post_id, '_ifp_dash_league_id', $dash_id);
-        update_post_meta($post_id, '_ifp_dash_season_id', self::season_id_for($league));
-        update_post_meta($post_id, '_ifp_dash_league_payload', $league);
-        update_post_meta($post_id, '_ifp_dash_last_sync', current_time('mysql'));
-        self::sync_registration_url($post_id, self::division_registration_url($league));
-        return $post_id;
-    }
-
-    private static function upsert_group($team, $production_id, $division_id, $status) {
-        $dash_id = absint($team['id'] ?? 0);
-        $attributes = self::attrs($team);
-        $post_id = self::find('ifp_group', '_ifp_dash_team_id', $dash_id);
-        $is_new = !$post_id;
-        $postarr = [
-            'post_type' => 'ifp_group',
-            'post_title' => sanitize_text_field(self::name($team, 'Group')),
-            'post_status' => self::imported_post_status($post_id, $status),
-        ];
-        if ($post_id) $postarr['ID'] = $post_id;
-
-        $result = $post_id
-            ? wp_update_post(wp_slash($postarr), true)
-            : wp_insert_post(wp_slash($postarr), true);
-        if (is_wp_error($result)) return $result;
-
-        $post_id = absint($result);
-        update_post_meta($post_id, '_ifp_group_production_id', $production_id);
-        update_post_meta($post_id, '_ifp_group_division_id', $division_id);
-        if ($is_new || get_post_meta($post_id, '_ifp_group_visibility', true) === '') {
-            update_post_meta($post_id, '_ifp_group_visibility', $status === 'publish' ? 'public' : 'internal');
-        }
-        if ($is_new || get_post_meta($post_id, '_ifp_group_type', true) === '') {
-            update_post_meta($post_id, '_ifp_group_type', self::infer_group_type(self::name($team, 'Group')));
-        }
-        update_post_meta($post_id, '_ifp_dash_team_id', $dash_id);
-        update_post_meta($post_id, '_ifp_dash_season_id', absint($attributes['season_id'] ?? 0));
-        update_post_meta($post_id, '_ifp_dash_league_id', absint($attributes['league_id'] ?? 0));
-        update_post_meta($post_id, '_ifp_dash_product_id', absint($attributes['product_id'] ?? 0));
-        update_post_meta($post_id, '_ifp_dash_program_type_id', absint($attributes['program_type_id'] ?? 0));
-        update_post_meta($post_id, '_ifp_dash_status', sanitize_text_field($attributes['status'] ?? ''));
-        update_post_meta($post_id, '_ifp_dash_payload', $team);
-        update_post_meta($post_id, '_ifp_dash_last_sync', current_time('mysql'));
-        self::sync_registration_url($post_id, self::group_registration_url($team));
-        return $post_id;
-    }
-
-    private static function infer_group_type($name) {
-        $name = strtolower((string) $name);
-        $map = [
-            'large group' => 'Large Group', 'small group' => 'Small Group',
-            'solo' => 'Soloist', 'duet' => 'Duet', 'trio' => 'Trio',
-            'ensemble' => 'Ensemble', 'opening' => 'Opening Number',
-            'closing' => 'Closing Number', 'guest' => 'Guest Performance',
-        ];
-        foreach ($map as $needle => $type) {
-            if (strpos($name, $needle) !== false) return $type;
-        }
-        return 'Other';
     }
 
     public static function production_box() {
@@ -583,10 +273,10 @@ class IFP_Dash_Production_Import {
         if ($programming_season_id && get_post_type($programming_season_id) === 'ifprog_season') {
             echo '<p><a class="button button-primary" href="'.esc_url(admin_url('admin.php?page=ifprog-preview')).'">Sync in Programming</a> ';
             echo '<a class="button" href="'.esc_url(get_edit_post_link($programming_season_id)).'">Edit Programming Season</a></p>';
-            echo '<p class="description">This Production is managed through Programming. The legacy importer is blocked for its Dash Season.</p>';
+            echo '<p class="description">This Production is managed through Programming.</p>';
         } else {
-            echo '<p><a class="button button-secondary" href="'.esc_url(admin_url('admin.php?page=ifp-dash-production-import&ifp_legacy_recovery=1&season_id='.$season_id)).'">Open One-Release Recovery Mode</a></p>';
-            echo '<p class="description">This temporary recovery route is available only to administrators and will be removed after the transition release.</p>';
+            echo '<p><a class="button button-primary" href="'.esc_url(admin_url('admin.php?page=ifprog-preview')).'">Open Programming Season Discovery &amp; Sync</a></p>';
+            echo '<p class="description">Align this Dash Season through Programming before synchronizing Production data.</p>';
         }
         echo '<details><summary>Change linked season</summary><div style="padding-top:8px">';
         self::relink_form($post->ID, $season_id);

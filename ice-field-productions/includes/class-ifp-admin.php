@@ -178,7 +178,6 @@ class IFP_Admin {
                 'admin.php?page=ifp-site-links',
                 'admin.php?page=ifp-dash-integration',
                 'admin.php?page=ifp-programming-alignment',
-                'admin.php?page=ifp-dash-production-import',
             ],
         ]);
     }
@@ -326,7 +325,7 @@ class IFP_Admin {
             return 'ifp-website-tools';
         }
 
-        if (in_array($page, ['ifp-dash-integration', 'ifp-dash-production-import', 'ifp-programming-alignment'], true)) {
+        if (in_array($page, ['ifp-dash-integration', 'ifp-programming-alignment'], true)) {
             return 'ifp-dash-tools';
         }
 
