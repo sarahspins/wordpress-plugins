@@ -236,8 +236,9 @@ class IFPROG_Preview {
         $leagues = self::index_records(self::collection_data($requests['leagues']));
         $products = self::index_records(self::collection_data($requests['products']));
         $availability_by_team = self::index_records(self::collection_data($requests['availability']));
-        $existing = self::existing_team_programs();
         $season_attrs = self::attributes($season_record);
+        $events_by_team = self::season_events_by_team($season_attrs, $shared_args);
+        $existing = self::existing_team_programs();
         $existing_season_id = self::existing_season($season_id);
         $existing_levels = self::existing_levels($existing_season_id);
         $rows = [];
@@ -261,11 +262,11 @@ class IFPROG_Preview {
             $format = self::format($season_attrs, $league, $team);
             $schedule = self::schedule($team);
             $start_date = self::date_only($team['start_date'] ?? '');
-            $end_date = self::date_only($season_attrs['end_date'] ?? '');
+            $end_date = self::date_only($team['end_date'] ?? ($season_attrs['end_date'] ?? ''));
             $registration_open = self::datetime_local($season_attrs['signup_start'] ?? '');
             $registration_close = self::datetime_local($season_attrs['signup_end'] ?? '');
             $age_range = IFPROG_Dash::age_range_label($league);
-            $session_price = self::session_price($product, $team, $league);
+            $session_price = self::session_price($product, $team, $league, $events_by_team[$team_id] ?? []);
             $availability_label = self::availability($registration);
             $availability_note = self::availability_note($registration);
             $registration_status = sanitize_key((string) ($registration['registration_status'] ?? ''));
@@ -324,6 +325,7 @@ class IFPROG_Preview {
                     'level' => $level,
                     'price' => $session_price['total'],
                     'weeks' => $session_price['weeks'],
+                    'duration_unit' => $session_price['unit'],
                     'registration_url' => $registration_url,
                     'availability_note' => $availability_note,
                 ],
@@ -1367,14 +1369,16 @@ class IFPROG_Preview {
         return $label;
     }
 
-    private static function session_price($product, $team, $league) {
+    private static function session_price($product, $team, $league, $event_starts = []) {
         $price = $product['price'] ?? '';
         $class_count = absint($team['num_games'] ?? ($league['num_games'] ?? 0));
+        $unit = self::duration_unit($event_starts);
         if ($price === '' || !is_numeric($price)) {
             return [
                 'total' => '',
                 'detail' => 'No Product price supplied',
                 'weeks' => $class_count,
+                'unit' => $unit,
             ];
         }
 
@@ -1386,6 +1390,7 @@ class IFPROG_Preview {
                 'total' => self::currency($unit_price),
                 'detail' => 'Flat session price',
                 'weeks' => $class_count,
+                'unit' => $unit,
             ];
         }
 
@@ -1394,6 +1399,7 @@ class IFPROG_Preview {
                 'total' => '',
                 'detail' => self::currency($unit_price) . ' per class; class count unavailable',
                 'weeks' => 0,
+                'unit' => $unit,
             ];
         }
 
@@ -1402,11 +1408,56 @@ class IFPROG_Preview {
             'detail' => sprintf(
                 '%d %s × %s',
                 $class_count,
-                $class_count === 1 ? 'week' : 'weeks',
+                $class_count === 1 ? $unit : $unit . 's',
                 self::currency($unit_price)
             ),
             'weeks' => $class_count,
+            'unit' => $unit,
         ];
+    }
+
+    private static function season_events_by_team($season, $args = []) {
+        $start = self::date_only($season['start_date'] ?? '');
+        $end = self::date_only($season['end_date'] ?? '');
+        if ($start === '' || $end === '') return [];
+
+        $result = IFPROG_Dash::events([
+            'filter[start__gte]' => $start . 'T00:00:00',
+            'filter[start__lte]' => $end . 'T23:59:59',
+            'sort' => 'start',
+            'page[size]' => 500,
+        ], wp_parse_args($args, ['max_pages' => 25]));
+        if (is_wp_error($result)) return [];
+
+        $indexed = [];
+        foreach (self::collection_data($result) as $record) {
+            $event = self::attributes($record);
+            $team_id = absint($event['hteam_id'] ?? 0);
+            $timestamp = IFPROG_Status::timestamp($event['start'] ?? '');
+            if ($team_id && $timestamp) $indexed[$team_id][] = $timestamp;
+        }
+        foreach ($indexed as &$starts) {
+            $starts = array_values(array_unique(array_map('intval', $starts)));
+            sort($starts, SORT_NUMERIC);
+        }
+        unset($starts);
+        return $indexed;
+    }
+
+    private static function duration_unit($event_starts) {
+        $starts = array_values(array_unique(array_map('intval', (array) $event_starts)));
+        sort($starts, SORT_NUMERIC);
+        if (count($starts) < 2) return 'week';
+
+        $gaps = [];
+        for ($index = 1; $index < count($starts); $index++) {
+            $days = (int) round(($starts[$index] - $starts[$index - 1]) / DAY_IN_SECONDS);
+            if ($days > 0) $gaps[] = $days;
+        }
+        if (!$gaps) return 'week';
+        sort($gaps, SORT_NUMERIC);
+        $typical_gap = $gaps[(int) floor((count($gaps) - 1) / 2)];
+        return $typical_gap <= 2 ? 'day' : 'week';
     }
 
     private static function availability($registration) {
