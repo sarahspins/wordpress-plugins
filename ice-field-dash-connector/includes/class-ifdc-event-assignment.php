@@ -19,7 +19,7 @@ class IFDC_Event_Assignment {
         add_action('wp_ajax_ifdc_search_assignment_teams', [__CLASS__, 'ajax_search_teams']);
         add_action('wp_ajax_ifdc_prepare_standard_assignments', [__CLASS__, 'ajax_prepare_standard_assignments']);
         add_action('wp_ajax_ifdc_assign_event_batch', [__CLASS__, 'ajax_assign_batch']);
-        add_action(self::NIGHTLY_HOOK, [__CLASS__, 'run_nightly']);
+        add_action(self::NIGHTLY_HOOK, [__CLASS__, 'run_scheduled']);
         add_action('admin_post_ifdc_run_nightly_assignments', [__CLASS__, 'admin_run_nightly']);
         add_action('init', [__CLASS__, 'ensure_nightly_schedule']);
     }
@@ -71,7 +71,7 @@ class IFDC_Event_Assignment {
                     <span><strong>Private Hockey Coaches Ice</strong><small>Capacity 25</small></span>
                 </div>
                 <div class="notice notice-info inline">
-                    <p><strong>Nightly automation:</strong> checks this month and next month for changed assignments or capacities. <?php echo $next_run ? 'Next scheduled run: ' . esc_html(wp_date(get_option('date_format') . ' ' . get_option('time_format'), $next_run)) . '.' : 'The next run is being scheduled.'; ?></p>
+                    <p><strong>Business-hours automation:</strong> checks this month and next month hourly from 5:45 AM through 6:45 PM. <?php echo $next_run ? 'Next scheduled check: ' . esc_html(wp_date(get_option('date_format') . ' ' . get_option('time_format'), $next_run)) . '.' : 'The next check is being scheduled.'; ?></p>
                     <?php if (is_array($last_run) && !empty($last_run['finished_at'])): ?>
                         <p>Last run: <?php echo esc_html(wp_date(get_option('date_format') . ' ' . get_option('time_format'), absint($last_run['finished_at']))); ?> — <?php echo esc_html(absint($last_run['updated'] ?? 0)); ?> updated, <?php echo esc_html(absint($last_run['unchanged'] ?? 0)); ?> already correct, <?php echo esc_html(absint($last_run['errors'] ?? 0)); ?> errors.</p>
                     <?php endif; ?>
@@ -285,10 +285,18 @@ class IFDC_Event_Assignment {
     }
 
     public static function ensure_nightly_schedule() {
-        if (wp_next_scheduled(self::NIGHTLY_HOOK)) return;
-        $next = current_datetime()->setTime(2, 15, 0);
-        if ($next->getTimestamp() <= current_datetime()->getTimestamp()) $next = $next->modify('+1 day');
-        wp_schedule_event($next->getTimestamp(), 'daily', self::NIGHTLY_HOOK);
+        $scheduled = wp_get_scheduled_event(self::NIGHTLY_HOOK);
+        if ($scheduled && $scheduled->schedule === 'hourly' && wp_date('i', $scheduled->timestamp) === '45') return;
+        if ($scheduled) wp_clear_scheduled_hook(self::NIGHTLY_HOOK);
+
+        $now = current_datetime();
+        $next = $now->setTime(5, 45, 0);
+        if ($next->getTimestamp() <= $now->getTimestamp()) {
+            $candidate = $now->setTime((int) $now->format('H'), 45, 0);
+            if ($candidate->getTimestamp() <= $now->getTimestamp()) $candidate = $candidate->modify('+1 hour');
+            $next = (int) $candidate->format('H') <= 18 ? $candidate : $next->modify('+1 day');
+        }
+        wp_schedule_event($next->getTimestamp(), 'hourly', self::NIGHTLY_HOOK);
     }
 
     public static function clear_nightly_schedule() {
@@ -302,6 +310,12 @@ class IFDC_Event_Assignment {
         self::run_nightly();
         wp_safe_redirect(admin_url('admin.php?page=ifdc-event-assignment'));
         exit;
+    }
+
+    public static function run_scheduled() {
+        $hour = (int) current_datetime()->format('G');
+        if ($hour < 5 || $hour > 18) return;
+        self::run_nightly();
     }
 
     public static function run_nightly() {
