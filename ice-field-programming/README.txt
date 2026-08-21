@@ -11,7 +11,7 @@ Manage seasons, program groups, levels, classes, leagues, camps, clinics, and pu
 
 Ice & Field Programming is the public program and registration module for the main Ice & Field website.
 
-Version 1.9.1.16 allows active Dash rows with an unmapped source Sport to be selected and resolved by the administrator's Bulk classification Sport choice. Camps import directly under their Season without a duplicate WordPress Level or public Level heading, and Camp offerings are sorted chronologically by start date.
+Version 1.9.1.16 allows active Dash rows with an unmapped source Sport to be selected and resolved by the administrator's Bulk classification Sport choice. Camps import directly under their Season without a duplicate WordPress Level or public Level heading, sort chronologically, and show their date range and time on each offering card.
 
 It is intentionally separate from:
 
