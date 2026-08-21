@@ -1,6 +1,6 @@
 === Ice & Field Programming ===
 Contributors: iceandfield
-Stable tag: 1.9.1.14
+Stable tag: 1.9.1.15
 Requires at least: 6.4
 Requires PHP: 7.4
 Requires Plugins: ice-field-dash-connector
@@ -10,6 +10,8 @@ Manage seasons, program groups, levels, classes, leagues, camps, clinics, and pu
 == Description ==
 
 Ice & Field Programming is the public program and registration module for the main Ice & Field website.
+
+Version 1.9.1.15 adds a bulk classification step to the protected Dash Season import. Programming preselects its best Sport, Format, and Category guesses, lets an administrator correct them before importing, and applies the final selections consistently to the Season and every selected Level and Program. These taxonomies are now available on all three record types.
 
 It is intentionally separate from:
 
