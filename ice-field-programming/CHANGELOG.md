@@ -8,6 +8,7 @@
 - Imports Camp Programs directly under their Season without creating or assigning a duplicate WordPress Level.
 - Renders existing unlevelled Camp Programs directly in public shortcodes without a fallback Level heading.
 - Sorts Camp offerings chronologically by start date, earliest first.
+- Shows each Camp's date range and time directly on its public offering card.
 
 ## 1.9.1.15
 
