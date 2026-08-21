@@ -1372,7 +1372,7 @@ class IFPROG_Preview {
     private static function session_price($product, $team, $league, $event_starts = []) {
         $price = $product['price'] ?? '';
         $class_count = absint($team['num_games'] ?? ($league['num_games'] ?? 0));
-        $unit = self::duration_unit($event_starts);
+        $unit = self::duration_unit($event_starts, $team, $class_count);
         if ($price === '' || !is_numeric($price)) {
             return [
                 'total' => '',
@@ -1444,20 +1444,33 @@ class IFPROG_Preview {
         return $indexed;
     }
 
-    private static function duration_unit($event_starts) {
+    private static function duration_unit($event_starts, $team = [], $class_count = 0) {
         $starts = array_values(array_unique(array_map('intval', (array) $event_starts)));
         sort($starts, SORT_NUMERIC);
-        if (count($starts) < 2) return 'week';
-
-        $gaps = [];
-        for ($index = 1; $index < count($starts); $index++) {
-            $days = (int) round(($starts[$index] - $starts[$index - 1]) / DAY_IN_SECONDS);
-            if ($days > 0) $gaps[] = $days;
+        if (count($starts) >= 2) {
+            $gaps = [];
+            for ($index = 1; $index < count($starts); $index++) {
+                $days = (int) round(($starts[$index] - $starts[$index - 1]) / DAY_IN_SECONDS);
+                if ($days > 0) $gaps[] = $days;
+            }
+            if ($gaps) {
+                sort($gaps, SORT_NUMERIC);
+                $typical_gap = $gaps[(int) floor((count($gaps) - 1) / 2)];
+                return $typical_gap <= 2 ? 'day' : 'week';
+            }
         }
-        if (!$gaps) return 'week';
-        sort($gaps, SORT_NUMERIC);
-        $typical_gap = $gaps[(int) floor((count($gaps) - 1) / 2)];
-        return $typical_gap <= 2 ? 'day' : 'week';
+
+        $start = IFPROG_Status::timestamp($team['start_date'] ?? '');
+        $end = IFPROG_Status::timestamp($team['end_date'] ?? '');
+        if ($start && $end && $end >= $start && $class_count > 1) {
+            $span_days = (int) floor(($end - $start) / DAY_IN_SECONDS) + 1;
+            if ($span_days <= $class_count + 1) return 'day';
+            if ($span_days >= (($class_count - 1) * 5) + 1) return 'week';
+        }
+
+        preg_match_all('/su|mo|tu|we|th|fr|sa/', strtolower((string) ($team['days_of_week'] ?? '')), $matches);
+        $scheduled_days = array_values(array_unique($matches[0] ?? []));
+        return count($scheduled_days) > 1 ? 'day' : 'week';
     }
 
     private static function availability($registration) {
