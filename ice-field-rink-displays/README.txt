@@ -1,4 +1,6 @@
-Ice & Field Rink Displays v2.7.8
+Ice & Field Rink Displays v2.7.9
+
+Version 2.7.9 changes scheduled-video date/time pickers to 15-minute increments while preserving existing scheduled entries.
 
 Version 2.7.7 adds the monorepo Update URI and participates in the Dash Connector-managed private release updater.
 
