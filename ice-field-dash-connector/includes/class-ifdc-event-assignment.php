@@ -10,12 +10,20 @@ class IFDC_Event_Assignment {
     const MAX_RANGE_DAYS = 92;
     const MAX_RESULTS = 1000;
     const MAX_UPDATE_BATCH = 10;
+    const NIGHTLY_HOOK = 'ifdc_nightly_event_assignment';
+    const NIGHTLY_RESULT_OPTION = 'ifdc_nightly_event_assignment_result';
+    const NIGHTLY_LOCK = 'ifdc_nightly_event_assignment_lock';
+    const AUTOMATION_ENABLED_OPTION = 'ifdc_event_assignment_automation_enabled';
 
     public static function init() {
         add_action('wp_ajax_ifdc_search_assignment_events', [__CLASS__, 'ajax_search_events']);
         add_action('wp_ajax_ifdc_search_assignment_teams', [__CLASS__, 'ajax_search_teams']);
         add_action('wp_ajax_ifdc_prepare_standard_assignments', [__CLASS__, 'ajax_prepare_standard_assignments']);
         add_action('wp_ajax_ifdc_assign_event_batch', [__CLASS__, 'ajax_assign_batch']);
+        add_action(self::NIGHTLY_HOOK, [__CLASS__, 'run_scheduled']);
+        add_action('admin_post_ifdc_run_nightly_assignments', [__CLASS__, 'admin_run_nightly']);
+        add_action('admin_post_ifdc_save_assignment_automation', [__CLASS__, 'admin_save_automation']);
+        add_action('init', [__CLASS__, 'ensure_nightly_schedule']);
     }
 
     public static function menu() {
@@ -32,6 +40,10 @@ class IFDC_Event_Assignment {
     public static function page() {
         $now = current_time('timestamp');
         $month = wp_date('Y-m', $now);
+        $last_run = get_option(self::NIGHTLY_RESULT_OPTION, []);
+        $next_run = wp_next_scheduled(self::NIGHTLY_HOOK);
+        $automation_enabled = self::automation_enabled();
+        $automation_timezone = self::automation_timezone();
         ?>
         <div class="wrap ifdc-wrap ifdc-assignment-wrap">
             <div class="ifdc-explorer-heading">
@@ -61,6 +73,28 @@ class IFDC_Event_Assignment {
                     <span><strong>Open Freestyle</strong><small>Capacity 20</small></span>
                     <span><strong>Stick &amp; Puck</strong><small>Capacity 25</small></span>
                     <span><strong>Private Hockey Coaches Ice</strong><small>Capacity 25</small></span>
+                </div>
+                <div class="notice notice-info inline">
+                    <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+                        <input type="hidden" name="action" value="ifdc_save_assignment_automation">
+                        <?php wp_nonce_field('ifdc_save_assignment_automation'); ?>
+                        <p><label><input type="checkbox" name="automation_enabled" value="1" <?php checked($automation_enabled); ?>> <strong>Enable automatic event assignment checks on this website</strong></label></p>
+                        <p class="description">Disabled by default. When enabled, checks this month and next month hourly from 5:45 AM through 6:45 PM in <strong><?php echo esc_html($automation_timezone->getName()); ?></strong>, read from Displays.</p>
+                        <p><button type="submit" class="button button-primary">Save Automation Setting</button></p>
+                    </form>
+                    <?php if ($automation_enabled): ?>
+                        <p><?php echo $next_run ? 'Next scheduled check: ' . esc_html(wp_date(get_option('date_format') . ' ' . get_option('time_format'), $next_run, $automation_timezone)) . '.' : 'The next check is being scheduled.'; ?></p>
+                    <?php else: ?>
+                        <p><strong>Automatic checks are disabled on this website.</strong></p>
+                    <?php endif; ?>
+                    <?php if (is_array($last_run) && !empty($last_run['finished_at'])): ?>
+                        <p>Last run: <?php echo esc_html(wp_date(get_option('date_format') . ' ' . get_option('time_format'), absint($last_run['finished_at']), $automation_timezone)); ?> — <?php echo esc_html(absint($last_run['updated'] ?? 0)); ?> updated, <?php echo esc_html(absint($last_run['unchanged'] ?? 0)); ?> already correct, <?php echo esc_html(absint($last_run['errors'] ?? 0)); ?> errors.</p>
+                    <?php endif; ?>
+                    <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+                        <input type="hidden" name="action" value="ifdc_run_nightly_assignments">
+                        <?php wp_nonce_field('ifdc_run_nightly_assignments'); ?>
+                        <button type="submit" class="button">Run Current + Next Month Now</button>
+                    </form>
                 </div>
                 <p>
                     <button type="button" class="button button-primary" id="ifdc-prepare-standard-assignments">Prepare All 3</button>
@@ -173,12 +207,18 @@ class IFDC_Event_Assignment {
         self::guard_ajax();
 
         $month = sanitize_text_field(wp_unslash($_POST['month'] ?? ''));
+        $prepared = self::prepare_standard_month($month);
+        if (is_wp_error($prepared)) self::send_wp_error($prepared);
+        wp_send_json_success($prepared);
+    }
+
+    private static function prepare_standard_month($month) {
         if (!preg_match('/^(\d{4})-(\d{2})$/', $month, $matches)) {
-            wp_send_json_error(['message' => 'Choose a valid month.'], 400);
+            return new WP_Error('ifdc_invalid_month', 'Choose a valid month.');
         }
         $year = absint($matches[1]);
         $month_number = absint($matches[2]);
-        if (!checkdate($month_number, 1, $year)) wp_send_json_error(['message' => 'Choose a valid month.'], 400);
+        if (!checkdate($month_number, 1, $year)) return new WP_Error('ifdc_invalid_month', 'Choose a valid month.');
 
         $start = sprintf('%04d-%02d-01', $year, $month_number);
         $end = wp_date('Y-m-t', strtotime($start . ' 12:00:00'));
@@ -204,7 +244,7 @@ class IFDC_Event_Assignment {
                 'cache' => false,
                 'max_pages' => 10,
             ]);
-            if (is_wp_error($events_result)) self::send_wp_error($events_result);
+            if (is_wp_error($events_result)) return $events_result;
 
             $found = 0;
             $replacement_count = 0;
@@ -250,13 +290,162 @@ class IFDC_Event_Assignment {
             if ($target) $total_updates += count($updates);
         }
 
-        wp_send_json_success([
+        return [
             'month' => $month,
             'month_label' => $month_label,
             'groups' => $groups,
             'total_updates' => $total_updates,
             'can_apply' => $total_updates > 0 && count(array_filter($groups, function($group) { return empty($group['target']); })) === 0,
-        ]);
+        ];
+    }
+
+    public static function ensure_nightly_schedule() {
+        if (!self::automation_enabled()) {
+            if (wp_next_scheduled(self::NIGHTLY_HOOK)) wp_clear_scheduled_hook(self::NIGHTLY_HOOK);
+            return;
+        }
+        $scheduled = wp_get_scheduled_event(self::NIGHTLY_HOOK);
+        $timezone = self::automation_timezone();
+        if ($scheduled && $scheduled->schedule === 'hourly' && wp_date('i', $scheduled->timestamp, $timezone) === '45') return;
+        if ($scheduled) wp_clear_scheduled_hook(self::NIGHTLY_HOOK);
+
+        $now = new DateTimeImmutable('now', $timezone);
+        $next = $now->setTime(5, 45, 0);
+        if ($next->getTimestamp() <= $now->getTimestamp()) {
+            $candidate = $now->setTime((int) $now->format('H'), 45, 0);
+            if ($candidate->getTimestamp() <= $now->getTimestamp()) $candidate = $candidate->modify('+1 hour');
+            $next = (int) $candidate->format('H') <= 18 ? $candidate : $next->modify('+1 day');
+        }
+        wp_schedule_event($next->getTimestamp(), 'hourly', self::NIGHTLY_HOOK);
+    }
+
+    public static function clear_nightly_schedule() {
+        wp_clear_scheduled_hook(self::NIGHTLY_HOOK);
+        delete_transient(self::NIGHTLY_LOCK);
+    }
+
+    public static function admin_run_nightly() {
+        if (!current_user_can(IFDC_Admin::CAP_ASSIGN_EVENTS)) wp_die('Permission denied.');
+        check_admin_referer('ifdc_run_nightly_assignments');
+        self::run_nightly();
+        wp_safe_redirect(admin_url('admin.php?page=ifdc-event-assignment'));
+        exit;
+    }
+
+    public static function admin_save_automation() {
+        if (!current_user_can(IFDC_Admin::CAP_ASSIGN_EVENTS)) wp_die('Permission denied.');
+        check_admin_referer('ifdc_save_assignment_automation');
+        update_option(self::AUTOMATION_ENABLED_OPTION, !empty($_POST['automation_enabled']) ? 1 : 0, false);
+        wp_clear_scheduled_hook(self::NIGHTLY_HOOK);
+        self::ensure_nightly_schedule();
+        wp_safe_redirect(admin_url('admin.php?page=ifdc-event-assignment'));
+        exit;
+    }
+
+    public static function run_scheduled() {
+        if (!self::automation_enabled()) return;
+        $hour = (int) (new DateTimeImmutable('now', self::automation_timezone()))->format('G');
+        if ($hour < 5 || $hour > 18) return;
+        self::run_nightly();
+    }
+
+    public static function run_nightly() {
+        if (get_transient(self::NIGHTLY_LOCK)) return new WP_Error('ifdc_assignment_running', 'The nightly assignment check is already running.');
+        set_transient(self::NIGHTLY_LOCK, 1, 30 * MINUTE_IN_SECONDS);
+
+        $summary = [
+            'started_at' => time(),
+            'finished_at' => 0,
+            'updated' => 0,
+            'unchanged' => 0,
+            'errors' => 0,
+            'months' => [],
+        ];
+
+        if (!IFDC_Client::is_configured()) {
+            $summary['errors'] = 1;
+            $summary['message'] = 'The Dash Connector is not configured.';
+        } else {
+            $current = (new DateTimeImmutable('now', self::automation_timezone()))->modify('first day of this month');
+            foreach ([$current, $current->modify('first day of next month')] as $date) {
+                $month = $date->format('Y-m');
+                $result = self::apply_standard_month($month);
+                if (is_wp_error($result)) {
+                    $summary['errors']++;
+                    $summary['months'][$month] = ['error' => $result->get_error_message()];
+                    continue;
+                }
+                $summary['updated'] += absint($result['updated'] ?? 0);
+                $summary['unchanged'] += absint($result['unchanged'] ?? 0);
+                $summary['errors'] += absint($result['errors'] ?? 0);
+                $summary['months'][$month] = $result;
+            }
+        }
+
+        $summary['finished_at'] = time();
+        update_option(self::NIGHTLY_RESULT_OPTION, $summary, false);
+        delete_transient(self::NIGHTLY_LOCK);
+        return $summary;
+    }
+
+    private static function automation_enabled() {
+        return (bool) get_option(self::AUTOMATION_ENABLED_OPTION, false);
+    }
+
+    private static function automation_timezone() {
+        $display_settings = get_option('ifrd_schedule_settings', []);
+        $name = is_array($display_settings) ? trim((string) ($display_settings['display_timezone'] ?? '')) : '';
+        if ($name === '') $name = wp_timezone_string();
+        try {
+            return new DateTimeZone($name ?: 'UTC');
+        } catch (Exception $exception) {
+            return new DateTimeZone('UTC');
+        }
+    }
+
+    private static function apply_standard_month($month) {
+        $prepared = self::prepare_standard_month($month);
+        if (is_wp_error($prepared)) return $prepared;
+
+        $missing = array_filter($prepared['groups'], function($group) { return empty($group['target']['id']); });
+        if ($missing) {
+            return new WP_Error(
+                'ifdc_destination_missing',
+                'No unique destination was found for: ' . implode(', ', array_column($missing, 'name')) . '. Nothing was changed for this month.'
+            );
+        }
+
+        $result = ['updated' => 0, 'unchanged' => 0, 'errors' => 0, 'error_messages' => []];
+        foreach ($prepared['groups'] as $group) {
+            $target_id = absint($group['target']['id']);
+            $capacity = absint($group['capacity']);
+            $result['unchanged'] += absint($group['ready_count'] ?? 0);
+            foreach ((array) ($group['events'] ?? []) as $event) {
+                $event_id = absint($event['id'] ?? 0);
+                if (!$event_id) continue;
+                $update = IFDC_Client::update_event_assignment($event_id, $target_id, $capacity);
+                if (is_wp_error($update)) {
+                    $result['errors']++;
+                    $result['error_messages'][] = '#' . $event_id . ': ' . $update->get_error_message();
+                    continue;
+                }
+
+                $verify_payload = IFDC_Client::get_data('events/' . $event_id, [], ['force' => true, 'cache' => false]);
+                $verify = is_wp_error($verify_payload) ? null : self::data_record($verify_payload);
+                $attrs = self::attributes($verify);
+                if (
+                    !$verify ||
+                    absint($attrs['hteam_id'] ?? 0) !== $target_id ||
+                    absint($attrs['register_capacity'] ?? 0) !== $capacity
+                ) {
+                    $result['errors']++;
+                    $result['error_messages'][] = '#' . $event_id . ': Dash did not retain the verified assignment and capacity.';
+                    continue;
+                }
+                $result['updated']++;
+            }
+        }
+        return $result;
     }
 
     private static function find_standard_destination($name, $month_label) {
