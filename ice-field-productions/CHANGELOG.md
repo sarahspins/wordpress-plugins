@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.7.0 — Programming-Only Production Synchronization
+- Removes the temporary legacy full-Production importer, its administrator route, and its protected form handler.
+- Removes the one-release recovery button from unaligned Production records.
+- Directs both aligned and unaligned Dash-linked Productions to Programming for Season discovery and synchronization.
+- Retains manual Productions, Dash linkage and relinking, registration-link helpers, the Alignment Audit, Team Discovery, and targeted participant recovery.
+
 ## 3.6.5 — Private GitHub Updates
 - Adds the monorepo Update URI and participates in the Dash Connector-managed private release updater.
 
