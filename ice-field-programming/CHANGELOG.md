@@ -6,6 +6,7 @@
 - Applies the confirmed classification in bulk to the Season and every selected Level and Program.
 - Makes all three classification taxonomies available on Seasons, Levels, and Programs.
 - Uses existing Season classifications as the preferred defaults when refreshing an imported Season.
+- Detects daily versus weekly sessions from the spacing of their Dash events and uses the correct unit in import previews and public pricing.
 
 ## 1.9.1.14
 
