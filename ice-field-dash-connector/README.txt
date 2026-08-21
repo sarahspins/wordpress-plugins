@@ -4,7 +4,7 @@ Version 1.6.2
 Shared Dash/DaySmart connection for Ice & Field WordPress plugins.
 
 1.6.2 adds:
-- Nightly automatic assignment and capacity repair for the current and following month
+- Hourly automatic assignment and capacity repair from 5:45 AM through 6:45 PM for the current and following month
 - The proven Standard Monthly Update rules for Open Freestyle, Stick & Puck, and Private Hockey Coaches Ice
 - Strict unique-destination checks and post-update verification before an automated month is considered successful
 - Last-run status and a manual Current + Next Month run control on Event Assignment
