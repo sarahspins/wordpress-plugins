@@ -2,7 +2,7 @@
 /*
 Plugin Name: Ice & Field Rink Displays
 Description: Combined Dash/DaySmart schedule display and rink participants/check-in display for Ice & Field.
-Version: 2.7.7
+Version: 2.7.8
 Author: Ice & Field
 Requires Plugins: ice-field-dash-connector
 Update URI: https://github.com/sarahspins/wordpress-plugins/tree/main/ice-field-rink-displays
@@ -201,13 +201,166 @@ class IFRD_Banner_Media {
 }
 
 /**
+ * Shared scheduled-media helpers for screen video and schedule banner changes.
+ */
+class IFRD_Scheduled_Media {
+    public static function timezone_name($settings = null) {
+        if (!is_array($settings)) {
+            $settings = get_option(IFRD_Schedule_Display::OPTION, array());
+        }
+
+        $name = trim((string) ($settings['display_timezone'] ?? 'America/Chicago'));
+        if ($name === '' || !in_array($name, timezone_identifiers_list(), true)) {
+            $name = 'America/Chicago';
+        }
+        return $name;
+    }
+
+    public static function sanitize($rows, $timezone_name = '') {
+        $clean = array();
+        $timezone_name = $timezone_name !== '' ? $timezone_name : self::timezone_name();
+        if (!in_array($timezone_name, timezone_identifiers_list(), true)) {
+            $timezone_name = self::timezone_name();
+        }
+        $timezone = new DateTimeZone($timezone_name);
+
+        foreach ((array) $rows as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+
+            $starts_at = sanitize_text_field((string) ($row['starts_at'] ?? ''));
+            $video_url = esc_url_raw((string) ($row['video_url'] ?? ''));
+            $date = DateTimeImmutable::createFromFormat('!Y-m-d\TH:i', $starts_at, $timezone);
+            $errors = DateTimeImmutable::getLastErrors();
+
+            if (
+                $video_url === '' ||
+                !$date ||
+                (is_array($errors) && (!empty($errors['warning_count']) || !empty($errors['error_count']))) ||
+                $date->format('Y-m-d\TH:i') !== $starts_at
+            ) {
+                continue;
+            }
+
+            $clean[$starts_at] = array(
+                'starts_at' => $starts_at,
+                'video_url' => $video_url,
+            );
+        }
+
+        ksort($clean, SORT_STRING);
+
+        return array_values($clean);
+    }
+
+    public static function effective($base_url, $base_type, $rows, $timezone_name = '') {
+        $timezone_name = $timezone_name !== '' ? $timezone_name : self::timezone_name();
+        if (!in_array($timezone_name, timezone_identifiers_list(), true)) {
+            $timezone_name = self::timezone_name();
+        }
+        $timezone = new DateTimeZone($timezone_name);
+        $now = new DateTimeImmutable('now', $timezone);
+        $effective = array(
+            'url' => (string) $base_url,
+            'type' => sanitize_key((string) $base_type),
+            'starts_at' => '',
+        );
+
+        foreach (self::sanitize($rows, $timezone_name) as $row) {
+            $starts = DateTimeImmutable::createFromFormat('!Y-m-d\TH:i', $row['starts_at'], $timezone);
+            if ($starts && $starts <= $now) {
+                $effective = array(
+                    'url' => $row['video_url'],
+                    'type' => 'video',
+                    'starts_at' => $row['starts_at'],
+                );
+            }
+        }
+
+        $effective['token'] = md5($effective['url'] . '|' . $effective['type'] . '|' . $effective['starts_at']);
+        return $effective;
+    }
+
+    public static function render_editor($option_name, $field_name, $rows, $timezone_name, $title) {
+        $rows = array_values((array) $rows);
+        if (empty($rows)) {
+            $rows[] = array('starts_at' => '', 'video_url' => '');
+        }
+        ?>
+        <section class="ifrd-scheduled-media" data-option="<?php echo esc_attr($option_name); ?>" data-field="<?php echo esc_attr($field_name); ?>">
+            <h2><?php echo esc_html($title); ?></h2>
+            <p>Each video becomes active at its scheduled date and time and remains active until the next scheduled video. Times use <strong><?php echo esc_html($timezone_name); ?></strong>.</p>
+            <div class="ifrd-scheduled-media-rows" data-next-index="<?php echo esc_attr(count($rows)); ?>">
+                <?php foreach ($rows as $index => $row): ?>
+                    <?php self::render_row($option_name, $field_name, $index, $row); ?>
+                <?php endforeach; ?>
+            </div>
+            <p><button type="button" class="button ifrd-scheduled-media-add">Add Scheduled Video</button></p>
+            <template class="ifrd-scheduled-media-template"><?php self::render_row($option_name, $field_name, '__INDEX__', array()); ?></template>
+        </section>
+        <?php
+    }
+
+    private static function render_row($option_name, $field_name, $index, $row) {
+        $prefix = $option_name . '[' . $field_name . '][' . $index . ']';
+        ?>
+        <div class="ifrd-scheduled-media-row">
+            <label>
+                <strong>Switch date and time</strong><br>
+                <input type="datetime-local" name="<?php echo esc_attr($prefix); ?>[starts_at]" value="<?php echo esc_attr((string) ($row['starts_at'] ?? '')); ?>">
+            </label>
+            <div class="ifrd-media-picker" data-media-types="video" data-media-title="Choose scheduled video" data-media-button="Use this video">
+                <input class="large-text ifrd-media-url" name="<?php echo esc_attr($prefix); ?>[video_url]" value="<?php echo esc_attr((string) ($row['video_url'] ?? '')); ?>" placeholder="Select a video or paste its URL">
+                <p>
+                    <button type="button" class="button ifrd-media-select">Choose from Media Library</button>
+                    <button type="button" class="button ifrd-media-clear">Clear</button>
+                    <button type="button" class="button-link-delete ifrd-scheduled-media-remove">Remove scheduled video</button>
+                </p>
+            </div>
+        </div>
+        <?php
+    }
+
+    public static function print_editor_script() {
+        ?>
+        <style>
+            .ifrd-scheduled-media{margin-top:28px;padding-top:8px;border-top:1px solid #dcdcde}.ifrd-scheduled-media-row{display:grid;grid-template-columns:minmax(210px,280px) minmax(360px,1fr);gap:18px;align-items:start;margin:12px 0;padding:16px;border:1px solid #dcdcde;border-radius:8px;background:#fff}.ifrd-scheduled-media-row input[type="datetime-local"]{width:100%;margin-top:6px}@media(max-width:782px){.ifrd-scheduled-media-row{grid-template-columns:1fr}}
+        </style>
+        <script>
+        (function(){
+            document.addEventListener('click',function(event){
+                const addButton=event.target.closest('.ifrd-scheduled-media-add');
+                const removeButton=event.target.closest('.ifrd-scheduled-media-remove');
+                if(addButton){
+                    event.preventDefault();
+                    const editor=addButton.closest('.ifrd-scheduled-media');
+                    const rows=editor.querySelector('.ifrd-scheduled-media-rows');
+                    const template=editor.querySelector('.ifrd-scheduled-media-template');
+                    const index=Number(rows.dataset.nextIndex||0);
+                    rows.insertAdjacentHTML('beforeend',template.innerHTML.replace(/__INDEX__/g,String(index)));
+                    rows.dataset.nextIndex=String(index+1);
+                }
+                if(removeButton){
+                    event.preventDefault();
+                    const row=removeButton.closest('.ifrd-scheduled-media-row');
+                    if(row)row.remove();
+                }
+            });
+        })();
+        </script>
+        <?php
+    }
+}
+
+/**
  * Full-screen looping video display for lobby and rink screens.
  */
 class IFRD_Video_For_Screens {
     const OPTION = 'ifrd_video_screen_settings';
     const REFRESH_OPTION = 'ifrd_video_screen_refresh_version';
     const PLUGIN_VERSION_OPTION = 'ifrd_plugin_version';
-    const PLUGIN_VERSION = '2.7.6';
+    const PLUGIN_VERSION = '2.7.8';
     const AJAX_ACTION = 'ifrd_video_screen_refresh_status';
     const CAPABILITY = 'edit_pages';
 
@@ -226,6 +379,7 @@ class IFRD_Video_For_Screens {
     public function defaults() {
         return array(
             'video_url' => '',
+            'video_schedule' => array(),
         );
     }
 
@@ -274,6 +428,24 @@ class IFRD_Video_For_Screens {
         return $version;
     }
 
+    public static function current_display_version() {
+        $video_settings = wp_parse_args(get_option(self::OPTION, array()), array(
+            'video_url' => '',
+            'video_schedule' => array(),
+        ));
+        $schedule_settings = wp_parse_args(get_option(IFRD_Schedule_Display::OPTION, array()), array(
+            'display_timezone' => 'America/Chicago',
+            'banner_url' => '',
+            'banner_media_type' => 'auto',
+            'banner_schedule' => array(),
+        ));
+        $timezone_name = IFRD_Scheduled_Media::timezone_name($schedule_settings);
+        $video = IFRD_Scheduled_Media::effective($video_settings['video_url'], 'video', $video_settings['video_schedule'], $timezone_name);
+        $banner = IFRD_Scheduled_Media::effective($schedule_settings['banner_url'], $schedule_settings['banner_media_type'], $schedule_settings['banner_schedule'], $timezone_name);
+
+        return self::current_refresh_version() . '-' . substr(md5($video['token'] . '|' . $banner['token']), 0, 16);
+    }
+
     public function maybe_refresh_after_update() {
         if ((string) get_option(self::PLUGIN_VERSION_OPTION, '') === self::PLUGIN_VERSION) {
             return;
@@ -288,12 +460,20 @@ class IFRD_Video_For_Screens {
     public function sanitize($input) {
         $video_url = isset($input['video_url']) ? esc_url_raw($input['video_url']) : '';
         $old = $this->opts();
+        $timezone_name = IFRD_Scheduled_Media::timezone_name();
+        $video_schedule = IFRD_Scheduled_Media::sanitize($input['video_schedule'] ?? array(), $timezone_name);
 
-        if ($video_url !== (string) ($old['video_url'] ?? '')) {
+        if (
+            $video_url !== (string) ($old['video_url'] ?? '') ||
+            wp_json_encode($video_schedule) !== wp_json_encode($old['video_schedule'] ?? array())
+        ) {
             self::bump_refresh_version();
         }
 
-        return array('video_url' => $video_url);
+        return array(
+            'video_url' => $video_url,
+            'video_schedule' => $video_schedule,
+        );
     }
 
     public function refresh_screens() {
@@ -314,7 +494,7 @@ class IFRD_Video_For_Screens {
     public function refresh_status() {
         nocache_headers();
         wp_send_json_success(array(
-            'version' => self::current_refresh_version(),
+            'version' => self::current_display_version(),
         ));
     }
 
@@ -340,6 +520,13 @@ class IFRD_Video_For_Screens {
                         )); ?></td>
                     </tr>
                 </table>
+                <?php IFRD_Scheduled_Media::render_editor(
+                    self::OPTION,
+                    'video_schedule',
+                    $o['video_schedule'] ?? array(),
+                    IFRD_Scheduled_Media::timezone_name(),
+                    'Scheduled Video Changes'
+                ); ?>
                 <?php submit_button('Save Video'); ?>
             </form>
 
@@ -355,13 +542,20 @@ class IFRD_Video_For_Screens {
             <p><strong>Shortcode:</strong> <code>[video_for_screens]</code></p>
         </div>
         <?php IFRD_Banner_Media::print_picker_script(); ?>
+        <?php IFRD_Scheduled_Media::print_editor_script(); ?>
         <?php
     }
 
     public function shortcode($atts) {
         $o = $this->opts();
-        $video_url = (string) ($o['video_url'] ?? '');
-        $refresh_version = self::current_refresh_version();
+        $effective = IFRD_Scheduled_Media::effective(
+            $o['video_url'] ?? '',
+            'video',
+            $o['video_schedule'] ?? array(),
+            IFRD_Scheduled_Media::timezone_name()
+        );
+        $video_url = $effective['url'];
+        $refresh_version = self::current_display_version();
 
         return self::render_player($video_url, $refresh_version, self::AJAX_ACTION, 'ifrd-screen-video-');
     }
@@ -780,6 +974,7 @@ class IFRD_Schedule_Display {
             'logo_url' => '',
             'banner_url' => '',
             'banner_media_type' => 'auto',
+            'banner_schedule' => array(),
             'banner_link' => '',
             'locker_name_map' => "4=Warm Room\n5=Party Room 1\n6=Party Room 2\n7=Locker Room B\n8=Locker Room D\n9=Party Room 3\n10=Locker Room C\n11=Locker Room E\n12=Locker Room H\n13=Locker Room I\n14=Locker Room J\n15=Locker Room K",
             'bg_color' => '#06131f',
@@ -844,9 +1039,19 @@ class IFRD_Schedule_Display {
             $clean['banner_url'] = isset($input['banner_url']) ? esc_url_raw($input['banner_url']) : (string) $old['banner_url'];
             $banner_media_type = isset($input['banner_media_type']) ? sanitize_key($input['banner_media_type']) : (string) $old['banner_media_type'];
             $clean['banner_media_type'] = in_array($banner_media_type, array('auto', 'image', 'video'), true) ? $banner_media_type : 'auto';
+            $clean['banner_schedule'] = IFRD_Scheduled_Media::sanitize(
+                $input['banner_schedule'] ?? array(),
+                IFRD_Scheduled_Media::timezone_name($old)
+            );
         } else {
 
             foreach ($defaults as $key => $default) {
+                if ($key === 'banner_schedule') {
+                    $submitted_timezone = sanitize_text_field((string) ($input['display_timezone'] ?? $old['display_timezone'] ?? 'America/Chicago'));
+                    $clean[$key] = IFRD_Scheduled_Media::sanitize($input[$key] ?? array(), $submitted_timezone);
+                    continue;
+                }
+
                 if (in_array($key, array('calendar_registration_links', 'calendar_session_selector'), true)) {
                     $clean[$key] = isset($input[$key]) ? '1' : '0';
                     continue;
@@ -879,7 +1084,8 @@ class IFRD_Schedule_Display {
 
         if (
             (string) ($clean['banner_url'] ?? '') !== (string) ($old['banner_url'] ?? '') ||
-            (string) ($clean['banner_media_type'] ?? 'auto') !== (string) ($old['banner_media_type'] ?? 'auto')
+            (string) ($clean['banner_media_type'] ?? 'auto') !== (string) ($old['banner_media_type'] ?? 'auto') ||
+            wp_json_encode($clean['banner_schedule'] ?? array()) !== wp_json_encode($old['banner_schedule'] ?? array())
         ) {
             IFRD_Video_For_Screens::bump_refresh_version();
         }
@@ -969,6 +1175,13 @@ class IFRD_Schedule_Display {
                     )); ?></td></tr>
                 </table>
                 <?php endif; ?>
+                <?php IFRD_Scheduled_Media::render_editor(
+                    self::OPTION,
+                    'banner_schedule',
+                    $o['banner_schedule'] ?? array(),
+                    IFRD_Scheduled_Media::timezone_name($o),
+                    'Scheduled Banner Video Changes'
+                ); ?>
                 <?php submit_button(); ?>
             </form>
             <hr>
@@ -983,6 +1196,7 @@ class IFRD_Schedule_Display {
             <p><strong>Calendar shortcode:</strong> <code>[rink_schedule_calendar]</code> (alias: <code>[rink_schedule_list]</code>)</p>
         </div>
         <?php IFRD_Banner_Media::print_picker_script(); ?>
+        <?php IFRD_Scheduled_Media::print_editor_script(); ?>
         <?php
     }
 
@@ -1835,8 +2049,16 @@ class IFRD_Schedule_Display {
 
     public function shortcode($atts) {
         $o = $this->opts();
+        $effective_banner = IFRD_Scheduled_Media::effective(
+            $o['banner_url'] ?? '',
+            $o['banner_media_type'] ?? 'auto',
+            $o['banner_schedule'] ?? array(),
+            IFRD_Scheduled_Media::timezone_name($o)
+        );
+        $o['banner_url'] = $effective_banner['url'];
+        $o['banner_media_type'] = $effective_banner['type'];
         $id = 'ifrd_sched_' . wp_generate_password(8, false);
-        $screen_refresh_version = IFRD_Video_For_Screens::current_refresh_version();
+        $screen_refresh_version = IFRD_Video_For_Screens::current_display_version();
         $style = sprintf(
             '--ifr-bg:%s;--ifr-panel:%s;--ifr-text:%s;--ifr-muted:%s;--ifr-accent:%s;--ifr-now:%s;--ifr-next:%s;--ifr-later:%s;',
             esc_attr($o['bg_color']),
@@ -2512,8 +2734,8 @@ class IFRD_Schedule_Calendar {
 
     public function register_assets() {
         $base = plugin_dir_url(__FILE__) . 'assets/';
-        wp_register_style('ifrd-schedule-calendar', $base . 'schedule-calendar.css', array(), '2.7.6');
-        wp_register_script('ifrd-schedule-calendar', $base . 'schedule-calendar.js', array(), '2.7.6', true);
+        wp_register_style('ifrd-schedule-calendar', $base . 'schedule-calendar.css', array(), '2.7.8');
+        wp_register_script('ifrd-schedule-calendar', $base . 'schedule-calendar.js', array(), '2.7.8', true);
     }
 
     private function next_cache_warm_timestamp() {
