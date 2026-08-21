@@ -7,6 +7,7 @@
 - Shows a clear validation message if an unmapped row is submitted without a Sport selection.
 - Imports Camp Programs directly under their Season without creating or assigning a duplicate WordPress Level.
 - Renders existing unlevelled Camp Programs directly in public shortcodes without a fallback Level heading.
+- Sorts Camp offerings chronologically by start date, earliest first.
 
 ## 1.9.1.15
 
