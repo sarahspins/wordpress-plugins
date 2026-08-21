@@ -1,4 +1,6 @@
-ICE & FIELD PRODUCTIONS THEME — VERSION 1.3.2
+ICE & FIELD PRODUCTIONS THEME — VERSION 1.6.7
+
+Version 1.6.7 adds private GitHub Release update support through Ice & Field Dash Connector.
 
 INSTALLATION
 1. WordPress: Appearance > Themes > Add New > Upload Theme.

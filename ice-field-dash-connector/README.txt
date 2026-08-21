@@ -1,7 +1,13 @@
 Ice & Field Dash Connector
-Version 1.5.1
+Version 1.6.0
 
 Shared Dash/DaySmart connection for Ice & Field WordPress plugins.
+
+1.6.0 adds:
+- Private GitHub Release updates for all Ice & Field plugins and the Productions Theme
+- One fine-grained, read-only GitHub token stored in Dash Connector
+- Authenticated manifest checks and protected downloads through the normal WordPress updater
+- A manual Check GitHub releases now control for administrators
 
 1.5.1 adds:
 - Administrator-only permanent team deletion from an inspected Object Explorer team record

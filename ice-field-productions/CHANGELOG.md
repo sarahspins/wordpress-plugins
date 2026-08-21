@@ -1,5 +1,8 @@
 # Changelog
 
+## 3.6.5 — Private GitHub Updates
+- Adds the monorepo Update URI and participates in the Dash Connector-managed private release updater.
+
 ## 3.6.4 — Formal Plugin Dependencies
 - Declares Ice & Field Dash Connector and Ice & Field Programming as required WordPress plugins.
 - Lets WordPress enforce the Connector → Programming → Productions activation and deactivation order.

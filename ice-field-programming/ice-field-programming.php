@@ -2,17 +2,18 @@
 /**
  * Plugin Name: Ice & Field Programming
  * Description: Manage seasons, program groups, levels, classes, leagues, camps, clinics, and public registration displays for Ice & Field.
- * Version: 1.9.1.13
+ * Version: 1.9.1.14
  * Requires at least: 6.4
  * Requires PHP: 7.4
  * Requires Plugins: ice-field-dash-connector
+ * Update URI: https://github.com/sarahspins/wordpress-plugins/tree/main/ice-field-programming
  * Author: Ice & Field
  * Text Domain: ice-field-programming
  */
 
 if (!defined('ABSPATH')) exit;
 
-define('IFPROG_VERSION', '1.9.1.13');
+define('IFPROG_VERSION', '1.9.1.14');
 define('IFPROG_DIR', plugin_dir_path(__FILE__));
 define('IFPROG_URL', plugin_dir_url(__FILE__));
 

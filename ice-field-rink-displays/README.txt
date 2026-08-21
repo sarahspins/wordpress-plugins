@@ -1,4 +1,6 @@
-Ice & Field Rink Displays v2.7.6
+Ice & Field Rink Displays v2.7.7
+
+Version 2.7.7 adds the monorepo Update URI and participates in the Dash Connector-managed private release updater.
 
 Built from the v2.2.1 master provided by Sarah.
 

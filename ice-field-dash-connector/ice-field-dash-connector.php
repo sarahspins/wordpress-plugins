@@ -2,24 +2,29 @@
 /**
  * Plugin Name: Ice & Field Dash Connector
  * Description: Shared Dash/DaySmart authentication, API requests, diagnostics, and developer tools for Ice & Field plugins.
- * Version: 1.5.1
+ * Version: 1.6.0
+ * Requires at least: 6.5
+ * Requires PHP: 7.4
+ * Update URI: https://github.com/sarahspins/wordpress-plugins/tree/main/ice-field-dash-connector
  * Author: Ice & Field
  */
 
 if (!defined('ABSPATH')) exit;
 
-define('IFDC_VERSION', '1.5.1');
+define('IFDC_VERSION', '1.6.0');
 define('IFDC_DIR', plugin_dir_path(__FILE__));
 define('IFDC_URL', plugin_dir_url(__FILE__));
 
 require_once IFDC_DIR . 'includes/class-ifdc-client.php';
 require_once IFDC_DIR . 'includes/class-ifdc-admin.php';
 require_once IFDC_DIR . 'includes/class-ifdc-event-assignment.php';
+require_once IFDC_DIR . 'includes/class-ifdc-github-updater.php';
 
 function ifdc_boot() {
     IFDC_Client::init();
     IFDC_Admin::init();
     IFDC_Event_Assignment::init();
+    IFDC_GitHub_Updater::init();
 }
 add_action('plugins_loaded', 'ifdc_boot');
 

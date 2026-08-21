@@ -1,5 +1,9 @@
 # Ice & Field Programming Changelog
 
+## 1.9.1.14
+
+- Adds the monorepo Update URI and participates in the Dash Connector-managed private release updater.
+
 ## 1.9.1.13
 
 - Exposes synchronized Level and Program IDs to companion plugins after a clean protected sync.

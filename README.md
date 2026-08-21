@@ -19,3 +19,9 @@ Generated installation ZIP files and historical local build snapshots are intent
 3. Ice & Field Productions
 
 Rink Displays and the Productions Theme are maintained in the same repository but are not part of that plugin activation chain.
+
+## Private WordPress updates
+
+Dash Connector provides the shared updater for all five components. The `Publish WordPress release` GitHub Actions workflow builds correctly rooted ZIP packages and an `ice-field-updates.json` manifest, then publishes them as a private GitHub Release.
+
+On each WordPress installation, configure a fine-grained GitHub token in **Dash Connector → Settings → Private GitHub Updates**. Restrict the token to this repository with read-only Contents access. WordPress then discovers newer release versions through its normal Plugins and Themes update screens.
