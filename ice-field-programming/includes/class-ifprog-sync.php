@@ -56,6 +56,7 @@ class IFPROG_Sync {
             }
         }
 
+        $classification = self::classification_terms($classification);
         $eligible_rows = [];
         $skipped = 0;
         if (!$season_only) {
@@ -78,11 +79,19 @@ class IFPROG_Sync {
             if (!$eligible_rows) {
                 return new WP_Error('ifprog_sync_no_eligible_rows', 'None of the selected Teams or standalone Levels are eligible to import.');
             }
+            $needs_sport = count(array_filter($eligible_rows, function($row) {
+                return !empty($row['sport_mapping_required']);
+            })) > 0;
+            if ($needs_sport && empty($classification['ifprog_sport'])) {
+                return new WP_Error(
+                    'ifprog_sync_sport_required',
+                    'Choose at least one Sport under Bulk classification before importing these Dash records.'
+                );
+            }
         }
 
         $publish_imported = (bool) $publish_imported;
         $presentation_updates = self::presentation_updates($presentation_updates);
-        $classification = self::classification_terms($classification);
         $season_result = self::sync_season(
             $preview,
             $publish_imported,
