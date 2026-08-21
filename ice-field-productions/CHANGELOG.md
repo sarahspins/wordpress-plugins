@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.7.1 — Communication Center Completion
+- Added Media Library attachments with a five-file limit, 10 MB per-file limit, 20 MB combined limit, and permission, readability, and WordPress file-type validation.
+- Added reusable email sender name, reply-to address, accent color, and footer settings, while allowing sender and reply-to overrides for an individual message.
+- Added safe retry controls that resend only failed recipient handoffs and preserve already successful results.
+- Added a provider-event integration API and history indicators for authenticated delivery, bounce, and open events without inferring those outcomes from `wp_mail()`.
+- Renumbered the next planned Controlled Two-Way Dash Updates milestone to 3.8 so the roadmap follows the current plugin release sequence.
+
 ## 3.7.0 — Programming-Only Production Synchronization
 - Removes the temporary legacy full-Production importer, its administrator route, and its protected form handler.
 - Removes the one-release recovery button from unaligned Production records.

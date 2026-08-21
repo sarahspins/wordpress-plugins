@@ -1,5 +1,5 @@
 === Ice & Field Productions ===
-Stable tag: 3.7.0
+Stable tag: 3.7.1
 Requires at least: 6.5
 Requires PHP: 7.4
 
@@ -211,7 +211,7 @@ Use `[ifp_registration production_id="123"]` to show one Production's registrati
 - See the latest Communication History inside each Person record.
 - Open the composer directly from a Production, Division, Group, Person, or filtered People list.
 
-“Handed to mail service” means WordPress accepted the message for sending. It does not confirm final delivery or that the recipient opened it. Attachments and provider-level delivery, bounce, and open tracking remain planned for later 3.1 milestones.
+“Handed to mail service” means WordPress accepted the message for sending. It does not confirm final delivery or that the recipient opened it. Version 3.7.1 displays those outcomes only when a compatible provider supplies authenticated events.
 
 == Version 3.0.2 — Stabilization and Privacy ==
 - Centralized Current Production and lifecycle handling.
@@ -792,4 +792,12 @@ Open Productions > Communication to compose a message. Email audiences are resol
 
 Each unique address receives a separate private copy. If the same Person belongs to several selected Groups—or multiple People share an address—the address receives only one copy. Global history appears under Productions > Communication > Communication History, while messages connected to a Person also appear on that Person's edit screen.
 
-Version 3.1.0 records whether WordPress handed each copy to the configured website mail service. It cannot confirm inbox delivery, bounces, or opens without a compatible transactional-email provider. Attachments and provider tracking remain later roadmap items.
+WordPress records whether it handed each copy to the configured website mail service. It cannot independently confirm inbox delivery, bounces, or opens. Version 3.7.1 adds guarded attachments, failed-handoff retries, and a provider-event integration point for compatible transactional-email services.
+
+== Version 3.7.1 — Communication Center Completion ==
+
+- Choose up to five safe Media Library attachments, limited to 10 MB each and 20 MB combined.
+- Set reusable sender name, reply-to address, accent color, and footer text under Communication > Email Settings.
+- Override the sender name and reply-to address for an individual message before review.
+- Retry only failed mail-service handoffs from Communication History; successful recipients are never resent.
+- Display delivery, bounce, and open events only when an authenticated compatible mail-provider integration records them through `IFP_Communications::record_provider_event()`.

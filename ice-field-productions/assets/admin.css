@@ -804,6 +804,7 @@
 .ifp-status-draft{background:#f3f4f6;color:#6b7280}
 
 /* v3.1.0: Communication Center */
+.ifp-communication-attachments{margin:20px 0}.ifp-attachment-list{display:grid;gap:8px;margin:8px 0}.ifp-attachment-row{display:flex;align-items:center;justify-content:space-between;gap:16px;max-width:620px;padding:9px 12px;border:1px solid #d8e0e6;border-radius:6px;background:#f8fafb}.ifp-email-attachment-summary{display:flex;flex-wrap:wrap;gap:6px 10px;margin:12px 0}.ifp-email-attachment-summary span{padding:3px 8px;border-radius:999px;background:#eef3f6}.ifp-email-result--delivered{color:#18794e}.ifp-email-result--bounced{color:#b42318}.ifp-email-result--opened{color:#175cd3}
 .ifp-communication-layout{display:grid;gap:20px}
 .ifp-communication-compose{margin:0}
 .ifp-template-loader{margin-bottom:0}

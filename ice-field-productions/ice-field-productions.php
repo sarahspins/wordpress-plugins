@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Ice & Field Productions
  * Description: Production management, participant resources, sponsors, show archives, and front-end displays for Ice & Field skating productions.
- * Version: 3.7.0
+ * Version: 3.7.1
  * Requires at least: 6.5
  * Requires PHP: 7.4
  * Requires Plugins: ice-field-dash-connector, ice-field-programming
@@ -13,7 +13,7 @@
 
 if (!defined('ABSPATH')) exit;
 
-define('IFP_VERSION', '3.7.0');
+define('IFP_VERSION', '3.7.1');
 define('IFP_DIR', plugin_dir_path(__FILE__));
 define('IFP_URL', plugin_dir_url(__FILE__));
 

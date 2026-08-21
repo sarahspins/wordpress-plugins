@@ -4,26 +4,60 @@ if (!defined('ABSPATH')) exit;
 /**
  * HTML email composition, recipient resolution, templates, and local history.
  *
- * Version 3.1.0 deliberately records whether WordPress handed each message to
- * its configured mail service. Delivery, bounce, and open tracking remain a
- * later milestone because wp_mail() cannot verify those outcomes by itself.
+ * WordPress mail handoffs are recorded separately from provider-supplied
+ * delivery, bounce, and open events. The latter are never inferred.
  */
 class IFP_Communications {
     const COMMUNICATION_TYPE = 'ifp_communication';
     const TEMPLATE_TYPE = 'ifp_email_template';
     const PERSON_HISTORY_KEY = '_ifp_communication_ids';
     const MAX_RECIPIENTS = 300;
+    const MAX_ATTACHMENTS = 5;
+    const MAX_ATTACHMENT_BYTES = 10485760;
+    const MAX_TOTAL_ATTACHMENT_BYTES = 20971520;
+    const SETTINGS_OPTION = 'ifp_communication_settings';
+    private static $active_sender_name = '';
 
     public static function init() {
         add_action('init', [__CLASS__, 'register_post_types']);
         add_action('admin_enqueue_scripts', [__CLASS__, 'admin_assets']);
         add_action('admin_post_ifp_send_communication', [__CLASS__, 'send_action']);
+        add_action('admin_post_ifp_retry_communication', [__CLASS__, 'retry_action']);
+        add_action('admin_init', [__CLASS__, 'register_settings']);
         add_action('add_meta_boxes', [__CLASS__, 'meta_boxes']);
         add_filter('use_block_editor_for_post_type', [__CLASS__, 'classic_template_editor'], 10, 2);
         add_filter('wp_default_editor', [__CLASS__, 'default_visual_editor']);
         add_filter('enter_title_here', [__CLASS__, 'template_title_placeholder'], 10, 2);
         add_filter('post_row_actions', [__CLASS__, 'template_row_actions'], 10, 2);
         add_action('edit_form_after_title', [__CLASS__, 'template_editor_help']);
+    }
+
+    public static function register_settings() {
+        register_setting('ifp_communication_settings_group', self::SETTINGS_OPTION, [
+            'type' => 'array',
+            'sanitize_callback' => [__CLASS__, 'sanitize_settings'],
+            'default' => [],
+        ]);
+    }
+
+    public static function sanitize_settings($value) {
+        $value = is_array($value) ? $value : [];
+        $color = sanitize_hex_color((string) ($value['accent_color'] ?? ''));
+        return [
+            'sender_name' => sanitize_text_field((string) ($value['sender_name'] ?? '')),
+            'reply_to' => sanitize_email((string) ($value['reply_to'] ?? '')),
+            'accent_color' => $color ?: '#0b5f82',
+            'footer_text' => sanitize_textarea_field((string) ($value['footer_text'] ?? '')),
+        ];
+    }
+
+    private static function settings() {
+        return wp_parse_args((array) get_option(self::SETTINGS_OPTION, []), [
+            'sender_name' => wp_specialchars_decode((string) get_bloginfo('name'), ENT_QUOTES),
+            'reply_to' => sanitize_email((string) get_option('admin_email')),
+            'accent_color' => '#0b5f82',
+            'footer_text' => '',
+        ]);
     }
 
     public static function register_post_types() {
@@ -68,6 +102,7 @@ class IFP_Communications {
 
         wp_enqueue_style('ifp-admin', IFP_URL . 'assets/admin.css', [], IFP_VERSION);
         if (strpos((string) $hook, 'ifp-communications') === false) return;
+        wp_enqueue_media();
         wp_enqueue_script(
             'ifp-communications',
             IFP_URL . 'assets/communications.js',
@@ -199,6 +234,10 @@ class IFP_Communications {
         }
 
         $view = sanitize_key((string) wp_unslash($_GET['view'] ?? 'compose'));
+        if ($view === 'settings') {
+            self::render_settings_page();
+            return;
+        }
         if ($view === 'history') {
             self::render_history_page();
             return;
@@ -242,8 +281,33 @@ class IFP_Communications {
                 <div class="ifp-header-actions">
                     <a class="button" href="<?php echo esc_url(self::history_url()); ?>">Communication History</a>
                     <a class="button" href="<?php echo esc_url(admin_url('edit.php?post_type=' . self::TEMPLATE_TYPE)); ?>">Email Templates</a>
+                    <?php if (current_user_can('manage_options')): ?><a class="button" href="<?php echo esc_url(add_query_arg(['page' => 'ifp-communications', 'view' => 'settings'], admin_url('admin.php'))); ?>">Email Settings</a><?php endif; ?>
                 </div>
             </div>
+        <?php
+    }
+
+    private static function render_settings_page() {
+        if (!current_user_can('manage_options')) wp_die('You do not have permission to change email settings.');
+        $settings = self::settings();
+        self::render_header('Email Settings', 'Set reusable sender details and a simple, consistent appearance for Production email.');
+        settings_errors();
+        ?>
+        <form method="post" action="options.php">
+            <?php settings_fields('ifp_communication_settings_group'); ?>
+            <section class="ifp-admin-card">
+                <h2>Sender</h2>
+                <p><label><strong>Sender name</strong><br><input class="regular-text" type="text" name="<?php echo esc_attr(self::SETTINGS_OPTION); ?>[sender_name]" value="<?php echo esc_attr($settings['sender_name']); ?>"></label></p>
+                <p><label><strong>Reply-to address</strong><br><input class="regular-text" type="email" name="<?php echo esc_attr(self::SETTINGS_OPTION); ?>[reply_to]" value="<?php echo esc_attr($settings['reply_to']); ?>"></label></p>
+                <p class="description">The website's mail provider still controls the actual From address. Replies are directed to the address above.</p>
+            </section>
+            <section class="ifp-admin-card">
+                <h2>Appearance</h2>
+                <p><label><strong>Accent color</strong><br><input type="color" name="<?php echo esc_attr(self::SETTINGS_OPTION); ?>[accent_color]" value="<?php echo esc_attr($settings['accent_color']); ?>"></label></p>
+                <p><label><strong>Footer text</strong><br><textarea class="large-text" rows="4" name="<?php echo esc_attr(self::SETTINGS_OPTION); ?>[footer_text]"><?php echo esc_textarea($settings['footer_text']); ?></textarea></label></p>
+            </section>
+            <?php submit_button('Save Email Settings'); ?>
+        </form></div>
         <?php
     }
 
@@ -263,6 +327,10 @@ class IFP_Communications {
 
         $subject = sanitize_text_field((string) ($submitted['ifp_communication_subject'] ?? ($template ? $template->post_title : '')));
         $body = wp_kses_post((string) ($submitted['ifp_communication_body'] ?? ($template ? $template->post_content : '')));
+        $settings = self::settings();
+        $sender_name = sanitize_text_field((string) ($submitted['ifp_sender_name'] ?? $settings['sender_name']));
+        $reply_to = sanitize_email((string) ($submitted['ifp_reply_to'] ?? $settings['reply_to']));
+        $attachment_ids = array_values(array_unique(array_filter(array_map('absint', (array) ($submitted['ifp_attachment_ids'] ?? [])))));
         $recipient_type = sanitize_key((string) ($submitted['ifp_recipient_type'] ?? ($_GET['recipient_type'] ?? 'production')));
         if (!in_array($recipient_type, ['production','division','group','people'], true)) $recipient_type = 'production';
         $production_id = absint($submitted['ifp_production_id'] ?? ($_GET['production_id'] ?? 0));
@@ -393,6 +461,22 @@ class IFP_Communications {
                     ]);
                     ?>
                     <p class="description">Messages are sent as HTML by default. The visual editor creates the formatting; no HTML knowledge is required.</p>
+                    <div class="ifp-field-grid">
+                        <p><label><strong>Sender name</strong><br><input class="widefat" type="text" name="ifp_sender_name" value="<?php echo esc_attr($sender_name); ?>"></label></p>
+                        <p><label><strong>Reply-to address</strong><br><input class="widefat" type="email" name="ifp_reply_to" value="<?php echo esc_attr($reply_to); ?>"></label></p>
+                    </div>
+                    <div class="ifp-communication-attachments">
+                        <p><strong>Attachments</strong> <span class="ifp-optional">Optional</span></p>
+                        <div class="ifp-attachment-list">
+                            <?php foreach ($attachment_ids as $attachment_id): ?>
+                                <?php if (get_post_type($attachment_id) === 'attachment'): ?>
+                                    <div class="ifp-attachment-row"><input type="hidden" name="ifp_attachment_ids[]" value="<?php echo esc_attr($attachment_id); ?>"><span><?php echo esc_html(basename((string) get_attached_file($attachment_id))); ?></span><button type="button" class="button-link-delete ifp-remove-attachment">Remove</button></div>
+                                <?php endif; ?>
+                            <?php endforeach; ?>
+                        </div>
+                        <button type="button" class="button ifp-add-attachments">Choose files</button>
+                        <p class="description">Up to <?php echo esc_html(self::MAX_ATTACHMENTS); ?> Media Library files; 10 MB each and 20 MB total. Executable and unsafe file types are rejected.</p>
+                    </div>
                     <label class="ifp-save-template-choice"><input type="checkbox" name="ifp_save_as_template" value="1" <?php checked(!empty($submitted['ifp_save_as_template'])); ?>> Save this subject and message as a reusable template when sent</label>
                 </section>
 
@@ -426,6 +510,14 @@ class IFP_Communications {
             );
         }
 
+        $attachments = self::validate_attachments((array) wp_unslash($_POST['ifp_attachment_ids'] ?? []));
+        if (is_wp_error($attachments)) return $attachments;
+        $sender_name = sanitize_text_field((string) wp_unslash($_POST['ifp_sender_name'] ?? ''));
+        $reply_to = sanitize_email((string) wp_unslash($_POST['ifp_reply_to'] ?? ''));
+        if ((string) ($_POST['ifp_reply_to'] ?? '') !== '' && $reply_to === '') {
+            return new WP_Error('ifp_email_reply_to_invalid', 'Enter a valid reply-to email address.');
+        }
+
         $token = wp_generate_password(24, false, false);
         $prepared = [
             'token' => $token,
@@ -439,6 +531,9 @@ class IFP_Communications {
             'missing_email_count' => $audience['missing_email_count'],
             'template_id' => absint($_POST['ifp_template_id'] ?? 0),
             'save_as_template' => !empty($_POST['ifp_save_as_template']) ? 1 : 0,
+            'sender_name' => $sender_name,
+            'reply_to' => $reply_to,
+            'attachment_ids' => $attachments,
         ];
         set_transient(self::preview_key($token), $prepared, 30 * MINUTE_IN_SECONDS);
         return $prepared;
@@ -462,6 +557,13 @@ class IFP_Communications {
 
             <?php if (!empty($prepared['missing_email_count'])): ?>
                 <div class="notice notice-warning inline"><p><?php echo esc_html($prepared['missing_email_count']); ?> <?php echo absint($prepared['missing_email_count']) === 1 ? 'recipient record was' : 'recipient records were'; ?> skipped because no email address is saved.</p></div>
+            <?php endif; ?>
+
+            <p><strong>Sender:</strong> <?php echo esc_html($prepared['sender_name'] ?: 'Website default'); ?><?php if (!empty($prepared['reply_to'])): ?> · replies to <?php echo esc_html($prepared['reply_to']); ?><?php endif; ?></p>
+            <?php if (!empty($prepared['attachment_ids'])): ?>
+                <div class="ifp-email-attachment-summary"><strong>Attachments:</strong>
+                    <?php foreach ((array) $prepared['attachment_ids'] as $attachment_id): ?><span><?php echo esc_html(basename((string) get_attached_file($attachment_id))); ?></span><?php endforeach; ?>
+                </div>
             <?php endif; ?>
 
             <div class="ifp-email-preview-body">
@@ -507,6 +609,9 @@ class IFP_Communications {
                     <input type="hidden" name="ifp_communication_subject" value="<?php echo esc_attr($prepared['subject']); ?>">
                     <textarea name="ifp_communication_body" hidden><?php echo esc_textarea($prepared['body']); ?></textarea>
                     <input type="hidden" name="ifp_template_id" value="<?php echo esc_attr($prepared['template_id']); ?>">
+                    <input type="hidden" name="ifp_sender_name" value="<?php echo esc_attr($prepared['sender_name']); ?>">
+                    <input type="hidden" name="ifp_reply_to" value="<?php echo esc_attr($prepared['reply_to']); ?>">
+                    <?php foreach ((array) $prepared['attachment_ids'] as $attachment_id): ?><input type="hidden" name="ifp_attachment_ids[]" value="<?php echo esc_attr($attachment_id); ?>"><?php endforeach; ?>
                     <?php if (!empty($prepared['save_as_template'])): ?><input type="hidden" name="ifp_save_as_template" value="1"><?php endif; ?>
                     <button type="submit" class="button">Back to Edit</button>
                 </form>
@@ -520,6 +625,26 @@ class IFP_Communications {
             <p class="description">Each unique address receives a private copy. “Sent” in the history means WordPress handed the message to the website’s mail service; it does not yet confirm delivery or opens.</p>
         </section>
         <?php
+    }
+
+    private static function validate_attachments($ids) {
+        $ids = array_values(array_unique(array_filter(array_map('absint', (array) $ids))));
+        if (count($ids) > self::MAX_ATTACHMENTS) return new WP_Error('ifp_email_too_many_attachments', 'Choose no more than ' . self::MAX_ATTACHMENTS . ' attachments.');
+        $safe = [];
+        $total = 0;
+        foreach ($ids as $id) {
+            if (get_post_type($id) !== 'attachment' || !current_user_can('read_post', $id)) return new WP_Error('ifp_email_attachment_invalid', 'One selected attachment is unavailable.');
+            $path = get_attached_file($id);
+            if (!$path || !is_readable($path)) return new WP_Error('ifp_email_attachment_missing', 'One selected attachment file could not be read.');
+            $type = wp_check_filetype_and_ext($path, basename($path));
+            if (empty($type['ext']) || empty($type['type'])) return new WP_Error('ifp_email_attachment_unsafe', 'One selected attachment has an unsupported or unsafe file type.');
+            $size = (int) filesize($path);
+            if ($size <= 0 || $size > self::MAX_ATTACHMENT_BYTES) return new WP_Error('ifp_email_attachment_size', 'Each attachment must be no larger than 10 MB.');
+            $total += $size;
+            if ($total > self::MAX_TOTAL_ATTACHMENT_BYTES) return new WP_Error('ifp_email_attachment_total', 'The combined attachment size must be no larger than 20 MB.');
+            $safe[] = $id;
+        }
+        return $safe;
     }
 
     public static function send_action() {
@@ -541,6 +666,8 @@ class IFP_Communications {
         if (!$recipients || count($recipients) > self::MAX_RECIPIENTS) {
             self::redirect_with_notice('error', 'The reviewed recipient list was empty or too large to send safely.');
         }
+        $attachment_ids = self::validate_attachments((array) ($prepared['attachment_ids'] ?? []));
+        if (is_wp_error($attachment_ids)) self::redirect_with_notice('error', $attachment_ids->get_error_message());
 
         $communication_id = wp_insert_post(wp_slash([
             'post_type' => self::COMMUNICATION_TYPE,
@@ -557,6 +684,12 @@ class IFP_Communications {
         $subject = sanitize_text_field((string) $prepared['subject']);
         $html = self::html_email((string) $prepared['body']);
         $headers = ['Content-Type: text/html; charset=UTF-8'];
+        $reply_to = sanitize_email((string) ($prepared['reply_to'] ?? ''));
+        $sender_name = sanitize_text_field((string) ($prepared['sender_name'] ?? ''));
+        if ($reply_to) $headers[] = 'Reply-To: ' . ($sender_name ? $sender_name . ' ' : '') . '<' . $reply_to . '>';
+        $attachment_paths = array_values(array_filter(array_map('get_attached_file', $attachment_ids)));
+        $headers = (array) apply_filters('ifp_communication_mail_headers', $headers, $communication_id);
+        $attachment_paths = (array) apply_filters('ifp_communication_attachment_paths', $attachment_paths, $communication_id);
         $results = [];
         $success_count = 0;
         $failure_count = 0;
@@ -565,7 +698,7 @@ class IFP_Communications {
         foreach ($recipients as $recipient) {
             $email = sanitize_email((string) ($recipient['email'] ?? ''));
             if ($email === '') continue;
-            $sent = wp_mail($email, $subject, $html, $headers);
+            $sent = self::send_mail($email, $subject, $html, $headers, $attachment_paths, $sender_name);
             if ($sent) $success_count++;
             else $failure_count++;
 
@@ -594,8 +727,12 @@ class IFP_Communications {
         update_post_meta($communication_id, '_ifp_comm_failure_count', $failure_count);
         update_post_meta($communication_id, '_ifp_comm_missing_email_count', absint($prepared['missing_email_count'] ?? 0));
         update_post_meta($communication_id, '_ifp_comm_template_id', absint($prepared['template_id'] ?? 0));
+        update_post_meta($communication_id, '_ifp_comm_sender_name', $sender_name);
+        update_post_meta($communication_id, '_ifp_comm_reply_to', $reply_to);
+        update_post_meta($communication_id, '_ifp_comm_attachment_ids', $attachment_ids);
 
         foreach ($person_ids as $person_id) self::connect_person_history($person_id, $communication_id);
+        do_action('ifp_communication_handed_off', $communication_id, $results);
 
         if (!empty($prepared['save_as_template'])) {
             $template_id = wp_insert_post(wp_slash([
@@ -614,6 +751,71 @@ class IFP_Communications {
         self::redirect_with_notice($status, $message, $communication_id);
     }
 
+    public static function retry_action() {
+        if (!current_user_can('edit_ifp_people')) wp_die('You do not have permission to retry production email.');
+        $communication_id = absint($_POST['communication_id'] ?? 0);
+        check_admin_referer('ifp_retry_communication_' . $communication_id);
+        $communication = get_post($communication_id);
+        if (!$communication || $communication->post_type !== self::COMMUNICATION_TYPE) self::redirect_with_notice('error', 'That communication record could not be found.');
+
+        $results = (array) get_post_meta($communication_id, '_ifp_comm_recipient_results', true);
+        $failed_indexes = [];
+        foreach ($results as $index => $result) if (is_array($result) && ($result['status'] ?? '') === 'failed') $failed_indexes[] = $index;
+        if (!$failed_indexes) self::redirect_with_notice('warning', 'There are no failed handoffs to retry.', $communication_id);
+
+        $sender_name = sanitize_text_field((string) get_post_meta($communication_id, '_ifp_comm_sender_name', true));
+        $reply_to = sanitize_email((string) get_post_meta($communication_id, '_ifp_comm_reply_to', true));
+        $headers = ['Content-Type: text/html; charset=UTF-8'];
+        if ($reply_to) $headers[] = 'Reply-To: ' . ($sender_name ? $sender_name . ' ' : '') . '<' . $reply_to . '>';
+        $attachment_ids = self::validate_attachments((array) get_post_meta($communication_id, '_ifp_comm_attachment_ids', true));
+        if (is_wp_error($attachment_ids)) self::redirect_with_notice('error', 'The failed messages were not retried: ' . $attachment_ids->get_error_message(), $communication_id);
+        $paths = array_values(array_filter(array_map('get_attached_file', $attachment_ids)));
+        $headers = (array) apply_filters('ifp_communication_mail_headers', $headers, $communication_id);
+        $paths = (array) apply_filters('ifp_communication_attachment_paths', $paths, $communication_id);
+        $html = self::html_email($communication->post_content);
+        $retried = 0;
+
+        foreach ($failed_indexes as $index) {
+            $email = sanitize_email((string) ($results[$index]['email'] ?? ''));
+            if (!$email) continue;
+            if (self::send_mail($email, $communication->post_title, $html, $headers, $paths, $sender_name)) {
+                $results[$index]['status'] = 'sent';
+                $results[$index]['retried_at'] = current_time('mysql');
+                $retried++;
+            }
+        }
+        $success = count(array_filter($results, function($result) { return is_array($result) && ($result['status'] ?? '') === 'sent'; }));
+        $failed = count(array_filter($results, function($result) { return is_array($result) && ($result['status'] ?? '') === 'failed'; }));
+        update_post_meta($communication_id, '_ifp_comm_recipient_results', $results);
+        update_post_meta($communication_id, '_ifp_comm_success_count', $success);
+        update_post_meta($communication_id, '_ifp_comm_failure_count', $failed);
+        update_post_meta($communication_id, '_ifp_comm_last_retry_at', current_time('mysql'));
+        update_post_meta($communication_id, '_ifp_comm_retry_count', absint(get_post_meta($communication_id, '_ifp_comm_retry_count', true)) + 1);
+        self::redirect_with_notice($failed ? 'warning' : 'success', $retried . ' failed ' . ($retried === 1 ? 'email was' : 'emails were') . ' handed to the mail service on retry.' . ($failed ? ' ' . $failed . ' still failed.' : ''), $communication_id);
+    }
+
+    /**
+     * Records a trustworthy event supplied by a compatible mail provider.
+     * Provider integrations should call this method with delivered, bounced,
+     * or opened after authenticating and validating their webhook event.
+     */
+    public static function record_provider_event($communication_id, $email, $event, $occurred_at = '', $provider = '') {
+        $communication_id = absint($communication_id);
+        $email = sanitize_email((string) $email);
+        $event = sanitize_key((string) $event);
+        if (get_post_type($communication_id) !== self::COMMUNICATION_TYPE || !$email || !in_array($event, ['delivered','bounced','opened'], true)) return false;
+        $events = (array) get_post_meta($communication_id, '_ifp_comm_provider_events', true);
+        $events[] = [
+            'email' => $email,
+            'event' => $event,
+            'occurred_at' => sanitize_text_field((string) ($occurred_at ?: current_time('mysql'))),
+            'provider' => sanitize_text_field((string) $provider),
+        ];
+        update_post_meta($communication_id, '_ifp_comm_provider_events', array_slice($events, -2000));
+        do_action('ifp_communication_provider_event_recorded', $communication_id, end($events));
+        return true;
+    }
+
     private static function connect_person_history($person_id, $communication_id) {
         if (get_post_type($person_id) !== 'ifp_participant') return;
         $history = array_values(array_unique(array_filter(array_map(
@@ -627,12 +829,29 @@ class IFP_Communications {
     }
 
     private static function html_email($body) {
+        $settings = self::settings();
+        $accent = sanitize_hex_color((string) $settings['accent_color']) ?: '#0b5f82';
+        $footer = sanitize_textarea_field((string) $settings['footer_text']);
         $body = wp_kses_post(wpautop((string) $body));
         return '<!doctype html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>' .
             '<body style="margin:0;padding:0;background:#f3f5f7;color:#233746;font-family:Arial,Helvetica,sans-serif;line-height:1.6">' .
-            '<div style="max-width:680px;margin:0 auto;padding:28px 16px"><div style="background:#ffffff;border:1px solid #d8e0e6;border-radius:12px;padding:28px">' .
+            '<div style="max-width:680px;margin:0 auto;padding:28px 16px"><div style="height:5px;background:' . esc_attr($accent) . ';border-radius:12px 12px 0 0"></div><div style="background:#ffffff;border:1px solid #d8e0e6;border-top:0;border-radius:0 0 12px 12px;padding:28px">' .
             $body .
+            ($footer !== '' ? '<div style="margin-top:28px;padding-top:18px;border-top:1px solid #d8e0e6;color:#647482;font-size:13px">' . nl2br(esc_html($footer)) . '</div>' : '') .
             '</div></div></body></html>';
+    }
+
+    private static function send_mail($email, $subject, $html, $headers, $attachments, $sender_name) {
+        self::$active_sender_name = sanitize_text_field((string) $sender_name);
+        if (self::$active_sender_name !== '') add_filter('wp_mail_from_name', [__CLASS__, 'filter_sender_name']);
+        $sent = wp_mail($email, $subject, $html, $headers, $attachments);
+        if (self::$active_sender_name !== '') remove_filter('wp_mail_from_name', [__CLASS__, 'filter_sender_name']);
+        self::$active_sender_name = '';
+        return (bool) $sent;
+    }
+
+    public static function filter_sender_name($name) {
+        return self::$active_sender_name !== '' ? self::$active_sender_name : $name;
     }
 
     private static function target_from_request($request) {
@@ -856,23 +1075,42 @@ class IFP_Communications {
             return;
         }
         $results = (array) get_post_meta($communication_id, '_ifp_comm_recipient_results', true);
+        $provider_events = (array) get_post_meta($communication_id, '_ifp_comm_provider_events', true);
+        $failure_count = absint(get_post_meta($communication_id, '_ifp_comm_failure_count', true));
+        $attachment_ids = (array) get_post_meta($communication_id, '_ifp_comm_attachment_ids', true);
         ?>
         <section class="ifp-admin-card ifp-history-detail">
             <div class="ifp-preview-heading">
                 <div><p class="ifp-kicker">Message Detail</p><h2><?php echo esc_html($communication->post_title); ?></h2><p><?php echo esc_html((string) get_post_meta($communication_id, '_ifp_comm_target_label', true)); ?> · <?php echo esc_html(self::admin_datetime((string) get_post_meta($communication_id, '_ifp_comm_sent_at', true))); ?></p></div>
                 <a class="button" href="<?php echo esc_url(self::history_url()); ?>">Close Detail</a>
             </div>
+            <?php if ($failure_count): ?>
+                <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" onsubmit="return confirm('Retry only the <?php echo esc_js($failure_count); ?> failed handoff<?php echo $failure_count === 1 ? '' : 's'; ?>? Successfully handed-off messages will not be resent.');">
+                    <input type="hidden" name="action" value="ifp_retry_communication"><input type="hidden" name="communication_id" value="<?php echo esc_attr($communication_id); ?>">
+                    <?php wp_nonce_field('ifp_retry_communication_' . $communication_id); ?>
+                    <button class="button button-primary" type="submit">Retry <?php echo esc_html($failure_count); ?> Failed</button>
+                </form>
+            <?php endif; ?>
+            <?php if ($attachment_ids): ?><p><strong>Attachments:</strong> <?php echo esc_html(implode(', ', array_filter(array_map(function($id) { return basename((string) get_attached_file(absint($id))); }, $attachment_ids)))); ?></p><?php endif; ?>
             <div class="ifp-email-preview-body"><?php echo wp_kses_post(wpautop($communication->post_content)); ?></div>
             <details class="ifp-recipient-results">
                 <summary><?php echo esc_html(count($results)); ?> recipient result<?php echo count($results) === 1 ? '' : 's'; ?></summary>
                 <div class="ifp-table-scroll"><table class="widefat striped"><thead><tr><th>Name</th><th>Email</th><th>Result</th></tr></thead><tbody>
                     <?php foreach ($results as $result): ?>
-                        <tr><td><?php echo esc_html($result['name'] ?? '—'); ?></td><td><?php echo esc_html($result['email'] ?? ''); ?></td><td><span class="ifp-email-result ifp-email-result--<?php echo esc_attr($result['status'] ?? 'failed'); ?>"><?php echo ($result['status'] ?? '') === 'sent' ? 'Handed to mail service' : 'Failed'; ?></span></td></tr>
+                        <?php $latest_event = self::latest_provider_event($provider_events, (string) ($result['email'] ?? '')); ?>
+                        <tr><td><?php echo esc_html($result['name'] ?? '—'); ?></td><td><?php echo esc_html($result['email'] ?? ''); ?></td><td><span class="ifp-email-result ifp-email-result--<?php echo esc_attr($result['status'] ?? 'failed'); ?>"><?php echo ($result['status'] ?? '') === 'sent' ? 'Handed to mail service' : 'Failed'; ?></span><?php if ($latest_event): ?> <span class="ifp-email-result ifp-email-result--<?php echo esc_attr($latest_event['event']); ?>"><?php echo esc_html(ucfirst($latest_event['event'])); ?></span><?php endif; ?></td></tr>
                     <?php endforeach; ?>
                 </tbody></table></div>
             </details>
         </section>
         <?php
+    }
+
+    private static function latest_provider_event($events, $email) {
+        $email = strtolower(sanitize_email((string) $email));
+        $latest = null;
+        foreach ((array) $events as $event) if (is_array($event) && strtolower((string) ($event['email'] ?? '')) === $email) $latest = $event;
+        return $latest;
     }
 
     private static function person_result($communication_id, $person_id) {
