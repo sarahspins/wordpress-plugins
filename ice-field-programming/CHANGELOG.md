@@ -1,5 +1,11 @@
 # Ice & Field Programming Changelog
 
+## 1.9.1.16
+
+- Allows active Dash rows with an unmapped source Sport to be selected when importing.
+- Uses the confirmed Bulk classification Sport to resolve those rows.
+- Shows a clear validation message if an unmapped row is submitted without a Sport selection.
+
 ## 1.9.1.15
 
 - Adds editable Sport, Format, and Category guesses to the protected Season import preview.
