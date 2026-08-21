@@ -10,6 +10,7 @@
 - Sorts Camp offerings chronologically by start date, earliest first.
 - Shows each Camp's date range and time directly on its public offering card.
 - Uses the final assigned Dash event as a Camp's end date instead of the Season or registration-close boundary.
+- Treats Friday-to-Monday Camp occurrences as consecutive workdays rather than separate weeks.
 
 ## 1.9.1.15
 
