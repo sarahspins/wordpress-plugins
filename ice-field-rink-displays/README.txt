@@ -1,6 +1,8 @@
-Ice & Field Rink Displays v2.7.7
+Ice & Field Rink Displays v2.7.8
 
 Version 2.7.7 adds the monorepo Update URI and participates in the Dash Connector-managed private release updater.
+
+Version 2.7.8 adds multiple scheduled video changes with facility-local date and time controls for Video for Screens and the Schedule Display banner. Each scheduled video remains active until the next scheduled entry, and open displays switch through the existing refresh polling without relying on WordPress cron.
 
 Built from the v2.2.1 master provided by Sarah.
 
@@ -97,6 +99,8 @@ Video for Screens:
 - Adds a Refresh Screens Now button for remotely reloading open video displays within about 30 seconds.
 - Adds LG webOS browser-specific video positioning and explicit viewport sizing to prevent one-sided black bars and offset fullscreen playback.
 - Automatically sends a one-time remote refresh signal after a plugin version update, while retaining the manual Refresh Screens Now control.
+- Supports multiple scheduled video changes, each with a date and time in the Schedule Display timezone.
+- Open video screens detect scheduled changes within about 30 seconds and reload automatically.
 
 Additional video pages:
 - Adds Displays -> Pricing Page with its own independently selected full-screen video and [pricing_page] shortcode.
@@ -109,3 +113,5 @@ Schedule banner remote update:
 - Open [rink_schedule_display] pages check for remote-update requests every 30 seconds and reload automatically.
 - Saving different schedule banner media also signals open schedule screens to reload.
 - The page reload preserves the existing last-successful schedule behavior while the fresh schedule request completes.
+- Supports multiple scheduled banner-video changes with date and time controls available to Administrators and Editors.
+- Each scheduled banner video remains active until the next entry, and open schedule displays detect due changes within about 30 seconds.
