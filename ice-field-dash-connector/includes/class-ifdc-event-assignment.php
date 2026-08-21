@@ -13,6 +13,7 @@ class IFDC_Event_Assignment {
     const NIGHTLY_HOOK = 'ifdc_nightly_event_assignment';
     const NIGHTLY_RESULT_OPTION = 'ifdc_nightly_event_assignment_result';
     const NIGHTLY_LOCK = 'ifdc_nightly_event_assignment_lock';
+    const AUTOMATION_ENABLED_OPTION = 'ifdc_event_assignment_automation_enabled';
 
     public static function init() {
         add_action('wp_ajax_ifdc_search_assignment_events', [__CLASS__, 'ajax_search_events']);
@@ -21,6 +22,7 @@ class IFDC_Event_Assignment {
         add_action('wp_ajax_ifdc_assign_event_batch', [__CLASS__, 'ajax_assign_batch']);
         add_action(self::NIGHTLY_HOOK, [__CLASS__, 'run_scheduled']);
         add_action('admin_post_ifdc_run_nightly_assignments', [__CLASS__, 'admin_run_nightly']);
+        add_action('admin_post_ifdc_save_assignment_automation', [__CLASS__, 'admin_save_automation']);
         add_action('init', [__CLASS__, 'ensure_nightly_schedule']);
     }
 
@@ -40,6 +42,8 @@ class IFDC_Event_Assignment {
         $month = wp_date('Y-m', $now);
         $last_run = get_option(self::NIGHTLY_RESULT_OPTION, []);
         $next_run = wp_next_scheduled(self::NIGHTLY_HOOK);
+        $automation_enabled = self::automation_enabled();
+        $automation_timezone = self::automation_timezone();
         ?>
         <div class="wrap ifdc-wrap ifdc-assignment-wrap">
             <div class="ifdc-explorer-heading">
@@ -71,9 +75,20 @@ class IFDC_Event_Assignment {
                     <span><strong>Private Hockey Coaches Ice</strong><small>Capacity 25</small></span>
                 </div>
                 <div class="notice notice-info inline">
-                    <p><strong>Business-hours automation:</strong> checks this month and next month hourly from 5:45 AM through 6:45 PM. <?php echo $next_run ? 'Next scheduled check: ' . esc_html(wp_date(get_option('date_format') . ' ' . get_option('time_format'), $next_run)) . '.' : 'The next check is being scheduled.'; ?></p>
+                    <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+                        <input type="hidden" name="action" value="ifdc_save_assignment_automation">
+                        <?php wp_nonce_field('ifdc_save_assignment_automation'); ?>
+                        <p><label><input type="checkbox" name="automation_enabled" value="1" <?php checked($automation_enabled); ?>> <strong>Enable automatic event assignment checks on this website</strong></label></p>
+                        <p class="description">Disabled by default. When enabled, checks this month and next month hourly from 5:45 AM through 6:45 PM in <strong><?php echo esc_html($automation_timezone->getName()); ?></strong>, read from Displays.</p>
+                        <p><button type="submit" class="button button-primary">Save Automation Setting</button></p>
+                    </form>
+                    <?php if ($automation_enabled): ?>
+                        <p><?php echo $next_run ? 'Next scheduled check: ' . esc_html(wp_date(get_option('date_format') . ' ' . get_option('time_format'), $next_run, $automation_timezone)) . '.' : 'The next check is being scheduled.'; ?></p>
+                    <?php else: ?>
+                        <p><strong>Automatic checks are disabled on this website.</strong></p>
+                    <?php endif; ?>
                     <?php if (is_array($last_run) && !empty($last_run['finished_at'])): ?>
-                        <p>Last run: <?php echo esc_html(wp_date(get_option('date_format') . ' ' . get_option('time_format'), absint($last_run['finished_at']))); ?> — <?php echo esc_html(absint($last_run['updated'] ?? 0)); ?> updated, <?php echo esc_html(absint($last_run['unchanged'] ?? 0)); ?> already correct, <?php echo esc_html(absint($last_run['errors'] ?? 0)); ?> errors.</p>
+                        <p>Last run: <?php echo esc_html(wp_date(get_option('date_format') . ' ' . get_option('time_format'), absint($last_run['finished_at']), $automation_timezone)); ?> — <?php echo esc_html(absint($last_run['updated'] ?? 0)); ?> updated, <?php echo esc_html(absint($last_run['unchanged'] ?? 0)); ?> already correct, <?php echo esc_html(absint($last_run['errors'] ?? 0)); ?> errors.</p>
                     <?php endif; ?>
                     <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
                         <input type="hidden" name="action" value="ifdc_run_nightly_assignments">
@@ -285,11 +300,16 @@ class IFDC_Event_Assignment {
     }
 
     public static function ensure_nightly_schedule() {
+        if (!self::automation_enabled()) {
+            if (wp_next_scheduled(self::NIGHTLY_HOOK)) wp_clear_scheduled_hook(self::NIGHTLY_HOOK);
+            return;
+        }
         $scheduled = wp_get_scheduled_event(self::NIGHTLY_HOOK);
-        if ($scheduled && $scheduled->schedule === 'hourly' && wp_date('i', $scheduled->timestamp) === '45') return;
+        $timezone = self::automation_timezone();
+        if ($scheduled && $scheduled->schedule === 'hourly' && wp_date('i', $scheduled->timestamp, $timezone) === '45') return;
         if ($scheduled) wp_clear_scheduled_hook(self::NIGHTLY_HOOK);
 
-        $now = current_datetime();
+        $now = new DateTimeImmutable('now', $timezone);
         $next = $now->setTime(5, 45, 0);
         if ($next->getTimestamp() <= $now->getTimestamp()) {
             $candidate = $now->setTime((int) $now->format('H'), 45, 0);
@@ -312,8 +332,19 @@ class IFDC_Event_Assignment {
         exit;
     }
 
+    public static function admin_save_automation() {
+        if (!current_user_can(IFDC_Admin::CAP_ASSIGN_EVENTS)) wp_die('Permission denied.');
+        check_admin_referer('ifdc_save_assignment_automation');
+        update_option(self::AUTOMATION_ENABLED_OPTION, !empty($_POST['automation_enabled']) ? 1 : 0, false);
+        wp_clear_scheduled_hook(self::NIGHTLY_HOOK);
+        self::ensure_nightly_schedule();
+        wp_safe_redirect(admin_url('admin.php?page=ifdc-event-assignment'));
+        exit;
+    }
+
     public static function run_scheduled() {
-        $hour = (int) current_datetime()->format('G');
+        if (!self::automation_enabled()) return;
+        $hour = (int) (new DateTimeImmutable('now', self::automation_timezone()))->format('G');
         if ($hour < 5 || $hour > 18) return;
         self::run_nightly();
     }
@@ -335,7 +366,7 @@ class IFDC_Event_Assignment {
             $summary['errors'] = 1;
             $summary['message'] = 'The Dash Connector is not configured.';
         } else {
-            $current = current_datetime()->modify('first day of this month');
+            $current = (new DateTimeImmutable('now', self::automation_timezone()))->modify('first day of this month');
             foreach ([$current, $current->modify('first day of next month')] as $date) {
                 $month = $date->format('Y-m');
                 $result = self::apply_standard_month($month);
@@ -355,6 +386,21 @@ class IFDC_Event_Assignment {
         update_option(self::NIGHTLY_RESULT_OPTION, $summary, false);
         delete_transient(self::NIGHTLY_LOCK);
         return $summary;
+    }
+
+    private static function automation_enabled() {
+        return (bool) get_option(self::AUTOMATION_ENABLED_OPTION, false);
+    }
+
+    private static function automation_timezone() {
+        $display_settings = get_option('ifrd_schedule_settings', []);
+        $name = is_array($display_settings) ? trim((string) ($display_settings['display_timezone'] ?? '')) : '';
+        if ($name === '') $name = wp_timezone_string();
+        try {
+            return new DateTimeZone($name ?: 'UTC');
+        } catch (Exception $exception) {
+            return new DateTimeZone('UTC');
+        }
     }
 
     private static function apply_standard_month($month) {
