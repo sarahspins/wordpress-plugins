@@ -452,6 +452,17 @@ class IFPROG_Shortcodes {
         ?>
         <div class="ifprog-levels">
             <?php foreach ($groups as $group):
+                if (!empty($group['direct'])): ?>
+                    <div class="ifprog-classes ifprog-classes--direct">
+                        <?php foreach ($group['programs'] as $program):
+                            self::program($program, [
+                                'show_price' => self::truthy($atts['show_price']),
+                                'settings' => $settings,
+                            ]);
+                        endforeach; ?>
+                    </div>
+                    <?php continue; ?>
+                <?php endif;
                 $level_has_action = $group['registration_url'] !== '';
                 $level_is_coming_soon = !$level_has_action &&
                     !empty($group['is_league']) &&
@@ -527,6 +538,7 @@ class IFPROG_Shortcodes {
         $duration_unit = IFPROG_Fields::get($post_id, 'duration_unit', 'week') === 'day' ? 'day' : 'week';
         $is_single_class = $weeks === 1;
         $is_drop_in = self::object_matches_terms($post_id, 'ifprog_format', ['drop-in']);
+        $is_camp = self::object_matches_terms($post_id, 'ifprog_format', ['camp']);
         $numeric_price = preg_replace('/[^0-9.\-]/', '', (string) $price);
         $is_free_one_day = $is_single_class
             && $numeric_price !== ''
@@ -554,7 +566,18 @@ class IFPROG_Shortcodes {
         }
         $show_price = $display['show_price'] && !$is_free_one_day;
         $schedule_label = 'Day & Time';
-        if ($is_free_one_day) {
+        if ($is_camp) {
+            $camp_dates = self::date_range(
+                IFPROG_Fields::get($post_id, 'start_date'),
+                IFPROG_Fields::get($post_id, 'end_date')
+            );
+            $time_range = preg_replace('/^[^,]+,\s*/', '', (string) $schedule);
+            $schedule_label = 'Dates & Time';
+            if ($camp_dates !== '') {
+                $schedule = $camp_dates;
+                if ($time_range !== '') $schedule .= ' at ' . $time_range;
+            }
+        } elseif ($is_free_one_day) {
             $start_timestamp = IFPROG_Status::timestamp(IFPROG_Fields::get($post_id, 'start_date'));
             if ($start_timestamp) {
                 $schedule_label = 'Event Date & Time';
@@ -1145,6 +1168,7 @@ class IFPROG_Shortcodes {
             $level_id = absint(IFPROG_Fields::get($program->ID, 'level_id'));
             $level = $level_id && get_post_type($level_id) === 'ifprog_level' ? get_post($level_id) : null;
             $fallback = trim((string) IFPROG_Fields::get($program->ID, 'level'));
+            $direct = !$level && self::object_matches_terms($program->ID, 'ifprog_format', ['camp']);
 
             if ($level) {
                 $key = 'level-' . $level_id;
@@ -1152,6 +1176,12 @@ class IFPROG_Shortcodes {
                 $description = $level->post_status === 'publish' ? trim((string) $level->post_content) : '';
                 $age_range = IFPROG_Dash::level_age_range($level_id);
                 $order = absint($level->menu_order);
+            } elseif ($direct) {
+                $key = 'direct-camps-' . $season_id;
+                $title = '';
+                $description = '';
+                $age_range = '';
+                $order = 0;
             } else {
                 $key = 'fallback-' . $season_id . '-' . sanitize_title($fallback ?: 'other-programs');
                 $title = $fallback ?: 'Other Programs';
@@ -1171,6 +1201,7 @@ class IFPROG_Shortcodes {
                     'programs' => [],
                     'registration_state' => '',
                     'is_league' => false,
+                    'direct' => $direct,
                 ];
             }
             $groups[$key]['programs'][] = $program;
@@ -1186,6 +1217,7 @@ class IFPROG_Shortcodes {
         $groups = self::sort_level_records($groups, $sort_by_age);
 
         foreach ($groups as &$group) {
+            $group['programs'] = self::sort_programs_by_schedule($group['programs']);
             $group['registration_state'] = self::level_program_state($group['programs']);
             $group['registration_url'] = self::level_registration_url(
                 $group['level_id'],
@@ -1275,6 +1307,9 @@ class IFPROG_Shortcodes {
         }
 
         usort($sortable, function($a, $b) {
+            if ($a['key']['camp'] && $b['key']['camp'] && $a['key']['start'] !== $b['key']['start']) {
+                return $a['key']['start'] <=> $b['key']['start'];
+            }
             foreach (['day','time','order'] as $field) {
                 if ($a['key'][$field] !== $b['key'][$field]) {
                     return $a['key'][$field] <=> $b['key'][$field];
@@ -1317,6 +1352,8 @@ class IFPROG_Shortcodes {
         }
 
         return [
+            'camp' => self::object_matches_terms($program->ID, 'ifprog_format', ['camp']),
+            'start' => IFPROG_Status::timestamp(IFPROG_Fields::get($program->ID, 'start_date')) ?: PHP_INT_MAX,
             'day' => $day,
             'time' => $time,
             'order' => absint($program->menu_order),

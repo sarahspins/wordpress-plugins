@@ -1,5 +1,17 @@
 # Ice & Field Programming Changelog
 
+## 1.9.1.16
+
+- Allows active Dash rows with an unmapped source Sport to be selected when importing.
+- Uses the confirmed Bulk classification Sport to resolve those rows.
+- Shows a clear validation message if an unmapped row is submitted without a Sport selection.
+- Imports Camp Programs directly under their Season without creating or assigning a duplicate WordPress Level.
+- Renders existing unlevelled Camp Programs directly in public shortcodes without a fallback Level heading.
+- Sorts Camp offerings chronologically by start date, earliest first.
+- Shows each Camp's date range and time directly on its public offering card.
+- Uses the final assigned Dash event as a Camp's end date instead of the Season or registration-close boundary.
+- Treats Friday-to-Monday Camp occurrences as consecutive workdays rather than separate weeks.
+
 ## 1.9.1.15
 
 - Adds editable Sport, Format, and Category guesses to the protected Season import preview.
