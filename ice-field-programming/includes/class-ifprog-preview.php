@@ -1372,7 +1372,7 @@ class IFPROG_Preview {
     private static function session_price($product, $team, $league, $event_starts = []) {
         $price = $product['price'] ?? '';
         $class_count = absint($team['num_games'] ?? ($league['num_games'] ?? 0));
-        $unit = self::duration_unit($event_starts, $team, $class_count);
+        $unit = self::duration_unit($event_starts, $team, $league, $class_count);
         if ($price === '' || !is_numeric($price)) {
             return [
                 'total' => '',
@@ -1444,7 +1444,7 @@ class IFPROG_Preview {
         return $indexed;
     }
 
-    private static function duration_unit($event_starts, $team = [], $class_count = 0) {
+    private static function duration_unit($event_starts, $team = [], $league = [], $class_count = 0) {
         $starts = array_values(array_unique(array_map('intval', (array) $event_starts)));
         sort($starts, SORT_NUMERIC);
         if (count($starts) >= 2) {
@@ -1470,7 +1470,17 @@ class IFPROG_Preview {
 
         preg_match_all('/su|mo|tu|we|th|fr|sa/', strtolower((string) ($team['days_of_week'] ?? '')), $matches);
         $scheduled_days = array_values(array_unique($matches[0] ?? []));
-        return count($scheduled_days) > 1 ? 'day' : 'week';
+        if (count($scheduled_days) > 1) return 'day';
+
+        $identity = strtolower(implode(' ', [
+            (string) ($team['name'] ?? ''),
+            (string) ($team['description'] ?? ''),
+            (string) ($league['name'] ?? ''),
+            (string) ($league['description'] ?? ''),
+        ]));
+        if (preg_match('/\b(camp|clinic)\b/', $identity)) return 'day';
+
+        return 'week';
     }
 
     private static function availability($registration) {
