@@ -137,6 +137,7 @@ class IFPROG_Preview {
                                 $companion_options = [
                                     'sync_participants' => !empty($_POST['ifprog_sync_production_participants']),
                                 ];
+                                $classification = (array) wp_unslash($_POST['ifprog_classification'] ?? []);
                                 $sync_result = IFPROG_Sync::run(
                                     $preview,
                                     $team_ids,
@@ -144,7 +145,8 @@ class IFPROG_Preview {
                                     $season_only,
                                     $level_ids,
                                     $presentation_updates,
-                                    $companion_options
+                                    $companion_options,
+                                    $classification
                                 );
                                 if (is_wp_error($sync_result)) {
                                     $error = $sync_result;
@@ -234,8 +236,9 @@ class IFPROG_Preview {
         $leagues = self::index_records(self::collection_data($requests['leagues']));
         $products = self::index_records(self::collection_data($requests['products']));
         $availability_by_team = self::index_records(self::collection_data($requests['availability']));
-        $existing = self::existing_team_programs();
         $season_attrs = self::attributes($season_record);
+        $events_by_team = self::season_events_by_team($season_attrs, $shared_args);
+        $existing = self::existing_team_programs();
         $existing_season_id = self::existing_season($season_id);
         $existing_levels = self::existing_levels($existing_season_id);
         $rows = [];
@@ -259,11 +262,11 @@ class IFPROG_Preview {
             $format = self::format($season_attrs, $league, $team);
             $schedule = self::schedule($team);
             $start_date = self::date_only($team['start_date'] ?? '');
-            $end_date = self::date_only($season_attrs['end_date'] ?? '');
+            $end_date = self::date_only($team['end_date'] ?? ($season_attrs['end_date'] ?? ''));
             $registration_open = self::datetime_local($season_attrs['signup_start'] ?? '');
             $registration_close = self::datetime_local($season_attrs['signup_end'] ?? '');
             $age_range = IFPROG_Dash::age_range_label($league);
-            $session_price = self::session_price($product, $team, $league);
+            $session_price = self::session_price($product, $team, $league, $events_by_team[$team_id] ?? []);
             $availability_label = self::availability($registration);
             $availability_note = self::availability_note($registration);
             $registration_status = sanitize_key((string) ($registration['registration_status'] ?? ''));
@@ -322,6 +325,7 @@ class IFPROG_Preview {
                     'level' => $level,
                     'price' => $session_price['total'],
                     'weeks' => $session_price['weeks'],
+                    'duration_unit' => $session_price['unit'],
                     'registration_url' => $registration_url,
                     'availability_note' => $availability_note,
                 ],
@@ -906,6 +910,7 @@ class IFPROG_Preview {
                         <div>
                             <h3>3. Import Season safely</h3>
                             <p>The Season will be created as a draft or its linked Dash facts will be refreshed. No placeholder Levels or Programs will be created.</p>
+                            <?php self::render_classification_choices($preview); ?>
                             <fieldset class="ifprog-sync-options">
                                 <legend>Optional Dash presentation updates</legend>
                                 <div class="ifprog-sync-options__grid">
@@ -1040,6 +1045,7 @@ class IFPROG_Preview {
                         <div>
                             <h3>3. Import selected safely</h3>
                             <p>Linked records receive refreshed Dash facts while your local presentation remains protected. Optional replacements are unchecked by default and apply only to existing records included in this sync.</p>
+                            <?php self::render_classification_choices($preview); ?>
                             <fieldset class="ifprog-sync-options">
                                 <legend>Optional Dash presentation updates</legend>
                                 <div class="ifprog-sync-options__grid">
@@ -1090,6 +1096,73 @@ class IFPROG_Preview {
             <?php endif; ?>
         </section>
         <?php
+    }
+
+    private static function render_classification_choices($preview) {
+        $guesses = self::classification_guesses($preview);
+        $taxonomies = [
+            'sport' => ['taxonomy' => 'ifprog_sport', 'label' => 'Sport'],
+            'format' => ['taxonomy' => 'ifprog_format', 'label' => 'Format'],
+            'category' => ['taxonomy' => 'ifprog_category', 'label' => 'Category'],
+        ];
+        ?>
+        <fieldset class="ifprog-classification-options">
+            <legend>Bulk classification</legend>
+            <p class="description">Programming has preselected its best guess. Adjust it once here; the selected values will replace Sport, Format, and Category on the Season and every Level and Program selected in this import.</p>
+            <div class="ifprog-classification-options__grid">
+                <?php foreach ($taxonomies as $key => $config): ?>
+                    <?php $terms = get_terms(['taxonomy' => $config['taxonomy'], 'hide_empty' => false]); ?>
+                    <div class="ifprog-classification-group">
+                        <strong><?php echo esc_html($config['label']); ?></strong>
+                        <?php if (is_wp_error($terms) || !$terms): ?>
+                            <span class="description">No choices available.</span>
+                        <?php else: ?>
+                            <?php foreach ($terms as $term): ?>
+                                <label><input type="checkbox" name="ifprog_classification[<?php echo esc_attr($key); ?>][]" value="<?php echo esc_attr($term->term_id); ?>" <?php checked(in_array($term->term_id, $guesses[$key], true)); ?>> <?php echo esc_html($term->name); ?></label>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+        </fieldset>
+        <?php
+    }
+
+    private static function classification_guesses($preview) {
+        $season = (array) ($preview['season'] ?? []);
+        $rows = (array) ($preview['rows'] ?? []);
+        $classification = self::season_classification($season, $rows);
+        $category_slugs = self::category_guesses($season, $rows, $classification['formats']);
+        $guesses = [
+            'sport' => IFPROG_Post_Types::assignment_term_ids('ifprog_sport', $classification['sports']),
+            'format' => IFPROG_Post_Types::assignment_term_ids('ifprog_format', $classification['formats']),
+            'category' => IFPROG_Post_Types::assignment_term_ids('ifprog_category', $category_slugs),
+        ];
+        $existing_season_id = absint($preview['existing_season_id'] ?? 0);
+        if ($existing_season_id) {
+            foreach (['sport' => 'ifprog_sport', 'format' => 'ifprog_format', 'category' => 'ifprog_category'] as $key => $taxonomy) {
+                $existing = wp_get_object_terms($existing_season_id, $taxonomy, ['fields' => 'ids']);
+                if (!is_wp_error($existing) && $existing) $guesses[$key] = array_map('absint', $existing);
+            }
+        }
+        return $guesses;
+    }
+
+    private static function category_guesses($season, $rows, $formats) {
+        $parts = [(string) ($season['name'] ?? ''), (string) ($season['description'] ?? '')];
+        foreach ((array) $rows as $row) {
+            $parts[] = (string) ($row['title'] ?? '');
+            $parts[] = (string) ($row['level'] ?? '');
+        }
+        $haystack = strtolower(implode(' ', $parts));
+        $slugs = [];
+        if (strpos($haystack, 'learn to skate') !== false || strpos($haystack, 'snowplow') !== false || preg_match('/\bbasic\s*[1-8]?\b/i', $haystack)) $slugs[] = 'learn-to-skate';
+        if (strpos($haystack, 'learn to play') !== false) $slugs[] = 'learn-to-play';
+        if (strpos($haystack, 'specialty') !== false) $slugs[] = 'specialty-classes';
+        if (in_array('camp', (array) $formats, true) || in_array('clinic', (array) $formats, true)) $slugs[] = 'camps-clinics';
+        if (strpos($haystack, 'homeschool') !== false || preg_match('/(^|\s)hs\b/i', $haystack)) $slugs[] = 'homeschool';
+        if (strpos($haystack, 'adaptive') !== false) $slugs[] = 'adaptive';
+        return array_values(array_unique($slugs));
     }
 
     private static function collection_data($result) {
@@ -1296,14 +1369,16 @@ class IFPROG_Preview {
         return $label;
     }
 
-    private static function session_price($product, $team, $league) {
+    private static function session_price($product, $team, $league, $event_starts = []) {
         $price = $product['price'] ?? '';
         $class_count = absint($team['num_games'] ?? ($league['num_games'] ?? 0));
+        $unit = self::duration_unit($event_starts, $team, $league, $class_count);
         if ($price === '' || !is_numeric($price)) {
             return [
                 'total' => '',
                 'detail' => 'No Product price supplied',
                 'weeks' => $class_count,
+                'unit' => $unit,
             ];
         }
 
@@ -1315,6 +1390,7 @@ class IFPROG_Preview {
                 'total' => self::currency($unit_price),
                 'detail' => 'Flat session price',
                 'weeks' => $class_count,
+                'unit' => $unit,
             ];
         }
 
@@ -1323,6 +1399,7 @@ class IFPROG_Preview {
                 'total' => '',
                 'detail' => self::currency($unit_price) . ' per class; class count unavailable',
                 'weeks' => 0,
+                'unit' => $unit,
             ];
         }
 
@@ -1331,11 +1408,79 @@ class IFPROG_Preview {
             'detail' => sprintf(
                 '%d %s × %s',
                 $class_count,
-                $class_count === 1 ? 'week' : 'weeks',
+                $class_count === 1 ? $unit : $unit . 's',
                 self::currency($unit_price)
             ),
             'weeks' => $class_count,
+            'unit' => $unit,
         ];
+    }
+
+    private static function season_events_by_team($season, $args = []) {
+        $start = self::date_only($season['start_date'] ?? '');
+        $end = self::date_only($season['end_date'] ?? '');
+        if ($start === '' || $end === '') return [];
+
+        $result = IFPROG_Dash::events([
+            'filter[start__gte]' => $start . 'T00:00:00',
+            'filter[start__lte]' => $end . 'T23:59:59',
+            'sort' => 'start',
+            'page[size]' => 500,
+        ], wp_parse_args($args, ['max_pages' => 25]));
+        if (is_wp_error($result)) return [];
+
+        $indexed = [];
+        foreach (self::collection_data($result) as $record) {
+            $event = self::attributes($record);
+            $team_id = absint($event['hteam_id'] ?? 0);
+            $timestamp = IFPROG_Status::timestamp($event['start'] ?? '');
+            if ($team_id && $timestamp) $indexed[$team_id][] = $timestamp;
+        }
+        foreach ($indexed as &$starts) {
+            $starts = array_values(array_unique(array_map('intval', $starts)));
+            sort($starts, SORT_NUMERIC);
+        }
+        unset($starts);
+        return $indexed;
+    }
+
+    private static function duration_unit($event_starts, $team = [], $league = [], $class_count = 0) {
+        $starts = array_values(array_unique(array_map('intval', (array) $event_starts)));
+        sort($starts, SORT_NUMERIC);
+        if (count($starts) >= 2) {
+            $gaps = [];
+            for ($index = 1; $index < count($starts); $index++) {
+                $days = (int) round(($starts[$index] - $starts[$index - 1]) / DAY_IN_SECONDS);
+                if ($days > 0) $gaps[] = $days;
+            }
+            if ($gaps) {
+                sort($gaps, SORT_NUMERIC);
+                $typical_gap = $gaps[(int) floor((count($gaps) - 1) / 2)];
+                return $typical_gap <= 2 ? 'day' : 'week';
+            }
+        }
+
+        $start = IFPROG_Status::timestamp($team['start_date'] ?? '');
+        $end = IFPROG_Status::timestamp($team['end_date'] ?? '');
+        if ($start && $end && $end >= $start && $class_count > 1) {
+            $span_days = (int) floor(($end - $start) / DAY_IN_SECONDS) + 1;
+            if ($span_days <= $class_count + 1) return 'day';
+            if ($span_days >= (($class_count - 1) * 5) + 1) return 'week';
+        }
+
+        preg_match_all('/su|mo|tu|we|th|fr|sa/', strtolower((string) ($team['days_of_week'] ?? '')), $matches);
+        $scheduled_days = array_values(array_unique($matches[0] ?? []));
+        if (count($scheduled_days) > 1) return 'day';
+
+        $identity = strtolower(implode(' ', [
+            (string) ($team['name'] ?? ''),
+            (string) ($team['description'] ?? ''),
+            (string) ($league['name'] ?? ''),
+            (string) ($league['description'] ?? ''),
+        ]));
+        if (preg_match('/\b(camp|clinic)\b/', $identity)) return 'day';
+
+        return 'week';
     }
 
     private static function availability($registration) {

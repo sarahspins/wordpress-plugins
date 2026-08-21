@@ -81,6 +81,7 @@
 .ifprog-sync-choice span{display:grid;gap:2px}
 .ifprog-sync-choice small{color:#60717d;line-height:1.35}
 .ifprog-sync-options>.description{margin-top:8px}
+.ifprog-classification-options{border:1px solid #c8d6df;border-radius:8px;margin:16px 0;padding:14px}.ifprog-classification-options legend{color:var(--ifprog-navy);font-weight:700;padding:0 6px}.ifprog-classification-options__grid{display:grid;gap:12px;grid-template-columns:repeat(3,minmax(0,1fr));margin-top:12px}.ifprog-classification-group{background:#fff;border:1px solid #d8e0e6;border-radius:6px;display:grid;gap:7px;padding:12px}.ifprog-classification-group>strong{color:var(--ifprog-navy);margin-bottom:2px}.ifprog-classification-group label{display:block}
 .ifprog-sync-errors{list-style:disc;margin-left:22px}
 .ifprog-discovery-card{padding:0;overflow:hidden}
 .ifprog-discovery-header{align-items:flex-start;display:flex;gap:24px;justify-content:space-between;padding:24px 24px 18px}
@@ -188,5 +189,5 @@ body.post-type-ifprog_level .column-ifprog_programs,body.post-type-ifprog_level 
   .ifprog-discovery-title{align-items:flex-start;display:grid}
   .ifprog-discovery-filter{align-items:stretch;display:grid}
   .ifprog-discovery-bulk{align-items:stretch;display:grid}
-  .ifprog-sync-options__grid{grid-template-columns:1fr}
+  .ifprog-sync-options__grid,.ifprog-classification-options__grid{grid-template-columns:1fr}
 }

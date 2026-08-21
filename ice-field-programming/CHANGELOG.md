@@ -1,5 +1,13 @@
 # Ice & Field Programming Changelog
 
+## 1.9.1.15
+
+- Adds editable Sport, Format, and Category guesses to the protected Season import preview.
+- Applies the confirmed classification in bulk to the Season and every selected Level and Program.
+- Makes all three classification taxonomies available on Seasons, Levels, and Programs.
+- Uses existing Season classifications as the preferred defaults when refreshing an imported Season.
+- Detects daily versus weekly sessions from the spacing of their Dash events and uses the correct unit in import previews and public pricing.
+
 ## 1.9.1.14
 
 - Adds the monorepo Update URI and participates in the Dash Connector-managed private release updater.

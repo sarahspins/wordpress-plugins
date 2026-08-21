@@ -22,7 +22,8 @@ class IFPROG_Sync {
         $season_only = false,
         $level_ids = [],
         $presentation_updates = [],
-        $companion_options = []
+        $companion_options = [],
+        $classification = []
     ) {
         if (!current_user_can('manage_options')) {
             return new WP_Error('ifprog_sync_forbidden', 'You do not have permission to synchronize Programming records.');
@@ -81,11 +82,13 @@ class IFPROG_Sync {
 
         $publish_imported = (bool) $publish_imported;
         $presentation_updates = self::presentation_updates($presentation_updates);
+        $classification = self::classification_terms($classification);
         $season_result = self::sync_season(
             $preview,
             $publish_imported,
             $presentation_updates['season_title'],
-            $presentation_updates['season_description']
+            $presentation_updates['season_description'],
+            $classification
         );
         if (is_wp_error($season_result)) return $season_result;
 
@@ -119,7 +122,8 @@ class IFPROG_Sync {
                     $season_result['post_id'],
                     $publish_imported,
                     $presentation_updates['level_titles'],
-                    $presentation_updates['level_descriptions']
+                    $presentation_updates['level_descriptions'],
+                    $classification
                 );
                 if (is_wp_error($level_cache[$league_id])) {
                     $result['errors'][] = $level_cache[$league_id]->get_error_message();
@@ -149,7 +153,8 @@ class IFPROG_Sync {
                 !empty($level_cache[$league_id]['routed']),
                 $presentation_updates['program_titles'],
                 $presentation_updates['program_descriptions'],
-                !empty($level_cache[$league_id]['title_updated'])
+                !empty($level_cache[$league_id]['title_updated']),
+                $classification
             );
             if (is_wp_error($program_result)) {
                 $result['errors'][] = $program_result->get_error_message();
@@ -214,7 +219,8 @@ class IFPROG_Sync {
         $preview,
         $publish_imported = false,
         $update_title = false,
-        $update_description = false
+        $update_description = false,
+        $classification = []
     ) {
         $dash_season_id = absint($preview['season_id'] ?? 0);
         $season = is_array($preview['season'] ?? null) ? $preview['season'] : [];
@@ -279,6 +285,7 @@ class IFPROG_Sync {
         update_post_meta($post_id, '_ifprog_dash_last_sync', current_time('mysql'));
         update_post_meta($post_id, '_ifprog_dash_payload', $season);
         self::assign_initial_season_terms($post_id, $season, $preview['rows'] ?? []);
+        self::apply_classification($post_id, $classification);
 
         $published = self::publish_if_requested($post_id, $publish_imported);
         if (is_wp_error($published)) return $published;
@@ -297,7 +304,8 @@ class IFPROG_Sync {
         $season_post_id,
         $publish_imported = false,
         $update_title = false,
-        $update_description = false
+        $update_description = false,
+        $classification = []
     ) {
         $league_id = absint($row['league_id'] ?? 0);
         $payload = is_array($row['source_payload'] ?? null) ? $row['source_payload'] : [];
@@ -364,6 +372,7 @@ class IFPROG_Sync {
         if ($league_id === self::CURRENT_LEARN_TO_PLAY_LEAGUE_ID) {
             update_post_meta($post_id, '_ifprog_season_route', 'current-learn-to-play');
         }
+        self::apply_classification($post_id, $classification);
 
         $published = self::publish_if_requested($post_id, $publish_imported);
         if (is_wp_error($published)) return $published;
@@ -387,7 +396,8 @@ class IFPROG_Sync {
         $force_season_assignment = false,
         $update_program_title = false,
         $update_program_description = false,
-        $refresh_special_categories = false
+        $refresh_special_categories = false,
+        $classification = []
     ) {
         $team_id = absint($row['team_id'] ?? 0);
         if (!$team_id) return new WP_Error('ifprog_sync_invalid_team', 'A selected Team did not include a valid Dash ID.');
@@ -445,6 +455,7 @@ class IFPROG_Sync {
         if ($is_new || $title_updated || $refresh_special_categories) {
             IFPROG_Post_Types::assign_special_categories($post_id);
         }
+        self::apply_classification($post_id, $classification);
 
         $registration = is_array($payload['registration'] ?? null) ? $payload['registration'] : [];
         update_post_meta(
@@ -636,6 +647,31 @@ class IFPROG_Sync {
         $format_ids = IFPROG_Post_Types::assignment_term_ids('ifprog_format', [$format]);
         if ($sport_ids) wp_set_object_terms($post_id, $sport_ids, 'ifprog_sport', false);
         if ($format_ids) wp_set_object_terms($post_id, $format_ids, 'ifprog_format', false);
+    }
+
+    private static function classification_terms($raw) {
+        $raw = is_array($raw) ? $raw : [];
+        $map = [
+            'sport' => 'ifprog_sport',
+            'format' => 'ifprog_format',
+            'category' => 'ifprog_category',
+        ];
+        $clean = [];
+        foreach ($map as $key => $taxonomy) {
+            $ids = array_values(array_unique(array_filter(array_map('absint', (array) ($raw[$key] ?? [])))));
+            $clean[$taxonomy] = array_values(array_filter($ids, function($term_id) use ($taxonomy) {
+                $term = get_term($term_id, $taxonomy);
+                return $term && !is_wp_error($term);
+            }));
+        }
+        return $clean;
+    }
+
+    private static function apply_classification($post_id, $classification) {
+        foreach ((array) $classification as $taxonomy => $term_ids) {
+            if (!in_array($taxonomy, ['ifprog_sport','ifprog_format','ifprog_category'], true)) continue;
+            wp_set_object_terms($post_id, array_map('absint', (array) $term_ids), $taxonomy, false);
+        }
     }
 
     private static function assign_initial_season_terms($post_id, $season, $rows) {

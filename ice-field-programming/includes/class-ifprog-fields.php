@@ -22,6 +22,7 @@ class IFPROG_Fields {
             'location',
             'price',
             'weeks',
+            'duration_unit',
             'registration_url',
             'button_label',
             'availability_note',
