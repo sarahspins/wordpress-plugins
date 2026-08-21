@@ -452,6 +452,17 @@ class IFPROG_Shortcodes {
         ?>
         <div class="ifprog-levels">
             <?php foreach ($groups as $group):
+                if (!empty($group['direct'])): ?>
+                    <div class="ifprog-classes ifprog-classes--direct">
+                        <?php foreach ($group['programs'] as $program):
+                            self::program($program, [
+                                'show_price' => self::truthy($atts['show_price']),
+                                'settings' => $settings,
+                            ]);
+                        endforeach; ?>
+                    </div>
+                    <?php continue; ?>
+                <?php endif;
                 $level_has_action = $group['registration_url'] !== '';
                 $level_is_coming_soon = !$level_has_action &&
                     !empty($group['is_league']) &&
@@ -1145,6 +1156,7 @@ class IFPROG_Shortcodes {
             $level_id = absint(IFPROG_Fields::get($program->ID, 'level_id'));
             $level = $level_id && get_post_type($level_id) === 'ifprog_level' ? get_post($level_id) : null;
             $fallback = trim((string) IFPROG_Fields::get($program->ID, 'level'));
+            $direct = !$level && self::object_matches_terms($program->ID, 'ifprog_format', ['camp']);
 
             if ($level) {
                 $key = 'level-' . $level_id;
@@ -1152,6 +1164,12 @@ class IFPROG_Shortcodes {
                 $description = $level->post_status === 'publish' ? trim((string) $level->post_content) : '';
                 $age_range = IFPROG_Dash::level_age_range($level_id);
                 $order = absint($level->menu_order);
+            } elseif ($direct) {
+                $key = 'direct-camps-' . $season_id;
+                $title = '';
+                $description = '';
+                $age_range = '';
+                $order = 0;
             } else {
                 $key = 'fallback-' . $season_id . '-' . sanitize_title($fallback ?: 'other-programs');
                 $title = $fallback ?: 'Other Programs';
@@ -1171,6 +1189,7 @@ class IFPROG_Shortcodes {
                     'programs' => [],
                     'registration_state' => '',
                     'is_league' => false,
+                    'direct' => $direct,
                 ];
             }
             $groups[$key]['programs'][] = $program;
