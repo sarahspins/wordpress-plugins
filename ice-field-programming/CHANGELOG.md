@@ -5,6 +5,8 @@
 - Allows active Dash rows with an unmapped source Sport to be selected when importing.
 - Uses the confirmed Bulk classification Sport to resolve those rows.
 - Shows a clear validation message if an unmapped row is submitted without a Sport selection.
+- Imports Camp Programs directly under their Season without creating or assigning a duplicate WordPress Level.
+- Renders existing unlevelled Camp Programs directly in public shortcodes without a fallback Level heading.
 
 ## 1.9.1.15
 
