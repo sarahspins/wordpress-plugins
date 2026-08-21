@@ -1,0 +1,44 @@
+{
+  "$schema": "https://schemas.wp.org/trunk/theme.json",
+  "version": 2,
+  "settings": {
+    "appearanceTools": true,
+    "layout": {
+      "contentSize": "760px",
+      "wideSize": "1180px"
+    },
+    "color": {
+      "palette": [
+        {"slug":"navy","color":"#003b5c","name":"Ice & Field Navy"},
+        {"slug":"blue","color":"#004976","name":"Ice & Field Blue"},
+        {"slug":"sky","color":"#33b6ff","name":"Sky Blue"},
+        {"slug":"orange","color":"#ff8033","name":"Orange"},
+        {"slug":"gold","color":"#ffc600","name":"Gold"},
+        {"slug":"cream","color":"#fffaf2","name":"Cream"},
+        {"slug":"ink","color":"#182433","name":"Ink"},
+        {"slug":"white","color":"#ffffff","name":"White"}
+      ]
+    },
+    "spacing": {
+      "units": ["px","rem","%","vw"]
+    },
+    "typography": {
+      "fluid": true
+    }
+  },
+  "styles": {
+    "color": {
+      "text": "#182433",
+      "background": "#f7f8fb"
+    },
+    "elements": {
+      "button": {
+        "border": {"radius":"999px"},
+        "typography": {"fontWeight":"800"}
+      },
+      "heading": {
+        "color": {"text":"#003b5c"}
+      }
+    }
+  }
+}

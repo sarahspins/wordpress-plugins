@@ -1,0 +1,9 @@
+.DS_Store
+__MACOSX/
+*.zip
+
+# Historical local build and release snapshots.
+/rink-displays-v*/
+/rink-schedule-weekly-build/
+/theme-*-build/
+/PROJECT-CHAT-INDEX.md

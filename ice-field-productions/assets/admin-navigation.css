@@ -1,0 +1,100 @@
+#toplevel_page_ifp-dashboard .wp-submenu > li.ifp-menu-native-detail {
+    display: none;
+}
+
+#toplevel_page_ifp-dashboard .wp-submenu > li.ifp-menu-section {
+    position: relative;
+}
+
+#toplevel_page_ifp-dashboard .wp-submenu > li.ifp-menu-section > a {
+    padding-right: 34px;
+}
+
+#toplevel_page_ifp-dashboard .ifp-menu-toggle {
+    align-items: center;
+    background: transparent;
+    border: 0;
+    color: #a7aaad;
+    cursor: pointer;
+    display: flex;
+    height: 30px;
+    justify-content: center;
+    padding: 0;
+    position: absolute;
+    right: 4px;
+    top: 0;
+    width: 28px;
+}
+
+#toplevel_page_ifp-dashboard .ifp-menu-toggle:hover,
+#toplevel_page_ifp-dashboard .ifp-menu-toggle:focus {
+    color: #72aee6;
+    outline: none;
+}
+
+#toplevel_page_ifp-dashboard .ifp-menu-toggle span {
+    border-bottom: 1.5px solid currentColor;
+    border-right: 1.5px solid currentColor;
+    display: block;
+    height: 6px;
+    transform: rotate(45deg) translateY(-2px);
+    transition: transform .15s ease;
+    width: 6px;
+}
+
+#toplevel_page_ifp-dashboard .ifp-menu-section.is-open > .ifp-menu-toggle span {
+    transform: rotate(225deg) translate(-1px, -1px);
+}
+
+#toplevel_page_ifp-dashboard .ifp-menu-children {
+    display: none;
+    margin: 0 0 4px;
+    padding: 2px 0 5px;
+}
+
+#toplevel_page_ifp-dashboard .ifp-menu-section.is-open > .ifp-menu-children {
+    display: block;
+}
+
+#toplevel_page_ifp-dashboard .ifp-menu-children li {
+    margin: 0;
+}
+
+#toplevel_page_ifp-dashboard .ifp-menu-children a {
+    color: #a7aaad;
+    display: block;
+    font-size: 12px;
+    line-height: 1.35;
+    padding: 5px 12px 5px 28px;
+    text-decoration: none;
+}
+
+#toplevel_page_ifp-dashboard .ifp-menu-children a:hover,
+#toplevel_page_ifp-dashboard .ifp-menu-children a:focus {
+    color: #72aee6;
+}
+
+body.folded #toplevel_page_ifp-dashboard .ifp-menu-toggle {
+    display: none;
+}
+
+body.folded #toplevel_page_ifp-dashboard .ifp-menu-section > .ifp-menu-children {
+    background: #2c3338;
+    box-shadow: 2px 3px 5px rgba(0, 0, 0, .2);
+    display: none;
+    left: 100%;
+    min-width: 190px;
+    padding: 6px 0;
+    position: absolute;
+    top: 0;
+    z-index: 100000;
+}
+
+body.folded #toplevel_page_ifp-dashboard .ifp-menu-section:hover > .ifp-menu-children,
+body.folded #toplevel_page_ifp-dashboard .ifp-menu-section:focus-within > .ifp-menu-children {
+    display: block;
+}
+
+body.folded #toplevel_page_ifp-dashboard .ifp-menu-children a {
+    padding: 6px 14px;
+}
