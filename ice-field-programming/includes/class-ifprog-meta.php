@@ -73,6 +73,10 @@ class IFPROG_Meta {
         $registration_close = get_post_meta($post->ID, '_ifprog_season_registration_close', true);
         $registration_url = get_post_meta($post->ID, '_ifprog_registration_url', true);
         $dash_id = get_post_meta($post->ID, '_ifprog_dash_season_id', true);
+        $automatic_sync = get_post_meta($post->ID, '_ifprog_automatic_sync', true) === '1';
+        $automatic_sync_names = get_post_meta($post->ID, '_ifprog_automatic_sync_names', true) === '1';
+        $automatic_sync_descriptions = get_post_meta($post->ID, '_ifprog_automatic_sync_descriptions', true) === '1';
+        $automatic_sync_checked = get_post_meta($post->ID, '_ifprog_automatic_sync_last_checked', true);
         $is_production = get_post_meta($post->ID, '_ifprog_is_production', true) === '1';
         $production_id = absint(get_post_meta($post->ID, '_ifprog_production_id', true));
         $sort_order = get_post_meta($post->ID, '_ifprog_season_order', true);
@@ -95,6 +99,22 @@ class IFPROG_Meta {
             <p><label><strong>Dash Season ID</strong><br>
                 <input class="widefat" type="number" min="0" name="ifprog_dash_season_id" value="<?php echo esc_attr($dash_id); ?>">
             </label></p>
+            <?php if ($dash_id): ?>
+                <p><label>
+                    <input type="checkbox" name="ifprog_automatic_sync" value="1" <?php checked($automatic_sync); ?>>
+                    <strong>Keep up to date automatically</strong>
+                </label><br>
+                <span class="description">Once daily, while this Dash Season's registration window is open, import new class offerings and refresh protected Dash fields. Local presentation and classifications remain protected.<?php echo $automatic_sync_checked ? ' Last checked: ' . esc_html($automatic_sync_checked) . '.' : ''; ?></span></p>
+                <p style="margin-left:24px"><label>
+                    <input type="checkbox" name="ifprog_automatic_sync_names" value="1" <?php checked($automatic_sync_names); ?>>
+                    Update Season, Level, and class names automatically from Dash
+                </label><br>
+                <label>
+                    <input type="checkbox" name="ifprog_automatic_sync_descriptions" value="1" <?php checked($automatic_sync_descriptions); ?>>
+                    Update Season, Level, and class descriptions automatically from Dash
+                </label><br>
+                <span class="description">Both options are off by default. Description updates stop when the WordPress copy has been edited locally.</span></p>
+            <?php endif; ?>
             <p><label><strong>Display Order</strong><br>
                 <input class="widefat" type="number" min="0" max="9999" name="ifprog_season_order" value="<?php echo esc_attr($sort_order); ?>">
                 <span class="description">When Seasons have the same start and end dates, lower numbers appear first. Completed Seasons still remain at the bottom.</span>
@@ -386,6 +406,9 @@ class IFPROG_Meta {
         IFPROG_Status::set_season_status($post_id, $status);
 
         update_post_meta($post_id, '_ifprog_dash_season_id', absint($_POST['ifprog_dash_season_id'] ?? 0));
+        update_post_meta($post_id, '_ifprog_automatic_sync', isset($_POST['ifprog_automatic_sync']) ? '1' : '0');
+        update_post_meta($post_id, '_ifprog_automatic_sync_names', isset($_POST['ifprog_automatic_sync_names']) ? '1' : '0');
+        update_post_meta($post_id, '_ifprog_automatic_sync_descriptions', isset($_POST['ifprog_automatic_sync_descriptions']) ? '1' : '0');
         update_post_meta($post_id, '_ifprog_is_production', isset($_POST['ifprog_is_production']) ? '1' : '0');
         $production_id = absint($_POST['ifprog_production_id'] ?? 0);
         if ($production_id && post_type_exists('ifp_production') && get_post_type($production_id) !== 'ifp_production') {

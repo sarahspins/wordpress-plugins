@@ -1010,9 +1010,6 @@ class IFPROG_Shortcodes {
         unset($session);
 
         uasort($sessions, function($a, $b) {
-            if ($a['registration_closed'] !== $b['registration_closed']) {
-                return $a['registration_closed'] <=> $b['registration_closed'];
-            }
             if ($a['sort_date'] !== $b['sort_date']) return $a['sort_date'] <=> $b['sort_date'];
             if ($a['sort_end_date'] !== $b['sort_end_date']) return $a['sort_end_date'] <=> $b['sort_end_date'];
             if ($a['order'] !== $b['order']) return $a['order'] <=> $b['order'];
@@ -1371,9 +1368,7 @@ class IFPROG_Shortcodes {
         $post_id = absint($program->ID);
         $weeks = absint(IFPROG_Fields::get($post_id, 'weeks'));
         $season_id = absint(IFPROG_Fields::get($post_id, 'season_id'));
-        if (!$season_id || IFPROG_Status::effective_season_status($season_id, $now) !== 'current') {
-            return $weeks ?: null;
-        }
+        if (!$season_id) return $weeks ?: null;
 
         $level_id = absint(IFPROG_Fields::get($post_id, 'level_id'));
         if (

@@ -1,6 +1,6 @@
 === Ice & Field Programming ===
 Contributors: iceandfield
-Stable tag: 1.9.1.16
+Stable tag: 1.9.2
 Requires at least: 6.4
 Requires PHP: 7.4
 Requires Plugins: ice-field-dash-connector
@@ -11,7 +11,7 @@ Manage seasons, program groups, levels, classes, leagues, camps, clinics, and pu
 
 Ice & Field Programming is the public program and registration module for the main Ice & Field website.
 
-Version 1.9.1.16 allows active Dash rows with an unmapped source Sport to be selected and resolved by the administrator's Bulk classification Sport choice. Camps import directly under their Season without a duplicate WordPress Level or public Level heading, sort chronologically, and show their actual first-to-last Dash event dates and time on each offering card. Consecutive workdays across a weekend are counted as days rather than weeks.
+Version 1.9.2 adds opt-in daily synchronization for Seasons that have already been imported from Dash. Each imported Season has its own Keep up to date automatically checkbox. While its Dash registration window is open, Programming imports newly added eligible class offerings and refreshes protected Dash-controlled facts once daily. Name and description synchronization are separate opt-ins and remain off by default; descriptions retain the existing protection for locally edited WordPress copy. Closed, not-yet-open, and undated registration windows are skipped safely, and every run is recorded in the Programming Activity Log. On the public catalog, a registration-closed Season retains its chronological position while classes are still occurring; an older Season disappears automatically once every dated class occurrence has passed.
 
 It is intentionally separate from:
 
@@ -27,7 +27,7 @@ Dash League #86 is an intentional presentation exception: its Level and linked P
 
 The Season Discovery Inbox loads automatically when its admin screen opens, lists every non-excluded Current and Upcoming Dash Season directly, groups New Seasons first, Needs Re-sync second, and Imported Seasons last, and provides Preview / Import, Sync, or Review Changes actions. A prominent prompt calls attention to newly discovered Seasons and links directly to the New Seasons group. A secondary All Seasons view filters Current, Upcoming, Completed, Imported, New, Needs Re-sync, and Excluded records. Never Import exclusions are reversible and stored by Dash Season ID. Checkboxes, Select All/Deselect All controls, and Exclude Selected make it possible to exclude several visible Seasons together. Automatic loading uses the Connector cache for speed; Refresh Discovery explicitly requests fresh source data. Discovery compares imported Current and Upcoming Seasons with compact snapshots from their last successful sync, including Season facts and structural Level/class changes while ignoring routine enrollment totals. The first 1.8 refresh establishes a baseline for older imports that predate snapshots; later refreshes compare against that baseline or the latest successful sync.
 
-The Monitoring screen prepares guarded 1.9 rules without enabling background activity. Administrators can pause or ready the global configuration, choose a future check frequency, enable registration-close and imported-Season comparison signals, configure Season families and their name-matching phrases, save a future notification address, and choose how long activity is retained. The Activity Log records monitoring-setting changes, manual discovery refreshes, Never Import exclusions/restorations, protected sync results, warnings, and failures. It stores no raw Dash payloads or credentials and is capped at 500 entries. The 1.9.1 maintenance line does not schedule Dash requests, send email, or import automatically.
+The Monitoring screen stores broader Season-family discovery rules. Daily synchronization is enabled independently on each imported Season and runs at approximately 4:15 a.m. in the WordPress site timezone. It checks Dash only for opted-in Seasons, synchronizes only during an open Dash registration window, and uses an overlap lock. The Activity Log records monitoring-setting changes, automatic and manual sync results, manual discovery refreshes, Never Import exclusions/restorations, warnings, and failures. It stores no raw Dash payloads or credentials and is capped at 500 entries.
 
 == Installation ==
 

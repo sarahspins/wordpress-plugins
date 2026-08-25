@@ -23,9 +23,10 @@ class IFPROG_Sync {
         $level_ids = [],
         $presentation_updates = [],
         $companion_options = [],
-        $classification = []
+        $classification = [],
+        $automatic = false
     ) {
-        if (!current_user_can('manage_options')) {
+        if (!$automatic && !current_user_can('manage_options')) {
             return new WP_Error('ifprog_sync_forbidden', 'You do not have permission to synchronize Programming records.');
         }
 
@@ -692,7 +693,9 @@ class IFPROG_Sync {
     private static function apply_classification($post_id, $classification) {
         foreach ((array) $classification as $taxonomy => $term_ids) {
             if (!in_array($taxonomy, ['ifprog_sport','ifprog_format','ifprog_category'], true)) continue;
-            wp_set_object_terms($post_id, array_map('absint', (array) $term_ids), $taxonomy, false);
+            $term_ids = array_values(array_filter(array_map('absint', (array) $term_ids)));
+            if (!$term_ids) continue;
+            wp_set_object_terms($post_id, $term_ids, $taxonomy, false);
         }
     }
 

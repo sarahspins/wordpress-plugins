@@ -1,5 +1,19 @@
 # Ice & Field Programming Changelog
 
+## 1.9.2
+
+- Adds a per-imported-Season **Keep up to date automatically** option.
+- Runs one guarded synchronization daily at approximately 4:15 a.m. in the WordPress site timezone.
+- Contacts Dash and synchronizes an opted-in Season only while its Dash registration window is open.
+- Imports newly added eligible class offerings and refreshes the same protected Dash-controlled fields used by manual synchronization.
+- Preserves publication state, local classifications, groups, ordering, registration links, and other website presentation by default.
+- Adds independent opt-ins for automatic Season, Level, and class name updates and description updates.
+- Keeps description synchronization protected by the existing three-way comparison so locally edited WordPress copy is not overwritten.
+- Records daily completion and warning details in the Programming Activity Log and shows the last check on the Season editor.
+- Uses a 30-minute overlap lock and skips unknown registration windows rather than guessing that registration is open.
+- Keeps a registration-closed Season in its chronological position while it still has upcoming class occurrences.
+- Automatically removes an older Season from the public catalog after every dated class occurrence in it has passed.
+
 ## 1.9.1.16
 
 - Allows active Dash rows with an unmapped source Sport to be selected when importing.
