@@ -440,6 +440,7 @@ jQuery(function($){
     let assignmentAutoTeamQuery = '';
     let assignmentAutoCapacity = '';
     let assignmentOverlayReturnFocus = null;
+    let assignmentOverlayItemLabel = 'event';
     let standardAssignmentBundle = null;
 
     function assignmentMonthDetails(value) {
@@ -474,8 +475,13 @@ jQuery(function($){
         return Number.isNaN(value) ? null : Math.min(9999, Math.max(0, value));
     }
 
+    function assignmentEventNameValue() {
+        return String($('#ifdc-assignment-event-name').val() || '').trim();
+    }
+
     function suggestedAssignmentCapacity() {
         const context = ($('#ifdc-assignment-name').val() || '') + ' ' + (assignmentTeam ? assignmentTeam.label : '');
+        if (parseInt($('#ifdc-assignment-type').val(), 10) === 10) return 250;
         if (/hockey|stick\s*(?:&|and)\s*puck/i.test(context)) return 25;
         if (/freestyle/i.test(context)) return 20;
         return null;
@@ -491,18 +497,19 @@ jQuery(function($){
         }
     }
 
-    function showAssignmentOverlay(total, operation) {
+    function showAssignmentOverlay(total, operation, itemLabel) {
         assignmentStopRequested = false;
+        assignmentOverlayItemLabel = itemLabel || 'event';
         assignmentOverlayReturnFocus = document.activeElement;
         const $overlay = $('#ifdc-assignment-overlay');
         $overlay.removeClass('is-complete has-errors').removeAttr('hidden');
         $overlay.find('.ifdc-assignment-dialog-icon').removeClass('dashicons-yes-alt dashicons-warning').addClass('dashicons-update');
-        $('#ifdc-assignment-dialog-title').text('Updating ' + total + ' event' + (total === 1 ? '' : 's') + '…');
+        $('#ifdc-assignment-dialog-title').text('Updating ' + total + ' ' + assignmentOverlayItemLabel + (total === 1 ? '' : 's') + '…');
         $('#ifdc-assignment-dialog-destination').text(operation);
         $('#ifdc-assignment-progress-bar').css('width', '0%');
         $('.ifdc-progress-track').attr('aria-valuenow', 0);
         $('#ifdc-assignment-progress-percent').text('0%');
-        $('#ifdc-assignment-progress-count').text('0 of ' + total + ' reviewed');
+        $('#ifdc-assignment-progress-count').text('0 of ' + total + ' ' + assignmentOverlayItemLabel + (total === 1 ? '' : 's') + ' reviewed');
         $('#ifdc-assignment-dialog-status').text('Preparing the first batch…');
         $('#ifdc-assignment-dialog-warning').text('Keep this page open while Dash is being updated and each event is verified.');
         $('#ifdc-close-assignment-overlay')
@@ -520,7 +527,7 @@ jQuery(function($){
         $('#ifdc-assignment-progress-bar').css('width', percent + '%');
         $('.ifdc-progress-track').attr('aria-valuenow', percent);
         $('#ifdc-assignment-progress-percent').text(percent + '%');
-        $('#ifdc-assignment-progress-count').text(completed + ' of ' + total + ' reviewed');
+        $('#ifdc-assignment-progress-count').text(completed + ' of ' + total + ' ' + assignmentOverlayItemLabel + (total === 1 ? '' : 's') + ' reviewed');
         $('#ifdc-assignment-dialog-status').text(status || ('Updating batch ' + batch + ' of ' + batchTotal + '…'));
     }
 
@@ -572,25 +579,30 @@ jQuery(function($){
 
     function updateAssignmentControls() {
         const count = selectedAssignmentIds().length;
+        const eventName = assignmentEventNameValue();
         $('#ifdc-assignment-selected-count').text(count + ' event' + (count === 1 ? '' : 's') + ' selected');
-        $('#ifdc-assignment-target-summary').text(assignmentTeam ?
+        let summary = assignmentTeam ?
             'Destination: ' + assignmentTeam.label + (assignmentCapacityValue() === null ? '' : ' • Capacity: ' + assignmentCapacityValue()) :
-            (assignmentCapacityValue() === null ? 'No destination class or capacity selected' : 'Capacity only: ' + assignmentCapacityValue() + ' • Existing class assignments preserved'));
-        $('#ifdc-apply-event-assignment').prop('disabled', assignmentRunning || !count || (!assignmentTeam && assignmentCapacityValue() === null));
+            (assignmentCapacityValue() === null ? 'Existing class assignments and capacities preserved' : 'Capacity only: ' + assignmentCapacityValue() + ' • Existing class assignments preserved');
+        if (eventName) summary += ' • Event name: ' + eventName;
+        $('#ifdc-assignment-target-summary').text(summary);
+        $('#ifdc-apply-event-assignment').prop('disabled', assignmentRunning || !count || (!assignmentTeam && assignmentCapacityValue() === null && !eventName));
     }
 
     function renderAssignmentEvents(events) {
         assignmentEvents = Array.isArray(events) ? events : [];
         const desiredCapacity = assignmentCapacityValue();
+        const desiredName = assignmentEventNameValue();
         const visibleEvents = assignmentEvents.filter(function(event){
             const teamNeedsChange = assignmentTeam && parseInt(event.team_id || 0, 10) !== assignmentTeam.id;
             const capacityNeedsChange = desiredCapacity !== null && parseInt(event.capacity || 0, 10) !== desiredCapacity;
-            return !!teamNeedsChange || capacityNeedsChange;
+            const nameNeedsChange = desiredName && String(event.name || '') !== desiredName;
+            return !!teamNeedsChange || capacityNeedsChange || !!nameNeedsChange;
         });
         const $wrap = $('#ifdc-assignment-events');
         if (!visibleEvents.length) {
-            const text = assignmentEvents.length && (assignmentTeam || desiredCapacity !== null) ?
-                'Every matching event already has the requested destination and capacity.' :
+            const text = assignmentEvents.length && (assignmentTeam || desiredCapacity !== null || desiredName) ?
+                'Every matching event already has the requested destination, capacity, and event name.' :
                 'Try a different date range, name, or event type.';
             $wrap.html('<div class="ifdc-empty-state"><span class="dashicons dashicons-search"></span><h3>No events need attention</h3><p>' + escapeHtml(text) + '</p></div>');
             $('#ifdc-select-all-events, #ifdc-deselect-all-events').prop('disabled', true);
@@ -604,7 +616,8 @@ jQuery(function($){
             const assignedElsewhere = !!event.team_id;
             const sameDestination = assignmentTeam && assignedElsewhere && parseInt(event.team_id, 10) === assignmentTeam.id;
             const capacityNeedsChange = desiredCapacity !== null && parseInt(event.capacity || 0, 10) !== desiredCapacity;
-            const selectable = !!assignmentTeam || capacityNeedsChange;
+            const nameNeedsChange = desiredName && String(event.name || '') !== desiredName;
+            const selectable = !!assignmentTeam || capacityNeedsChange || !!nameNeedsChange;
             let assignmentStatus = '<span class="ifdc-status is-ready">Unassigned</span>';
             if (sameDestination) {
                 assignmentStatus = '<span class="ifdc-status is-ready">Destination already assigned</span>';
@@ -622,7 +635,7 @@ jQuery(function($){
             html += '<tr data-event-id="' + escapeHtml(event.id) + '">' +
                 '<th class="check-column"><input type="checkbox" class="ifdc-assignment-event" value="' + escapeHtml(event.id) + '" ' + (selectable ? '' : 'disabled') + '></th>' +
                 '<td>' + escapeHtml(formatAssignmentDate(event.start)) + '</td>' +
-                '<td><strong>' + escapeHtml(event.name) + '</strong><br><code>#' + escapeHtml(event.id) + '</code> <span class="description">Type ' + escapeHtml(event.event_type_id || '—') + '</span></td>' +
+                '<td><strong>' + escapeHtml(nameNeedsChange ? event.name + ' → ' + desiredName : event.name) + '</strong><br><code>#' + escapeHtml(event.id) + '</code> <span class="description">Type ' + escapeHtml(event.event_type_id || '—') + '</span></td>' +
                 '<td>' + (event.resource_id ? 'Resource #' + escapeHtml(event.resource_id) : '—') + '</td>' +
                 '<td>' + capacityStatus + '</td>' +
                 '<td>' + assignmentStatus + '</td>' +
@@ -743,9 +756,15 @@ jQuery(function($){
         return standardAssignmentBundle.groups.filter(function(group){ return selected.includes(String(group.key)); });
     }
 
+    function actionableStandardEvents(group) {
+        return (group.events || []).filter(function(event){
+            return !!event.assignment_update || (!!group.rename_enabled && String(event.name || '') !== String(group.new_event_name || ''));
+        });
+    }
+
     function updateStandardControls() {
         const groups = selectedStandardGroups();
-        const total = groups.reduce(function(sum, group){ return sum + group.events.length; }, 0);
+        const total = groups.reduce(function(sum, group){ return sum + actionableStandardEvents(group).length; }, 0);
         $('#ifdc-apply-standard-assignments').prop('disabled', assignmentRunning || !groups.length || !total || groups.some(function(group){ return !group.target; }));
     }
 
@@ -760,22 +779,26 @@ jQuery(function($){
 
         let html = '<div class="ifdc-standard-groups">';
         bundle.groups.forEach(function(group){
-            const canSelect = !!group.target && group.update_count > 0;
+            group.rename_enabled = !!group.automate_name;
+            group.new_event_name = group.event_name || group.name;
+            const canSelect = !!group.target && (group.update_count > 0 || group.rename_count > 0);
             const targetLabel = standardTargetLabel(group.target);
             html += '<section class="ifdc-standard-group-card' + (!group.target ? ' has-error' : '') + '" data-standard-group="' + escapeHtml(group.key) + '">';
             html += '<div class="ifdc-standard-group-heading"><label>' +
-                '<input type="checkbox" class="ifdc-standard-group" value="' + escapeHtml(group.key) + '" ' + (canSelect ? 'checked' : 'disabled') + '> ' +
+                '<input type="checkbox" class="ifdc-standard-group" value="' + escapeHtml(group.key) + '" ' + (canSelect ? (group.manual_only ? '' : 'checked') : 'disabled') + '> ' +
                 '<strong>' + escapeHtml(group.name) + '</strong></label>' +
                 '<span class="ifdc-status ' + (group.target ? 'is-ready' : 'is-warning') + '">' + (group.target ? 'Destination matched' : 'Needs review') + '</span></div>';
-            html += '<p class="ifdc-standard-target"><strong>Destination:</strong> ' + escapeHtml(targetLabel) + '<br><strong>Capacity:</strong> ' + escapeHtml(group.capacity) + '</p>';
-            html += '<div class="ifdc-standard-counts"><span><strong>' + escapeHtml(group.found_count) + '</strong> found</span><span><strong>' + escapeHtml(group.ready_count) + '</strong> already ready</span><span><strong>' + escapeHtml(group.update_count) + '</strong> updates</span><span><strong>' + escapeHtml(group.replacement_count) + '</strong> reassignments</span><span><strong>' + escapeHtml(group.capacity_count) + '</strong> capacity fixes</span></div>';
+            html += '<p class="ifdc-standard-target"><strong>Destination:</strong> ' + escapeHtml(targetLabel) + '<br><strong>Capacity:</strong> ' + (group.capacity === null ? 'Preserve existing' : escapeHtml(group.capacity)) + (group.manual_only ? '<br><strong>Mode:</strong> Manual preview and confirmation only' : '') + '</p>';
+            html += '<div class="ifdc-standard-rename"><label><input type="checkbox" class="ifdc-standard-rename-toggle" data-group="' + escapeHtml(group.key) + '" ' + (group.rename_enabled ? 'checked' : '') + '> <strong>Standardize event name</strong>' + (group.automate_name ? ' <span class="description">(automatic for this group)</span>' : '') + '</label> <input type="text" class="regular-text ifdc-standard-rename-value" data-group="' + escapeHtml(group.key) + '" value="' + escapeHtml(group.new_event_name) + '" ' + (group.rename_enabled ? '' : 'disabled') + '></div>';
+            html += '<div class="ifdc-standard-counts"><span><strong>' + escapeHtml(group.found_count) + '</strong> found</span><span><strong>' + escapeHtml(group.ready_count) + '</strong> assignment/capacity ready</span><span><strong>' + escapeHtml(group.update_count) + '</strong> assignment/capacity updates</span><span><strong>' + escapeHtml(group.replacement_count) + '</strong> reassignments</span><span><strong>' + escapeHtml(group.capacity_count) + '</strong> capacity fixes</span><span><strong>' + escapeHtml(group.rename_count) + '</strong> names differ</span></div>';
             if (!group.target) html += '<p class="ifdc-result is-error">A unique destination could not be selected automatically. Use the single-event workflow below for this group.</p>';
             if (group.events.length) {
                 html += '<details><summary>Review ' + escapeHtml(group.events.length) + ' event' + (group.events.length === 1 ? '' : 's') + '</summary><div class="ifdc-standard-event-list"><table class="widefat striped"><thead><tr><th>Date &amp; time</th><th>Event</th><th>Assignment</th><th>Capacity</th></tr></thead><tbody>';
                 group.events.forEach(function(event){
                     const assignment = group.target && parseInt(event.team_id || 0, 10) === parseInt(group.target.id, 10) ? 'Already correct' : ((event.team_id ? '#' + event.team_id : 'Unassigned') + ' → #' + (group.target ? group.target.id : '—'));
-                    const capacity = parseInt(event.capacity || 0, 10) === parseInt(group.capacity, 10) ? String(group.capacity) : String(event.capacity || 0) + ' → ' + group.capacity;
-                    html += '<tr data-standard-event-id="' + escapeHtml(event.id) + '"><td>' + escapeHtml(formatAssignmentDate(event.start)) + '</td><td><strong>' + escapeHtml(event.name) + '</strong><br><code>#' + escapeHtml(event.id) + '</code></td><td>' + escapeHtml(assignment) + '</td><td>' + escapeHtml(capacity) + '</td></tr>';
+                    const capacity = group.capacity === null ? String(event.capacity || 0) + ' (preserved)' : (parseInt(event.capacity || 0, 10) === parseInt(group.capacity, 10) ? String(group.capacity) : String(event.capacity || 0) + ' → ' + group.capacity);
+                    const eventName = group.rename_enabled && String(event.name) !== String(group.new_event_name) ? event.name + ' → ' + group.new_event_name : event.name;
+                    html += '<tr data-standard-event-id="' + escapeHtml(event.id) + '" data-standard-group-key="' + escapeHtml(group.key) + '"><td>' + escapeHtml(formatAssignmentDate(event.start)) + '</td><td><strong class="ifdc-standard-event-name">' + escapeHtml(eventName) + '</strong><br><code>#' + escapeHtml(event.id) + '</code></td><td>' + escapeHtml(assignment) + '</td><td>' + escapeHtml(capacity) + '</td></tr>';
                 });
                 html += '</tbody></table></div></details>';
             }
@@ -796,7 +819,7 @@ jQuery(function($){
         }
         $button.prop('disabled', true).text('Preparing…');
         $('#ifdc-apply-standard-assignments').prop('disabled', true);
-        showResult($status, true, 'Finding events and destinations for all three session types…');
+        showResult($status, true, 'Finding events and destinations for all four session types…');
         $.post(IFDC.ajax, {
             action: 'ifdc_prepare_standard_assignments',
             nonce: IFDC.nonce,
@@ -807,7 +830,7 @@ jQuery(function($){
                 return;
             }
             renderStandardAssignmentBundle(response.data);
-            const missing = response.data.groups.filter(function(group){ return !group.target; }).length;
+            const missing = response.data.groups.filter(function(group){ return !group.target && parseInt(group.update_count || 0, 10) > 0; }).length;
             let message = response.data.total_updates + ' event update' + (response.data.total_updates === 1 ? '' : 's') + ' prepared for ' + response.data.month_label + '. Nothing has been changed.';
             if (missing) message += ' ' + missing + ' destination' + (missing === 1 ? '' : 's') + ' need manual review.';
             showResult($status, missing === 0, message);
@@ -815,11 +838,44 @@ jQuery(function($){
             const response = xhr.responseJSON;
             showResult($status, false, response && response.data && response.data.message ? response.data.message : 'Preparation failed (' + xhr.status + ').');
         }).always(function(){
-            $button.prop('disabled', false).text('Prepare All 3');
+            $button.prop('disabled', false).text('Prepare All 4');
         });
     });
 
     $(document).on('change', '.ifdc-standard-group', updateStandardControls);
+
+    $(document).on('change', '.ifdc-standard-rename-toggle', function(){
+        if (!standardAssignmentBundle) return;
+        const key = String($(this).data('group'));
+        const group = standardAssignmentBundle.groups.find(function(item){ return String(item.key) === key; });
+        if (!group) return;
+        group.rename_enabled = $(this).is(':checked');
+        $('.ifdc-standard-rename-value[data-group="' + key + '"]').prop('disabled', !group.rename_enabled);
+        $('.ifdc-standard-event-list tr[data-standard-group-key="' + key + '"]').each(function(){
+            const id = parseInt($(this).data('standard-event-id'), 10);
+            const event = group.events.find(function(item){ return parseInt(item.id, 10) === id; });
+            if (!event) return;
+            const label = group.rename_enabled && String(event.name) !== String(group.new_event_name) ? event.name + ' → ' + group.new_event_name : event.name;
+            $(this).find('.ifdc-standard-event-name').text(label);
+        });
+        updateStandardControls();
+    });
+
+    $(document).on('input', '.ifdc-standard-rename-value', function(){
+        if (!standardAssignmentBundle) return;
+        const key = String($(this).data('group'));
+        const group = standardAssignmentBundle.groups.find(function(item){ return String(item.key) === key; });
+        if (!group) return;
+        group.new_event_name = String($(this).val() || '').trim();
+        $('.ifdc-standard-event-list tr[data-standard-group-key="' + key + '"]').each(function(){
+            const id = parseInt($(this).data('standard-event-id'), 10);
+            const event = group.events.find(function(item){ return parseInt(item.id, 10) === id; });
+            if (!event) return;
+            const label = group.rename_enabled && group.new_event_name && String(event.name) !== group.new_event_name ? event.name + ' → ' + group.new_event_name : event.name;
+            $(this).find('.ifdc-standard-event-name').text(label);
+        });
+        updateStandardControls();
+    });
 
     $('#ifdc-standard-assignment-month').on('change', function(){
         standardAssignmentBundle = null;
@@ -828,14 +884,109 @@ jQuery(function($){
         $('#ifdc-standard-assignment-preview').addClass('ifdc-empty-state').html('<span class="dashicons dashicons-list-view"></span><h3>No monthly preview loaded</h3><p>Prepare the newly selected month before updating.</p>');
     });
 
+    let completedVisibilityBundle = null;
+
+    function updateCompletedVisibilityControls() {
+        const count = $('.ifdc-completed-visibility-group:checked').length;
+        $('#ifdc-apply-completed-visibility').prop('disabled', assignmentRunning || count === 0);
+    }
+
+    function renderCompletedVisibility(bundle) {
+        completedVisibilityBundle = bundle;
+        const groups = bundle && Array.isArray(bundle.groups) ? bundle.groups : [];
+        let html = '<table class="widefat striped"><thead><tr><td class="check-column"></td><th>Session</th><th>Destination Team</th>' + (bundle.include_previous ? '' : '<th>Events</th>') + '<th>Status</th></tr></thead><tbody>';
+        groups.forEach(function(group){
+            const selectable = !!group.needs_update;
+            const target = group.target ? standardTargetLabel(group.target) : 'No unique destination found';
+            let status = !group.target ? 'Needs destination review' : (group.protected_event_count ? group.protected_event_count + ' protected event(s); no changes allowed' : (group.needs_update ? 'Ready to hide online' : 'Inactive and hidden online'));
+            html += '<tr><th class="check-column"><input type="checkbox" class="ifdc-completed-visibility-group" value="' + escapeHtml(group.key) + '" ' + (selectable ? 'checked' : 'disabled') + '></th>' +
+                '<td><strong>' + escapeHtml(group.name) + '</strong></td><td>' + escapeHtml(target) + '</td>' +
+                (bundle.include_previous ? '' : '<td>' + escapeHtml(group.active_event_count) + ' active, ' + escapeHtml(group.inactive_event_count) + ' already inactive</td>') + '<td>' + escapeHtml(status) + '</td></tr>';
+        });
+        html += '</tbody></table>';
+        $('#ifdc-completed-visibility-preview').removeClass('ifdc-empty-state').html(html);
+        updateCompletedVisibilityControls();
+    }
+
+    $('#ifdc-preview-completed-visibility').on('click', function(){
+        const month = $('#ifdc-completed-visibility-month').val();
+        const includePrevious = $('#ifdc-completed-visibility-previous').is(':checked');
+        const $button = $(this).prop('disabled', true).text('Preparing…');
+        const $status = $('#ifdc-completed-visibility-status');
+        showResult($status, true, 'Finding completed monthly Teams and assigned events…');
+        $.post(IFDC.ajax, {action:'ifdc_preview_completed_visibility', nonce:IFDC.nonce, month:month, include_previous:includePrevious ? 1 : 0})
+            .done(function(response){
+                if (!response.success) return showResult($status, false, response.data && response.data.message ? response.data.message : 'Unable to prepare visibility preview.');
+                renderCompletedVisibility(response.data);
+                const ready = response.data.groups.filter(function(group){ return group.needs_update; }).length;
+                showResult($status, true, ready + ' session group' + (ready === 1 ? '' : 's') + ' ready for ' + response.data.month_label + '. Nothing has been changed.');
+            }).fail(function(xhr){
+                const response = xhr.responseJSON;
+                showResult($status, false, response && response.data && response.data.message ? response.data.message : 'Visibility preview failed (' + xhr.status + ').');
+            }).always(function(){ $button.prop('disabled', false).text('Preview Completed Month'); });
+    });
+
+    $(document).on('change', '.ifdc-completed-visibility-group', updateCompletedVisibilityControls);
+
+    $('#ifdc-completed-visibility-month, #ifdc-completed-visibility-previous').on('change', function(){
+        completedVisibilityBundle = null;
+        $('#ifdc-apply-completed-visibility').prop('disabled', true);
+        $('#ifdc-completed-visibility-status').attr('hidden', true);
+        $('#ifdc-completed-visibility-preview').addClass('ifdc-empty-state').html('<span class="dashicons dashicons-visibility"></span><h3>No visibility preview loaded</h3><p>Previewing does not change Dash.</p>');
+    });
+
+    $('#ifdc-apply-completed-visibility').on('click', function(){
+        if (!completedVisibilityBundle || assignmentRunning) return;
+        const keys = $('.ifdc-completed-visibility-group:checked').map(function(){ return String($(this).val()); }).get();
+        if (!keys.length) return;
+        const groups = completedVisibilityBundle.groups.filter(function(group){ return keys.includes(String(group.key)); });
+        if (!window.confirm('Make ' + groups.length + ' completed monthly Team' + (groups.length === 1 ? '' : 's') + ' inactive and turn off Online Registration in Dash?\n\nTheir events are not changed. Continue?')) return;
+
+        assignmentRunning = true;
+        const $button = $(this).prop('disabled', true).text('Deactivating…');
+        const $status = $('#ifdc-completed-visibility-status');
+        showAssignmentOverlay(groups.length, completedVisibilityBundle.month_label + ' completed monthly registration cleanup', 'Team');
+        $('#ifdc-assignment-dialog-status').text('Updating and verifying completed Teams…');
+        $('#ifdc-assignment-dialog-warning').text('Keep this page open while Dash updates and verifies each Team. Events and Levels remain unchanged.');
+        $('#ifdc-close-assignment-overlay').prop('disabled', true).text('Working…');
+        showResult($status, true, 'Updating and verifying completed Teams…');
+        $.post(IFDC.ajax, {
+            action:'ifdc_apply_completed_visibility',
+            nonce:IFDC.nonce,
+            month:completedVisibilityBundle.month,
+            include_previous:completedVisibilityBundle.include_previous ? 1 : 0,
+            group_keys:keys
+        }).done(function(response){
+            if (!response.success) return showResult($status, false, response.data && response.data.message ? response.data.message : 'Visibility update failed.');
+            const data = response.data || {};
+            const errors = data.errors || [];
+            const skipped = data.skipped || [];
+            let message = (data.updated_teams || []).length + ' Teams deactivated';
+            if (skipped.length) message += ', ' + skipped.length + ' skipped';
+            if (errors.length) message += ', ' + errors.length + ' failed';
+            showResult($status, errors.length === 0, message + '. Refresh the preview to confirm current Dash status.');
+            finishAssignmentOverlay({updated:data.updated_teams || [], skipped:skipped, errors:errors}, groups.length, groups.length, false);
+            completedVisibilityBundle = null;
+        }).fail(function(xhr){
+            const response = xhr.responseJSON;
+            const message = response && response.data && response.data.message ? response.data.message : 'Visibility update failed (' + xhr.status + ').';
+            showResult($status, false, message);
+            finishAssignmentOverlay({updated:[], skipped:[], errors:[{message:message}]}, groups.length, groups.length, false);
+        }).always(function(){
+            assignmentRunning = false;
+            $button.prop('disabled', true).text('Deactivate Selected Teams');
+        });
+    });
+
     $('#ifdc-apply-standard-assignments').on('click', async function(){
         const groups = selectedStandardGroups();
         if (!groups.length || assignmentRunning) return;
-        const total = groups.reduce(function(sum, group){ return sum + group.events.length; }, 0);
-        if (!total || groups.some(function(group){ return !group.target; })) return;
+        const total = groups.reduce(function(sum, group){ return sum + actionableStandardEvents(group).length; }, 0);
+        if (!total || groups.some(function(group){ return !group.target || (group.rename_enabled && !group.new_event_name); })) return;
 
         const lines = groups.map(function(group){
-            return group.name + ': ' + group.events.length + ' updates → ' + group.target.name + ' (capacity ' + group.capacity + ')';
+            const rename = group.rename_enabled ? ', names → “' + group.new_event_name + '”' : '';
+            return group.name + ': ' + actionableStandardEvents(group).length + ' updates → ' + group.target.name + (group.capacity === null ? ' (preserve capacity' + rename + ')' : ' (capacity ' + group.capacity + rename + ')');
         });
         if (!window.confirm('Update the standard monthly sessions?\n\n' + lines.join('\n') + '\n\nTotal: ' + total + ' events. This changes Dash. Continue?')) return;
 
@@ -849,8 +1000,9 @@ jQuery(function($){
         const totals = {updated: [], skipped: [], errors: []};
         const tasks = [];
         groups.forEach(function(group){
-            for (let i = 0; i < group.events.length; i += 10) {
-                tasks.push({group:group, events:group.events.slice(i, i + 10)});
+            const actionable = actionableStandardEvents(group);
+            for (let i = 0; i < actionable.length; i += 10) {
+                tasks.push({group:group, events:actionable.slice(i, i + 10)});
             }
         });
         let processedCount = 0;
@@ -862,10 +1014,12 @@ jQuery(function($){
             updateAssignmentOverlay(processedCount, total, i + 1, tasks.length, task.group.name + ' • batch ' + (i + 1) + ' of ' + tasks.length);
             const expectedTeamIds = {};
             const expectedCapacities = {};
+            const expectedEventNames = {};
             let hasReplacement = false;
             task.events.forEach(function(event){
                 expectedTeamIds[event.id] = parseInt(event.team_id || 0, 10);
                 expectedCapacities[event.id] = parseInt(event.capacity || 0, 10);
+                expectedEventNames[event.id] = event.name || '';
                 if (event.team_id && parseInt(event.team_id, 10) !== parseInt(task.group.target.id, 10)) hasReplacement = true;
             });
 
@@ -877,10 +1031,12 @@ jQuery(function($){
                         action: 'ifdc_assign_event_batch',
                         nonce: IFDC.nonce,
                         team_id: task.group.target.id,
-                        capacity: task.group.capacity,
+                        capacity: task.group.capacity === null ? '' : task.group.capacity,
+                        event_name: task.group.rename_enabled ? task.group.new_event_name : '',
                         allow_reassign: hasReplacement ? 1 : 0,
                         expected_team_ids: expectedTeamIds,
                         expected_capacities: expectedCapacities,
+                        expected_event_names: expectedEventNames,
                         event_ids: task.events.map(function(event){ return event.id; })
                     }
                 });
@@ -892,11 +1048,13 @@ jQuery(function($){
                     const event = task.group.events.find(function(item){ return parseInt(item.id, 10) === parseInt(id, 10); });
                     if (event) {
                         event.team_id = parseInt(task.group.target.id, 10);
-                        event.capacity = parseInt(task.group.capacity, 10);
+                        if (task.group.capacity !== null) event.capacity = parseInt(task.group.capacity, 10);
+                        if (task.group.rename_enabled) event.name = task.group.new_event_name;
                     }
                     const $row = $('.ifdc-standard-event-list tr[data-standard-event-id="' + id + '"]').addClass('ifdc-row-updated');
                     $row.find('td').eq(2).html('<span class="ifdc-status is-ready">Assigned to #' + escapeHtml(task.group.target.id) + '</span>');
-                    $row.find('td:last').html('<span class="ifdc-status is-ready">' + escapeHtml(task.group.capacity) + '</span>');
+                    $row.find('td:last').html('<span class="ifdc-status is-ready">' + (task.group.capacity === null ? escapeHtml(event ? event.capacity : '') + ' (preserved)' : escapeHtml(task.group.capacity)) + '</span>');
+                    if (event) $row.find('.ifdc-standard-event-name').text(event.name);
                 });
             } catch (error) {
                 const response = error && error.responseJSON;
@@ -1020,6 +1178,18 @@ jQuery(function($){
         renderAssignmentEvents(assignmentEvents);
     });
 
+    $('#ifdc-assignment-event-name').on('input', function(){
+        renderAssignmentEvents(assignmentEvents);
+    });
+
+    $('#ifdc-assignment-type').on('change', function(){
+        if (parseInt($(this).val(), 10) === 10 && !assignmentEventNameValue()) {
+            $('#ifdc-assignment-event-name').val('Public Skating');
+        }
+        populateAssignmentCapacity(true);
+        renderAssignmentEvents(assignmentEvents);
+    });
+
     $(document).on('change', '.ifdc-assignment-event', updateAssignmentControls);
     $('#ifdc-select-all-events').on('click', function(){
         $('.ifdc-assignment-event:not(:disabled)').prop('checked', true);
@@ -1033,7 +1203,8 @@ jQuery(function($){
     $('#ifdc-apply-event-assignment').on('click', async function(){
         const ids = selectedAssignmentIds();
         const capacity = assignmentCapacityValue();
-        if (!ids.length || (!assignmentTeam && capacity === null) || assignmentRunning) return;
+        const eventName = assignmentEventNameValue();
+        if (!ids.length || (!assignmentTeam && capacity === null && !eventName) || assignmentRunning) return;
         const replacementCount = ids.filter(function(id){
             const event = assignmentEvents.find(function(item){ return parseInt(item.id, 10) === id; });
             return assignmentTeam && event && event.team_id && parseInt(event.team_id, 10) !== assignmentTeam.id;
@@ -1042,18 +1213,23 @@ jQuery(function($){
             const event = assignmentEvents.find(function(item){ return parseInt(item.id, 10) === id; });
             return event && parseInt(event.capacity || 0, 10) !== capacity;
         }).length;
+        const nameChangeCount = !eventName ? 0 : ids.filter(function(id){
+            const event = assignmentEvents.find(function(item){ return parseInt(item.id, 10) === id; });
+            return event && String(event.name || '') !== eventName;
+        }).length;
         let message = assignmentTeam ?
             'Assign ' + ids.length + ' event' + (ids.length === 1 ? '' : 's') + ' to:\n\n' + assignmentTeam.label :
-            'Update capacity for ' + ids.length + ' event' + (ids.length === 1 ? '' : 's') + ' without changing their class assignments.';
+            'Update ' + ids.length + ' event' + (ids.length === 1 ? '' : 's') + ' without changing their class assignments.';
         if (replacementCount) message += '\n\n' + replacementCount + ' existing class assignment' + (replacementCount === 1 ? ' will be replaced.' : 's will be replaced.');
         if (capacity !== null) message += '\n\n' + capacityChangeCount + ' event capacit' + (capacityChangeCount === 1 ? 'y' : 'ies') + ' will be set to ' + capacity + '.';
+        if (eventName) message += '\n\n' + nameChangeCount + ' event name' + (nameChangeCount === 1 ? '' : 's') + ' will be set to “' + eventName + '”.';
         message += '\n\nThis changes Dash. Continue?';
         if (!window.confirm(message)) return;
 
         assignmentRunning = true;
         showAssignmentOverlay(ids.length, assignmentTeam ?
-            'Destination: ' + assignmentTeam.label + (capacity === null ? '' : ' • Capacity: ' + capacity) :
-            'Capacity only: ' + capacity + ' • Existing class assignments preserved');
+            'Destination: ' + assignmentTeam.label + (capacity === null ? '' : ' • Capacity: ' + capacity) + (eventName ? ' • Name: ' + eventName : '') :
+            (capacity === null ? 'Name only: ' + eventName : 'Capacity: ' + capacity + (eventName ? ' • Name: ' + eventName : '')) + ' • Existing class assignments preserved');
         updateAssignmentControls();
         const $button = $(this).text('Updating…');
         const $status = $('#ifdc-assignment-apply-status');
@@ -1069,12 +1245,14 @@ jQuery(function($){
             try {
                 const expectedTeamIds = {};
                 const expectedCapacities = {};
+                const expectedEventNames = {};
                 let chunkHasReplacement = false;
                 chunks[i].forEach(function(id){
                     const event = assignmentEvents.find(function(item){ return parseInt(item.id, 10) === id; });
                     const currentTeamId = event && event.team_id ? parseInt(event.team_id, 10) : 0;
                     expectedTeamIds[id] = currentTeamId;
                     expectedCapacities[id] = event && event.capacity !== null ? parseInt(event.capacity, 10) : 0;
+                    expectedEventNames[id] = event ? String(event.name || '') : '';
                     if (assignmentTeam && currentTeamId && currentTeamId !== assignmentTeam.id) chunkHasReplacement = true;
                 });
                 const response = await $.ajax({
@@ -1085,9 +1263,11 @@ jQuery(function($){
                         nonce: IFDC.nonce,
                         team_id: assignmentTeam ? assignmentTeam.id : 0,
                         capacity: capacity === null ? '' : capacity,
+                        event_name: eventName,
                         allow_reassign: chunkHasReplacement ? 1 : 0,
                         expected_team_ids: expectedTeamIds,
                         expected_capacities: expectedCapacities,
+                        expected_event_names: expectedEventNames,
                         event_ids: chunks[i]
                     }
                 });
@@ -1099,10 +1279,12 @@ jQuery(function($){
                     const event = assignmentEvents.find(function(item){ return parseInt(item.id, 10) === parseInt(id, 10); });
                     if (event && assignmentTeam) event.team_id = assignmentTeam.id;
                     if (event && capacity !== null) event.capacity = capacity;
+                    if (event && eventName) event.name = eventName;
                     const $row = $('.ifdc-assignment-table tr[data-event-id="' + id + '"]');
                     $row.addClass('ifdc-row-updated').find('.ifdc-assignment-event').prop('checked', false).prop('disabled', true);
                     if (capacity !== null) $row.find('td').eq(3).html('<span class="ifdc-status is-ready">' + escapeHtml(capacity) + '</span>');
                     if (assignmentTeam) $row.find('td:last').html('<span class="ifdc-status is-ready">Assigned to #' + escapeHtml(assignmentTeam.id) + '</span>');
+                    if (event && eventName) $row.find('td').eq(1).html('<strong>' + escapeHtml(eventName) + '</strong><br><code>#' + escapeHtml(event.id) + '</code> <span class="description">Type ' + escapeHtml(event.event_type_id || '—') + '</span>');
                 });
             } catch (error) {
                 const response = error && error.responseJSON;

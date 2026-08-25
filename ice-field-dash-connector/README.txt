@@ -1,7 +1,74 @@
 Ice & Field Dash Connector
-Version 1.6.0
+Version 1.6.10
 
 Shared Dash/DaySmart connection for Ice & Field WordPress plugins.
+
+1.6.10 fixes:
+- Completed Team cleanup now turns off Dash Online Registration (`online_signup`) as well as making the Team inactive
+- Post-update verification requires both settings, preventing inactive Teams from remaining visible as empty Customer Portal cards
+- Previously half-cleaned Teams with `inactive` on but Online Registration still enabled are detected and repaired
+
+1.6.9 adds:
+- Optional automatic-update summary emails to one or more administrator-selected recipients
+- Email delivery only when a scheduled run actually changes one or more events
+- A WordPress admin Automatic Update History retaining the newest 500 verified event changes
+- Before-and-after Team, capacity, and event-name details for every recorded automatic change
+- Guarded per-event Undo that refuses to overwrite later changes and verifies the restored Dash state
+- Undo automatically pauses future automation for that event, with a Resume automation control
+
+1.6.8 adds:
+- A Completed Monthly Visibility preview for Open Freestyle, Stick & Puck, Private Hockey Coaches Ice, and Public Skating
+- An optional cutoff mode that includes the selected completed month and every matching earlier monthly Team
+- The standard full-screen progress and completion overlay for bulk Team visibility updates
+- Team-only cleanup: completed monthly Teams are made inactive while their Levels and events remain unchanged
+- Automatic cleanup of the immediately previous month whenever event-assignment automation is enabled
+- Exact unique-destination matching, fresh-state checks, and post-update verification before a Team is considered inactive
+- Existing protected and themed Public Skating safeguards also prevent unsafe monthly Team cleanup
+
+1.6.7 adds:
+- Public Skating to hourly and Current + Next Month automatic assignment checks
+- Strict destination discovery using Level {year} Public Skating and Team {month} {year}
+- Exactly one active Level/Team match is required before any Public Skating update can run
+- Public Skating assignment, capacity 250, and the standard event name Public Skating are verified while protected-team and 23+ character themed-title exclusions remain in force
+- Season names are informational only, so renaming a Public Sessions Season does not affect destination matching
+- Event-name standardization remains manual for the other recurring session types
+
+1.6.6 adds:
+- Automatic permanent protection for Public Skating event type 10 titles longer than 22 characters
+- Themed Public Skating sessions are omitted from monthly previews and single-event searches without requiring future team IDs to be hard-coded
+- The same title-length rule is enforced again at update time, alongside the existing protected-team list
+
+1.6.5 adds:
+- Public Skating event type 10 capacity standardization at 250
+- Public Skating name-only, capacity-only, or combined corrections in the single-event workflow
+- Complete removal of Teams #117, #118, #218–221, #328, and #329 from both Public Skating preview paths
+- The existing server-side permanent block remains in place as a final safeguard for those special-event teams
+
+1.6.4 adds:
+- An optional bulk event-name control for each Standard Monthly Update group
+- Previewed old-to-new name changes and a final confirmation summary
+- Public Skating defaults to the consistent event name “Public Skating”
+- Fresh-name validation and post-update verification alongside the existing assignment and capacity safeguards
+
+1.6.3 adds:
+- Manual Public Skating reassignment to the Standard Monthly Update preview for Dash event type 10
+- Year-specific destination safeguards for 2026 Level #207 / Teams #564–571 and 2027 Level #208 / Teams #572–577
+- Permanent exclusion of Public Skating events assigned to Teams #117, #118, #218–221, #328, and #329
+- Capacity preservation for Public Skating and an unchecked-by-default manual confirmation step
+- Explicit exclusion of Public Skating from hourly and Current + Next Month automation
+
+1.6.2 adds:
+- Hourly automatic assignment and capacity repair from 5:45 AM through 6:45 PM for the current and following month
+- A per-site enable switch that is disabled by default, preventing duplicate automation across multiple WordPress websites
+- Scheduling based on the rink timezone stored by Rink Displays, with the WordPress timezone as a fallback
+- The proven Standard Monthly Update rules for Open Freestyle, Stick & Puck, and Private Hockey Coaches Ice
+- Strict unique-destination checks and post-update verification before an automated month is considered successful
+- Last-run status and a manual Current + Next Month run control on Event Assignment
+
+1.6.1 adds:
+- A dedicated Dash Connector > Check GitHub Releases menu item
+- Immediate redirect to WordPress Updates after checking the private release feed
+- Clear success or configuration guidance on the Updates screen
 
 1.6.0 adds:
 - Private GitHub Release updates for all Ice & Field plugins and the Productions Theme
