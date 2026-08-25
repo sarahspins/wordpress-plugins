@@ -233,25 +233,67 @@ class IFDC_Client {
     }
 
     /**
-     * Update an event's destination class, capacity, or both.
+     * Update an event's destination class, capacity, name, or any combination.
      * A null team ID preserves the current class/team relationship.
      */
-    public static function update_event_assignment($event_id, $team_id = null, $capacity = null) {
+    public static function update_event_assignment($event_id, $team_id = null, $capacity = null, $event_name = null) {
         $event_id = absint($event_id);
         $team_id = $team_id === null ? null : absint($team_id);
-        if (!$event_id || (!$team_id && $capacity === null)) {
+        $event_name = $event_name === null ? null : trim(sanitize_text_field($event_name));
+        if ($event_name === '') $event_name = null;
+        if (!$event_id || (!$team_id && $capacity === null && $event_name === null)) {
             return new WP_Error('ifdc_invalid_assignment', 'A valid event ID and at least one update are required.');
         }
 
         $attributes = [];
         if ($team_id) $attributes['hteam_id'] = $team_id;
         if ($capacity !== null) $attributes['register_capacity'] = max(0, absint($capacity));
+        if ($event_name !== null) $attributes['desc'] = $event_name;
 
         $result = self::request('PATCH', 'events/' . $event_id, [
             'data' => [
                 'type' => 'events',
                 'id' => (string) $event_id,
                 'attributes' => $attributes,
+            ],
+        ]);
+        if (!is_wp_error($result)) self::clear_cache();
+        return $result;
+    }
+
+    /** Restore the complete state captured before one automatic event update. */
+    public static function restore_automatic_event_state($event_id, $team_id, $capacity, $event_name) {
+        $event_id = absint($event_id);
+        if (!$event_id) return new WP_Error('ifdc_invalid_event', 'A valid event ID is required.');
+
+        $result = self::request('PATCH', 'events/' . $event_id, [
+            'data' => [
+                'type' => 'events',
+                'id' => (string) $event_id,
+                'attributes' => [
+                    'hteam_id' => absint($team_id) ?: null,
+                    'register_capacity' => max(0, absint($capacity)),
+                    'desc' => sanitize_text_field($event_name),
+                ],
+            ],
+        ]);
+        if (!is_wp_error($result)) self::clear_cache();
+        return $result;
+    }
+
+    /** Make one completed Team inactive and remove it from online registration. */
+    public static function update_team_visibility($team_id, $inactive) {
+        $team_id = absint($team_id);
+        if (!$team_id) return new WP_Error('ifdc_invalid_team', 'A valid Team ID is required.');
+
+        $result = self::request('PATCH', 'teams/' . $team_id, [
+            'data' => [
+                'type' => 'teams',
+                'id' => (string) $team_id,
+                'attributes' => [
+                    'inactive' => (bool) $inactive,
+                    'online_signup' => !(bool) $inactive,
+                ],
             ],
         ]);
         if (!is_wp_error($result)) self::clear_cache();

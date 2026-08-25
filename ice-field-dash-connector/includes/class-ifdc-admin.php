@@ -245,10 +245,10 @@ class IFDC_Admin {
                 'description' => 'Facility resources such as rinks or rooms.',
             ],
             'leagues' => [
-                'label' => 'Leagues / programs',
+                'label' => 'Levels / programs',
                 'endpoint' => 'leagues',
                 'query' => '',
-                'description' => 'League or program-style records exposed by this Dash account.',
+                'description' => 'The working Dash API resource for Levels and program-style records in this account.',
             ],
             'seasons' => [
                 'label' => 'Seasons',
@@ -257,10 +257,10 @@ class IFDC_Admin {
                 'description' => 'Season records, when available through the account API.',
             ],
             'levels' => [
-                'label' => 'Levels',
+                'label' => 'Raw “levels” endpoint (optional)',
                 'endpoint' => 'levels',
                 'query' => '',
-                'description' => 'Program or class levels, when available through the account API.',
+                'description' => 'An optional literal endpoint that is not exposed by every Dash account. Use Levels / programs above for this site.',
             ],
             'classes' => [
                 'label' => 'Classes',
@@ -326,7 +326,7 @@ class IFDC_Admin {
                         <button type="button" class="ifdc-object-link is-active" data-endpoint="teams"><span class="dashicons dashicons-groups"></span> Teams</button>
                         <button type="button" class="ifdc-object-link" data-endpoint="events"><span class="dashicons dashicons-calendar-alt"></span> Events</button>
                         <button type="button" class="ifdc-object-link" data-endpoint="customers"><span class="dashicons dashicons-admin-users"></span> Customers</button>
-                        <button type="button" class="ifdc-object-link" data-endpoint="leagues"><span class="dashicons dashicons-category"></span> Leagues</button>
+                        <button type="button" class="ifdc-object-link" data-endpoint="leagues"><span class="dashicons dashicons-category"></span> Levels / Programs</button>
                         <button type="button" class="ifdc-object-link" data-endpoint="seasons"><span class="dashicons dashicons-archive"></span> Seasons</button>
                         <button type="button" class="ifdc-object-link" data-endpoint="resources"><span class="dashicons dashicons-location-alt"></span> Resources</button>
                     </div>
