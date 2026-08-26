@@ -33,6 +33,8 @@ class IFDC_Admin {
         add_submenu_page('ifdc-dashboard', 'Dash Settings', 'Settings', 'manage_options', 'ifdc-settings', [__CLASS__, 'settings_page']);
         IFDC_GitHub_Updater::menu();
         IFDC_Event_Assignment::menu();
+        IFDC_Schedule_Gaps::menu();
+        IFDC_Mailer::menu();
         add_submenu_page('ifdc-dashboard', 'Dash Object Explorer', 'Object Explorer', self::CAP_EXPLORE, 'ifdc-explorer', [__CLASS__, 'explorer_page']);
         add_submenu_page('ifdc-dashboard', 'Discovered Dash Schema', 'Schema', 'manage_options', 'ifdc-schema', [__CLASS__, 'schema_page']);
     }
