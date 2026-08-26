@@ -21,10 +21,16 @@ jobs:
             unzip -t "$package"
           done
 
+      - name: Choose next suite tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          latest_suite="$(gh release list --repo "${{ github.repository }}" --limit 100 --json tagName --jq '[.[].tagName | select(test("^suite-[0-9]+$")) | sub("suite-"; "") | tonumber] | max // 0')"
+          echo "RELEASE_TAG=suite-$((latest_suite + 1))" >> "$GITHUB_ENV"
+
       - name: Publish private release
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: suite-${{ github.run_number }}
         run: |
           gh release create "$RELEASE_TAG" dist/* \
             --repo "${{ github.repository }}" \
