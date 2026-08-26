@@ -1319,3 +1319,65 @@ jQuery(function($){
     populateAssignmentCapacity(true);
     updateAssignmentControls();
 });
+
+jQuery(function($){
+    if (!$('#ifdc-find-schedule-gaps').length) return;
+    function esc(value) { return $('<div>').text(value == null ? '' : String(value)).html(); }
+    function ymd(date) { return date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0') + '-' + String(date.getDate()).padStart(2, '0'); }
+    function ranges() {
+        if ($('#ifdc-gap-range').val() === 'month') {
+            const parts = String($('#ifdc-gap-month').val()).split('-').map(Number);
+            if (parts.length !== 2 || !parts[0] || !parts[1]) return null;
+            return {start: ymd(new Date(parts[0], parts[1] - 1, 1)), end: ymd(new Date(parts[0], parts[1], 0))};
+        }
+        const selected = new Date(String($('#ifdc-gap-date').val()) + 'T12:00:00');
+        if (Number.isNaN(selected.getTime())) return null;
+        const monday = new Date(selected); monday.setDate(selected.getDate() - ((selected.getDay() + 6) % 7));
+        const sunday = new Date(monday); sunday.setDate(monday.getDate() + 6);
+        return {start: ymd(monday), end: ymd(sunday)};
+    }
+    function tableRows(items, includeDate, includeCutStatus) {
+        let html = '<div class="ifdc-table-wrap"><table class="widefat striped ifdc-gap-table"><thead><tr>' + (includeDate ? '<th>Date</th>' : '') + '<th>Resource</th><th>Open time</th><th>Length</th>' + (includeCutStatus ? '<th>Resurfacing</th>' : '') + '</tr></thead><tbody>';
+        items.forEach(function(item){
+            const rowClasses = {staffing: 'ifdc-cut-staffing', first: 'ifdc-cut-first', second: 'ifdc-cut-second'};
+            html += '<tr class="' + (rowClasses[item.cut_status_class] || '') + '">' + (includeDate ? '<td>' + esc(item.date_label) + '</td>' : '') + '<td><strong>' + esc(item.resource_name) + '</strong></td><td>' + esc(item.start_label + '–' + item.end_label) + '</td><td>' + esc(item.minutes) + ' minutes</td>' + (includeCutStatus ? '<td><span class="ifdc-cut-status is-' + esc(item.cut_status_class || 'none') + '">' + esc(item.cut_status || 'No overlap') + '</span></td>' : '') + '</tr>';
+        });
+        return html + '</tbody></table></div>';
+    }
+    function table(title, items, empty, groupByDay) {
+        let html = '<div class="ifdc-gap-section"><h3>' + esc(title) + ' <span class="ifdc-gap-count">' + items.length + '</span></h3>';
+        if (!items.length) return html + '<p class="description">' + esc(empty) + '</p></div>';
+        if (!groupByDay) return html + tableRows(items, true, false) + '</div>';
+        const groups = {};
+        items.forEach(function(item){ const key = String(item.start || '').slice(0, 10); (groups[key] = groups[key] || []).push(item); });
+        Object.keys(groups).sort().forEach(function(key){
+            const group = groups[key];
+            html += '<div class="ifdc-gap-day"><div class="ifdc-gap-day-heading"><strong>' + esc(group[0].date_label) + '</strong><span>' + group.length + ' ice cut' + (group.length === 1 ? '' : 's') + '</span></div>' + tableRows(group, false, true) + '</div>';
+        });
+        return html + '</div>';
+    }
+    $('#ifdc-gap-range').on('change', function(){
+        const month = $(this).val() === 'month';
+        $('#ifdc-gap-week-label').prop('hidden', month);
+        $('#ifdc-gap-month-label').prop('hidden', !month);
+    });
+    $('#ifdc-find-schedule-gaps').on('click', function(){
+        const range = ranges(), $button = $(this), $status = $('#ifdc-gap-status');
+        if (!range) { $status.removeClass('is-success').addClass('is-error').prop('hidden', false).text('Choose a valid week or month.'); return; }
+        $button.prop('disabled', true).text('Scanning Schedule…');
+        $status.removeClass('is-error').addClass('is-success').prop('hidden', false).text('Reading events and calculating both kinds of gaps…');
+        $.post(IFDC.ajax, {action:'ifdc_find_schedule_gaps', nonce:IFDC.nonce, start:range.start, end:range.end, day_start:$('#ifdc-gap-day-start').val(), day_end:$('#ifdc-gap-day-end').val(), minimum:$('#ifdc-gap-minutes').val()})
+            .done(function(response){
+                if (!response.success) { $status.removeClass('is-success').addClass('is-error').text(response.data && response.data.message ? response.data.message : 'Search failed.'); return; }
+                const data = response.data || {}, gaps = data.gaps || [], cuts = data.ice_cuts || [];
+                $('#ifdc-gap-results').removeClass('ifdc-empty-state').html(table('Schedule gaps (45+ minutes)', gaps, 'No schedule gaps met the selected minimum.', false) + table('Likely ice cuts (15 or 30 minutes)', cuts, 'No likely ice cuts were found between events.', true));
+                $('#ifdc-gap-summary').text(range.start + ' through ' + range.end + ' • ' + data.resource_count + ' resources • ' + data.event_count + ' events scanned');
+                $('#ifdc-gap-print').prop('hidden', false);
+                let message = gaps.length + ' schedule gap' + (gaps.length === 1 ? '' : 's') + ' and ' + cuts.length + ' likely ice cut' + (cuts.length === 1 ? '' : 's') + ' found.';
+                if (data.limited) message += ' The display limit was reached.';
+                $status.removeClass('is-error').addClass('is-success').text(message);
+            }).fail(function(xhr){ const response = xhr.responseJSON; $status.removeClass('is-success').addClass('is-error').text(response && response.data && response.data.message ? response.data.message : 'Schedule search failed (' + xhr.status + ').'); })
+            .always(function(){ $button.prop('disabled', false).text('Find Schedule Gaps'); });
+    });
+    $('#ifdc-gap-print').on('click', function(){ window.print(); });
+});

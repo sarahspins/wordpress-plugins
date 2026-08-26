@@ -47,7 +47,7 @@ class IFDC_Event_Assignment {
         );
         add_submenu_page(
             'ifdc-dashboard',
-            'Automatic Update History',
+            'Event Update History',
             'Update History',
             IFDC_Admin::CAP_ASSIGN_EVENTS,
             'ifdc-update-history',
@@ -62,6 +62,7 @@ class IFDC_Event_Assignment {
         $next_run = wp_next_scheduled(self::NIGHTLY_HOOK);
         $automation_enabled = self::automation_enabled();
         $automation_emails = (array) get_option(self::AUTOMATION_EMAIL_OPTION, []);
+        $mail_status = IFDC_Mailer::status('automatic_event_updates');
         $automation_timezone = self::automation_timezone();
         $visibility_month = (new DateTimeImmutable('first day of last month', $automation_timezone))->format('Y-m');
         ?>
@@ -107,6 +108,11 @@ class IFDC_Event_Assignment {
                         </p>
                         <p><button type="submit" class="button button-primary">Save Automation Setting</button></p>
                     </form>
+                    <?php if (!empty($mail_status['attempted_at'])): ?>
+                        <p class="description"><strong>Last email attempt:</strong> <?php echo esc_html(wp_date(get_option('date_format') . ' ' . get_option('time_format'), absint($mail_status['attempted_at']), $automation_timezone)); ?> — <?php echo empty($mail_status['failed']) ? 'accepted by WordPress mail for ' . esc_html(count((array) $mail_status['accepted'])) . ' recipient(s)' : 'failed: ' . esc_html(implode(' | ', (array) $mail_status['failed'])); ?>.</p>
+                    <?php else: ?>
+                        <p class="description"><strong>Last email attempt:</strong> none recorded.</p>
+                    <?php endif; ?>
                     <?php if ($automation_enabled): ?>
                         <p><?php echo $next_run ? 'Next scheduled check: ' . esc_html(wp_date(get_option('date_format') . ' ' . get_option('time_format'), $next_run, $automation_timezone)) . '.' : 'The next check is being scheduled.'; ?></p>
                     <?php else: ?>
@@ -727,22 +733,26 @@ class IFDC_Event_Assignment {
 
         $summary['finished_at'] = time();
         if ($automatic && !empty($summary['event_changes'])) {
-            self::store_automatic_history($summary['event_changes'], $summary['finished_at']);
-            self::send_automatic_update_email($summary);
+            self::store_event_history($summary['event_changes'], $summary['finished_at'], 'automatic');
+            $summary['notification_accepted'] = self::send_automatic_update_email($summary);
         }
         update_option(self::NIGHTLY_RESULT_OPTION, $summary, false);
         delete_transient(self::NIGHTLY_LOCK);
         return $summary;
     }
 
-    private static function store_automatic_history($changes, $timestamp) {
+    private static function store_event_history($changes, $timestamp, $source = 'automatic') {
         $history = (array) get_option(self::AUTOMATION_HISTORY_OPTION, []);
         $new_items = [];
+        $user = get_userdata(get_current_user_id());
         foreach ((array) $changes as $change) {
             if (empty($change['event_id'])) continue;
             $change['history_id'] = wp_generate_uuid4();
             $change['changed_at'] = absint($timestamp);
             $change['undone_at'] = 0;
+            $change['source'] = $source === 'manual' ? 'manual' : 'automatic';
+            $change['user_id'] = $source === 'manual' ? get_current_user_id() : 0;
+            $change['user_name'] = $source === 'manual' && $user ? sanitize_text_field($user->display_name) : '';
             $new_items[] = $change;
         }
         update_option(self::AUTOMATION_HISTORY_OPTION, array_slice(array_merge(array_reverse($new_items), $history), 0, self::MAX_HISTORY_ITEMS), false);
@@ -750,9 +760,9 @@ class IFDC_Event_Assignment {
 
     private static function send_automatic_update_email($summary) {
         $recipients = array_values(array_filter((array) get_option(self::AUTOMATION_EMAIL_OPTION, []), 'is_email'));
-        if (!$recipients) return;
+        if (!$recipients) return false;
         $changes = (array) ($summary['event_changes'] ?? []);
-        if (!$changes) return;
+        if (!$changes) return false;
 
         $site_name = wp_specialchars_decode(get_bloginfo('name'), ENT_QUOTES);
         $subject = sprintf('[%s] Dash Connector automatically updated %d event%s', $site_name, count($changes), count($changes) === 1 ? '' : 's');
@@ -778,7 +788,7 @@ class IFDC_Event_Assignment {
         }
         $lines[] = '';
         $lines[] = 'Review history or use guarded Undo: ' . admin_url('admin.php?page=ifdc-update-history');
-        wp_mail($recipients, $subject, implode("\n", $lines));
+        return IFDC_Mailer::send('automatic_event_updates', $recipients, $subject, implode("\n", $lines));
     }
 
     public static function history_page() {
@@ -788,17 +798,17 @@ class IFDC_Event_Assignment {
         $notice = sanitize_key($_GET['ifdc_history_notice'] ?? '');
         ?>
         <div class="wrap ifdc-wrap">
-            <h1>Automatic Update History</h1>
-            <p class="ifdc-lead">Verified event changes made by scheduled Dash Connector runs. The newest 500 changes are retained.</p>
+            <h1>Event Update History</h1>
+            <p class="ifdc-lead">Verified event changes made by scheduled automation and manual Event Assignment. The newest 500 changes are retained.</p>
             <?php if ($notice): ?>
-                <div class="notice <?php echo $notice === 'undone' ? 'notice-success' : 'notice-error'; ?> inline"><p><?php echo $notice === 'undone' ? 'The event was restored to its recorded previous state.' : 'Undo was not performed because the event no longer matches the automatic update or Dash rejected the restoration.'; ?></p></div>
+                <div class="notice <?php echo $notice === 'undone' ? 'notice-success' : 'notice-error'; ?> inline"><p><?php echo $notice === 'undone' ? 'The event was restored to its recorded previous state.' : 'Undo was not performed because the event no longer matches its recorded updated state or Dash rejected the restoration.'; ?></p></div>
             <?php endif; ?>
             <section class="ifdc-card">
                 <?php if (!$history): ?>
-                    <p>No automatic event changes have been recorded yet.</p>
+                    <p>No event assignment changes have been recorded yet.</p>
                 <?php else: ?>
                     <div class="ifdc-table-wrap"><table class="widefat striped">
-                        <thead><tr><th>Changed</th><th>Event</th><th>Group</th><th>Before</th><th>After</th><th>Status</th></tr></thead>
+                        <thead><tr><th>Changed</th><th>Source</th><th>Event</th><th>Group</th><th>Before</th><th>After</th><th>Status</th></tr></thead>
                         <tbody>
                         <?php foreach ($history as $item):
                             $before = (array) ($item['before'] ?? []);
@@ -808,10 +818,11 @@ class IFDC_Event_Assignment {
                         ?>
                             <tr>
                                 <td><?php echo esc_html(wp_date(get_option('date_format') . ' ' . get_option('time_format'), absint($item['changed_at'] ?? 0), self::automation_timezone())); ?></td>
+                                <td><strong><?php echo ($item['source'] ?? 'automatic') === 'manual' ? 'Manual' : 'Automatic'; ?></strong><?php if (!empty($item['user_name'])): ?><br><span class="description"><?php echo esc_html($item['user_name']); ?></span><?php endif; ?></td>
                                 <td><strong>#<?php echo esc_html(absint($item['event_id'] ?? 0)); ?> <?php echo esc_html($item['event_name'] ?? 'Event'); ?></strong><br><span class="description"><?php echo esc_html($item['event_start'] ?? ''); ?></span></td>
                                 <td><?php echo esc_html($item['group'] ?? ''); ?></td>
-                                <td>Team #<?php echo esc_html(absint($before['team_id'] ?? 0)); ?><br>Capacity <?php echo esc_html(absint($before['capacity'] ?? 0)); ?><br><?php echo esc_html($before['name'] ?? ''); ?></td>
-                                <td>Team #<?php echo esc_html(absint($after['team_id'] ?? 0)); ?><br>Capacity <?php echo esc_html(absint($after['capacity'] ?? 0)); ?><br><?php echo esc_html($after['name'] ?? ''); ?></td>
+                                <td><?php echo !empty($before['team_id']) ? 'Team #' . esc_html(absint($before['team_id'])) : 'Unassigned'; ?><br>Capacity <?php echo esc_html(absint($before['capacity'] ?? 0)); ?><br><?php echo esc_html($before['name'] ?? ''); ?></td>
+                                <td><?php echo !empty($after['team_id']) ? 'Team #' . esc_html(absint($after['team_id'])) : 'Unassigned'; ?><br>Capacity <?php echo esc_html(absint($after['capacity'] ?? 0)); ?><br><?php echo esc_html($after['name'] ?? ''); ?></td>
                                 <td>
                                     <?php if ($undone): ?>
                                         <span class="ifdc-status is-ready">Undone<?php echo $paused ? ' · automation paused' : ''; ?></span>
@@ -822,7 +833,7 @@ class IFDC_Event_Assignment {
                                             <button type="submit" class="button button-small">Resume automation</button>
                                         </form><?php endif; ?>
                                     <?php else: ?>
-                                        <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" onsubmit="return confirm('Restore this event and prevent future automatic changes to it?');">
+                                        <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" onsubmit="return confirm('Restore this event to its recorded previous state and prevent automation from changing it again?');">
                                             <input type="hidden" name="action" value="ifdc_undo_automatic_event_update">
                                             <input type="hidden" name="history_id" value="<?php echo esc_attr($item['history_id'] ?? ''); ?>">
                                             <?php wp_nonce_field('ifdc_undo_automatic_event_update_' . ($item['history_id'] ?? '')); ?>
@@ -1304,6 +1315,7 @@ class IFDC_Event_Assignment {
         $updated = [];
         $skipped = [];
         $errors = [];
+        $history_changes = [];
         foreach ($event_ids as $event_id) {
             $current_payload = IFDC_Client::get_data('events/' . $event_id, [], ['force' => true, 'cache' => false]);
             if (is_wp_error($current_payload)) {
@@ -1391,7 +1403,26 @@ class IFDC_Event_Assignment {
                 continue;
             }
             $updated[] = $event_id;
+            $history_changes[] = [
+                'event_id' => $event_id,
+                'event_name' => sanitize_text_field($verify_attrs['desc'] ?? $current_name),
+                'event_start' => sanitize_text_field($verify_attrs['start'] ?? $attrs['start'] ?? ''),
+                'month' => !empty($attrs['start']) ? substr(sanitize_text_field($attrs['start']), 0, 7) : '',
+                'group' => 'Manual Event Assignment',
+                'before' => [
+                    'team_id' => $current_team_id,
+                    'capacity' => $current_capacity,
+                    'name' => $current_name,
+                ],
+                'after' => [
+                    'team_id' => absint($verify_attrs['hteam_id'] ?? 0),
+                    'capacity' => absint($verify_attrs['register_capacity'] ?? 0),
+                    'name' => sanitize_text_field($verify_attrs['desc'] ?? ''),
+                ],
+            ];
         }
+
+        if ($history_changes) self::store_event_history($history_changes, time(), 'manual');
 
         wp_send_json_success([
             'updated' => $updated,
