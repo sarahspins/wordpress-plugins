@@ -64,10 +64,12 @@ class IFPROG_Shortcodes {
             $level_filters,
             $group_filters,
             $category_filters,
+            $format_filters,
             $include_show
         ) {
             $season_id = absint(IFPROG_Fields::get($program->ID, 'season_id'));
             if ($season_ids !== null && !in_array($season_id, $season_ids, true)) return false;
+            if ($format_filters && $season_id && !self::season_matches_tax_filter($season_id, 'ifprog_format', $format_filters)) return false;
             if (!$include_show && self::program_is_show_related($program)) return false;
             if (!self::program_matches_category($program->ID, $category_filters)) return false;
             if (!self::program_matches_level($program->ID, $level_filters)) return false;
@@ -198,10 +200,18 @@ class IFPROG_Shortcodes {
         $hide_finished = self::truthy($atts['hide_finished']);
         $catalog_now = current_datetime()->getTimestamp();
         $all_programs = get_posts($query_args);
-        $programs = array_values(array_filter($all_programs, function($program) use ($allowed_states, $season_ids, $level_filters, $group_filters, $category_filters, $hide_finished, $catalog_now) {
+        $programs = array_values(array_filter($all_programs, function($program) use ($allowed_states, $season_ids, $level_filters, $group_filters, $category_filters, $format_filters, $hide_finished, $catalog_now) {
+            $program_season_id = absint(IFPROG_Fields::get($program->ID, 'season_id'));
             if (
                 $season_ids !== null &&
-                !in_array(absint(IFPROG_Fields::get($program->ID, 'season_id')), $season_ids, true)
+                !in_array($program_season_id, $season_ids, true)
+            ) {
+                return false;
+            }
+            if (
+                $format_filters &&
+                $program_season_id &&
+                !self::season_matches_tax_filter($program_season_id, 'ifprog_format', $format_filters)
             ) {
                 return false;
             }
@@ -910,6 +920,7 @@ class IFPROG_Shortcodes {
             if (!in_array(self::standalone_level_state($season_id), $allowed_states, true)) return false;
             if (!self::season_matches_tax_filter($season_id, 'ifprog_sport', $sport_filters)) return false;
             if (!self::season_matches_tax_filter($season_id, 'ifprog_format', $format_filters)) return false;
+            if (!self::object_matches_terms($level->ID, 'ifprog_format', $format_filters)) return false;
             if (!self::object_matches_terms($level->ID, 'ifprog_category', $category_filters)) return false;
             if (!self::level_matches_filter($level, $level_filters)) return false;
             if (!self::object_matches_terms($level->ID, 'ifprog_group', $group_filters)) return false;
@@ -1010,6 +1021,7 @@ class IFPROG_Shortcodes {
         unset($session);
 
         uasort($sessions, function($a, $b) {
+            if ($a['pinned'] !== $b['pinned']) return $a['pinned'] ? -1 : 1;
             if ($a['sort_date'] !== $b['sort_date']) return $a['sort_date'] <=> $b['sort_date'];
             if ($a['sort_end_date'] !== $b['sort_end_date']) return $a['sort_end_date'] <=> $b['sort_end_date'];
             if ($a['order'] !== $b['order']) return $a['order'] <=> $b['order'];
@@ -1036,6 +1048,7 @@ class IFPROG_Shortcodes {
             'registration_opened' => $season ? IFPROG_Status::season_registration_opened($season_id) : false,
             'registration_closed' => $season ? IFPROG_Status::season_registration_closed($season_id) : false,
             'order' => $season ? self::season_order($season_id) : 9999,
+            'pinned' => $season ? get_post_meta($season_id, '_ifprog_season_pin_to_top', true) === '1' : false,
             'sort_date' => IFPROG_Status::timestamp($start_date) ?: PHP_INT_MAX,
             'sort_end_date' => IFPROG_Status::timestamp($end_date) ?: PHP_INT_MAX,
             'is_league' => $season_id

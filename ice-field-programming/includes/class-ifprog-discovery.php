@@ -95,11 +95,11 @@ class IFPROG_Discovery {
      * Compare imported Current and Upcoming Seasons to their last successful
      * sync snapshot. New Seasons do not require the heavier hierarchy lookup.
      */
-    public static function refresh($seasons, $force = true) {
+    public static function refresh($seasons, $force = true, $force_shared = null) {
         $existing = self::existing_seasons();
         $excluded = self::excluded();
-        $checks = [];
-        $force_shared = (bool) $force;
+        $checks = self::cached_checks();
+        $force_shared = $force_shared === null ? (bool) $force : (bool) $force_shared;
 
         foreach ((array) $seasons as $season_record) {
             $dash_id = absint($season_record['id'] ?? 0);
@@ -123,23 +123,39 @@ class IFPROG_Discovery {
                 continue;
             }
 
-            $snapshot = self::snapshot($preview);
-            $baseline_created = false;
-            if (!self::saved_snapshot($wp_id)) {
-                self::store_snapshot($wp_id, $snapshot);
-                $baseline_created = true;
-            }
-            update_post_meta($wp_id, self::LAST_CHECKED_KEY, current_time('mysql'));
-            $checks[$dash_id] = [
-                'snapshot' => $snapshot,
-                'hash' => self::snapshot_hash($snapshot),
-                'checked_at' => current_time('mysql'),
-                'baseline_created' => $baseline_created ? 1 : 0,
-            ];
+            $checks[$dash_id] = self::comparison_check($wp_id, $preview);
         }
 
         set_transient(self::CHECKS_TRANSIENT, $checks, 15 * MINUTE_IN_SECONDS);
         return $checks;
+    }
+
+    public static function record_comparison($wp_season_id, $preview) {
+        if (!is_array($preview)) return [];
+        $wp_season_id = absint($wp_season_id);
+        $dash_id = absint($preview['season_id'] ?? 0);
+        if (!$wp_season_id || !$dash_id) return [];
+
+        $checks = self::cached_checks();
+        $checks[$dash_id] = self::comparison_check($wp_season_id, $preview);
+        set_transient(self::CHECKS_TRANSIENT, $checks, 15 * MINUTE_IN_SECONDS);
+        return $checks;
+    }
+
+    private static function comparison_check($wp_season_id, $preview) {
+        $snapshot = self::snapshot($preview);
+        $baseline_created = false;
+        if (!self::saved_snapshot($wp_season_id)) {
+            self::store_snapshot($wp_season_id, $snapshot);
+            $baseline_created = true;
+        }
+        update_post_meta($wp_season_id, self::LAST_CHECKED_KEY, current_time('mysql'));
+        return [
+            'snapshot' => $snapshot,
+            'hash' => self::snapshot_hash($snapshot),
+            'checked_at' => current_time('mysql'),
+            'baseline_created' => $baseline_created ? 1 : 0,
+        ];
     }
 
     public static function save_sync_snapshot($wp_season_id, $preview) {

@@ -426,6 +426,9 @@ class IFPROG_Sync {
         if (!$team_id) return new WP_Error('ifprog_sync_invalid_team', 'A selected Team did not include a valid Dash ID.');
 
         $post_id = self::find_program($team_id);
+        if (!$post_id && absint($row['league_id'] ?? 0) === self::CURRENT_LEARN_TO_PLAY_LEAGUE_ID) {
+            $post_id = self::find_single_program_for_level($level_post_id);
+        }
         $is_new = !$post_id;
 
         if ($is_new) {
@@ -743,6 +746,23 @@ class IFPROG_Sync {
             ],
         ]);
         return $ids ? absint($ids[0]) : 0;
+    }
+
+    private static function find_single_program_for_level($level_id) {
+        $level_id = absint($level_id);
+        if (!$level_id) return 0;
+        $ids = get_posts([
+            'post_type' => 'ifprog_program',
+            'post_status' => array_keys(get_post_stati()),
+            'posts_per_page' => 2,
+            'fields' => 'ids',
+            'meta_query' => [
+                'relation' => 'OR',
+                ['key' => '_ifprog_dash_level_id', 'value' => $level_id, 'type' => 'NUMERIC'],
+                ['key' => '_ifprog_level_id', 'value' => $level_id, 'type' => 'NUMERIC'],
+            ],
+        ]);
+        return count($ids) === 1 ? absint($ids[0]) : 0;
     }
 
     private static function find_level($league_id, $season_post_id) {
