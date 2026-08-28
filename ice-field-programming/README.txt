@@ -1,6 +1,6 @@
 === Ice & Field Programming ===
 Contributors: iceandfield
-Stable tag: 1.9.2
+Stable tag: 1.9.2.2
 Requires at least: 6.4
 Requires PHP: 7.4
 Requires Plugins: ice-field-dash-connector
@@ -10,6 +10,10 @@ Manage seasons, program groups, levels, classes, leagues, camps, clinics, and pu
 == Description ==
 
 Ice & Field Programming is the public program and registration module for the main Ice & Field website.
+
+Version 1.9.2.2 adds a per-Season “Pin this Season to the top” display override. Pinned Seasons appear before automatically date-sorted Seasons in customer-facing catalogs and offering lists, while all unpinned Seasons retain their existing chronological order.
+
+Version 1.9.2.1 separates lightweight Season discovery from hierarchy comparison work for compatibility with hosts that enforce short gateway timeouts. Opening or refreshing Season Discovery no longer rebuilds every imported Season. Use Check Changes on one imported Season to refresh only that comparison; protected previews request fresh Teams for the selected Season while reusing cached shared Dash indexes.
 
 Version 1.9.2 adds opt-in daily synchronization for Seasons that have already been imported from Dash. Each imported Season has its own Keep up to date automatically checkbox. While its Dash registration window is open, Programming imports newly added eligible class offerings and refreshes protected Dash-controlled facts once daily. Name and description synchronization are separate opt-ins and remain off by default; descriptions retain the existing protection for locally edited WordPress copy. Closed, not-yet-open, and undated registration windows are skipped safely, and every run is recorded in the Programming Activity Log. On the public catalog, a registration-closed Season retains its chronological position while classes are still occurring; an older Season disappears automatically once every dated class occurrence has passed.
 

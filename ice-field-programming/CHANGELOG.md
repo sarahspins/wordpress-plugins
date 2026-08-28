@@ -1,5 +1,24 @@
 # Ice & Field Programming Changelog
 
+## 1.9.2.2
+
+- Adds a per-Season **Pin this Season to the top** presentation override.
+- Places pinned Seasons first in public catalogs and offering lists while retaining chronological sorting for everything else.
+- Keeps the override local to WordPress so protected Dash synchronization does not replace it.
+
+## 1.9.2.1
+
+- Separates lightweight Dash Season discovery from resource-intensive hierarchy comparisons.
+- Stops automatically rebuilding every imported Current and Upcoming Season when the Discovery page opens or its Season list is refreshed.
+- Adds a per-imported-Season Check Changes action so only one hierarchy is compared at a time.
+- Reuses cached shared League, Product, registration, and event indexes while requesting fresh Teams for the selected Season.
+- Records elapsed time and peak memory for individual comparison checks in the Activity Log.
+- Enforces Format filters consistently across the Season, Level, and Program hierarchy so League offerings cannot leak into a Class-only catalog.
+- Adds a guarded editable Dash Team ID to linked Programs for recurring Teams that Dash replaces between sessions.
+- Prevents two Programs from being linked to the same Dash Team ID and records successful relinking in the Activity Log.
+- Prompts Learn to Play previews for the current Adult Development Camp drop-in Team ID and loads that Team directly even when Dash stores it under another Season.
+- Reuses the single existing League #86 routed Program when the supplied recurring Team ID changes, preventing duplicate drop-in Programs.
+
 ## 1.9.2
 
 - Adds a per-imported-Season **Keep up to date automatically** option.
