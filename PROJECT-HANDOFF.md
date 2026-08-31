@@ -4,24 +4,24 @@ Last updated: August 31, 2026
 
 ## Current published release
 
-GitHub release: `suite-13`
+GitHub release: `suite-14`
 
 | Component | Published version |
 | --- | ---: |
 | Dash Connector | 1.7.17 |
 | Programming | 1.9.2.4 |
 | Productions | 3.7.1 |
-| Rink Displays | 2.7.13 |
+| Rink Displays | 2.7.14 |
 | Productions Theme | 1.6.7 |
 
-Suite 13 is published from commit `1addfb7b99b7114981a69022f9e6c2a3eeea9cd8`. The release contains all five ZIPs and `ice-field-updates.json`. The GitHub wiki was updated with the suite.
+Suite 14 is published from commit `fa2f682a7ecf35bd155f56ab58f7ba9a7ebfda9c`. The release contains all five ZIPs and `ice-field-updates.json`. The GitHub wiki still reflects suite 13 because this task did not authorize wiki changes.
 
 ## Current state
 
 - Dash Connector 1.7.17 includes guarded event reassignment, manual and automatic history/Undo, event-type repair, bounded seven-day event searches, Public Skating protections, preserved nonzero Public Skating capacities, automatic-update email summaries, completed-month visibility cleanup, schedule-gap reports, and GitHub updating.
 - Programming 1.9.2.4 includes lightweight Season discovery, per-Season Check Changes, protected manual and daily synchronization, classifications, Learn to Play recurring drop-in Team handling, public lifecycle/order fixes, and staged AJAX preparation for Preview, Check Changes, and Import.
 - Productions 3.7.1 and Productions Theme 1.6.7 are stable and published.
-- Rink Displays 2.7.13 is published. Rink Displays 2.7.14 is active development: stronger current-session emphasis, relative timing, separate FULL badges, paged overflow rotation with an animated cue, quiet healthy status, admin banner preview/schedule-state labels, and configurable repeated-refresh failure/recovery email alerts.
+- Rink Displays 2.7.14 is published with stronger current-session emphasis, relative timing, separate FULL badges, paged overflow rotation with an animated cue, quiet healthy status, admin banner preview/schedule-state labels, and configurable repeated-refresh failure/recovery email alerts.
 - The wiki is public and enabled at `https://github.com/sarahspins/wordpress-plugins/wiki`.
 
 ## Hosting and API context
