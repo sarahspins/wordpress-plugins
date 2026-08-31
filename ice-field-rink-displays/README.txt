@@ -1,8 +1,4 @@
-Ice & Field Rink Displays v2.7.14
-
-Version 2.7.14 makes the TV schedule easier to scan at a distance. Current sessions receive a stronger visual treatment, current and next sessions show relative countdowns, full sessions receive a separate high-contrast badge, and later sessions are visually de-emphasized. When more events exist than fit on screen, the display rotates through pages every 12 seconds while keeping current sessions pinned and showing an animated rotation cue. Successful connection text is hidden while stale/error status and the small last-updated timestamp remain available for troubleshooting.
-
-The Schedule Display admin page now includes a 16:9 banner preview, identifies the next scheduled banner change, and labels scheduled entries as Active, Upcoming, Past, or Draft. Administrators can enable refresh-failure email alerts, choose the recipient, and set a threshold from 1–24 consecutive five-minute failures. The default threshold is 3 (about 15 minutes); one outage email and one subsequent recovery email are sent per incident. WordPress email delivery must be configured on the site.
+Ice & Field Rink Displays v2.7.13
 
 Version 2.7.13 hides expired rows whenever a rink snapshot still contains current or upcoming events. The most recently ended event appears with PAST only when every event in that rink's available snapshot has expired, making it a true stale-data fallback rather than a normal schedule row.
 
