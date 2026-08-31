@@ -2,7 +2,7 @@
 /*
 Plugin Name: Ice & Field Rink Displays
 Description: Combined Dash/DaySmart schedule display and rink participants/check-in display for Ice & Field.
-Version: 2.7.13
+Version: 2.8
 Author: Ice & Field
 Requires Plugins: ice-field-dash-connector
 Update URI: https://github.com/sarahspins/wordpress-plugins/tree/main/ice-field-rink-displays
@@ -220,6 +220,7 @@ class IFRD_Banner_Media {
                 if(clearButton){
                     urlField.value='';
                     if(typeField)typeField.value='auto';
+                    urlField.dispatchEvent(new Event('input',{bubbles:true}));
                     return;
                 }
 
@@ -239,6 +240,7 @@ class IFRD_Banner_Media {
                     const attachment=frame.state().get('selection').first().toJSON();
                     urlField.value=attachment.url||'';
                     if(typeField)typeField.value=attachment.type==='video'?'video':'image';
+                    urlField.dispatchEvent(new Event('input',{bubbles:true}));
                 });
 
                 frame.open();
@@ -341,8 +343,16 @@ class IFRD_Scheduled_Media {
             <h2><?php echo esc_html($title); ?></h2>
             <p>Each video becomes active at its scheduled date and time and remains active until the next scheduled video. Times use <strong><?php echo esc_html($timezone_name); ?></strong>.</p>
             <div class="ifrd-scheduled-media-rows" data-next-index="<?php echo esc_attr(count($rows)); ?>">
-                <?php foreach ($rows as $index => $row): ?>
-                    <?php self::render_row($option_name, $field_name, $index, $row); ?>
+                <?php
+                $now_key = (new DateTimeImmutable('now', new DateTimeZone($timezone_name)))->format('Y-m-d\TH:i');
+                $active_index = -1;
+                foreach ($rows as $candidate_index => $candidate) {
+                    if (!empty($candidate['starts_at']) && $candidate['starts_at'] <= $now_key) $active_index = $candidate_index;
+                }
+                foreach ($rows as $index => $row):
+                    $status = empty($row['starts_at']) ? 'Draft' : ($index === $active_index ? 'Active' : ($row['starts_at'] > $now_key ? 'Upcoming' : 'Past'));
+                ?>
+                    <?php self::render_row($option_name, $field_name, $index, $row, $status); ?>
                 <?php endforeach; ?>
             </div>
             <p><button type="button" class="button ifrd-scheduled-media-add">Add Scheduled Video</button></p>
@@ -351,12 +361,12 @@ class IFRD_Scheduled_Media {
         <?php
     }
 
-    private static function render_row($option_name, $field_name, $index, $row) {
+    private static function render_row($option_name, $field_name, $index, $row, $status = 'Draft') {
         $prefix = $option_name . '[' . $field_name . '][' . $index . ']';
         ?>
         <div class="ifrd-scheduled-media-row">
             <label>
-                <strong>Switch date and time</strong><br>
+                <strong>Switch date and time</strong> <span class="ifrd-scheduled-status ifrd-scheduled-status-<?php echo esc_attr(strtolower($status)); ?>"><?php echo esc_html($status); ?></span><br>
                 <input type="datetime-local" step="900" name="<?php echo esc_attr($prefix); ?>[starts_at]" value="<?php echo esc_attr((string) ($row['starts_at'] ?? '')); ?>">
             </label>
             <div class="ifrd-media-picker" data-media-types="video" data-media-title="Choose scheduled video" data-media-button="Use this video">
@@ -374,7 +384,7 @@ class IFRD_Scheduled_Media {
     public static function print_editor_script() {
         ?>
         <style>
-            .ifrd-scheduled-media{margin-top:28px;padding-top:8px;border-top:1px solid #dcdcde}.ifrd-scheduled-media-row{display:grid;grid-template-columns:minmax(210px,280px) minmax(360px,1fr);gap:18px;align-items:start;margin:12px 0;padding:16px;border:1px solid #dcdcde;border-radius:8px;background:#fff}.ifrd-scheduled-media-row input[type="datetime-local"]{width:100%;margin-top:6px}@media(max-width:782px){.ifrd-scheduled-media-row{grid-template-columns:1fr}}
+            .ifrd-scheduled-media{margin-top:28px;padding-top:8px;border-top:1px solid #dcdcde}.ifrd-scheduled-media-row{display:grid;grid-template-columns:minmax(210px,280px) minmax(360px,1fr);gap:18px;align-items:start;margin:12px 0;padding:16px;border:1px solid #dcdcde;border-radius:8px;background:#fff}.ifrd-scheduled-media-row input[type="datetime-local"]{width:100%;margin-top:6px}.ifrd-scheduled-status{display:inline-block;margin-left:6px;padding:2px 7px;border-radius:999px;background:#f0f0f1;color:#50575e;font-size:11px}.ifrd-scheduled-status-active{background:#d7f1df;color:#0a5c2d}.ifrd-scheduled-status-upcoming{background:#dbeafe;color:#174ea6}.ifrd-scheduled-status-past{background:#f0f0f1;color:#646970}@media(max-width:782px){.ifrd-scheduled-media-row{grid-template-columns:1fr}}
         </style>
         <script>
         (function(){
@@ -409,7 +419,7 @@ class IFRD_Video_For_Screens {
     const OPTION = 'ifrd_video_screen_settings';
     const REFRESH_OPTION = 'ifrd_video_screen_refresh_version';
     const PLUGIN_VERSION_OPTION = 'ifrd_plugin_version';
-    const PLUGIN_VERSION = '2.7.13';
+    const PLUGIN_VERSION = '2.8';
     const AJAX_ACTION = 'ifrd_video_screen_refresh_status';
     const CAPABILITY = 'edit_pages';
 
@@ -549,6 +559,12 @@ class IFRD_Video_For_Screens {
 
     public function page() {
         $o = $this->opts();
+        $effective_banner = IFRD_Scheduled_Media::effective($o['banner_url'], $o['banner_media_type'], $o['banner_schedule'] ?? array(), IFRD_Scheduled_Media::timezone_name($o));
+        $next_banner_at = '';
+        $now_key = (new DateTimeImmutable('now', new DateTimeZone(IFRD_Scheduled_Media::timezone_name($o))))->format('Y-m-d\TH:i');
+        foreach (IFRD_Scheduled_Media::sanitize($o['banner_schedule'] ?? array(), IFRD_Scheduled_Media::timezone_name($o)) as $scheduled_banner) {
+            if ($scheduled_banner['starts_at'] > $now_key) { $next_banner_at = $scheduled_banner['starts_at']; break; }
+        }
         ?>
         <div class="wrap">
             <h1>Video for Screens</h1>
@@ -994,6 +1010,7 @@ class IFRD_Schedule_Display {
     const CACHE_LOCK = 'ifrd_schedule_payload_lock_v2711';
     const CRON_HOOK = 'ifrd_refresh_static_today_schedule';
     const CAPABILITY = 'edit_pages';
+    const REFRESH_HEALTH_OPTION = 'ifrd_schedule_refresh_health';
 
     public function __construct() {
         add_action('admin_menu', array($this, 'menu'), 20);
@@ -1041,6 +1058,9 @@ class IFRD_Schedule_Display {
             'calendar_registration_links' => '1',
             'calendar_session_selector' => '1',
             'full_session_label' => 'FULL',
+            'failure_alert_enabled' => '1',
+            'failure_alert_threshold' => '3',
+            'failure_alert_email' => (string) get_option('admin_email', ''),
             'display_title' => 'Ice & Field Schedule',
             'display_subtitle' => 'Today’s rink schedule',
             'gold_title' => 'Gold Rink',
@@ -1059,6 +1079,8 @@ class IFRD_Schedule_Display {
             'now_color' => '#4fd18b',
             'later_color' => '#FFc600',
             'next_color' => '#33B6FF',
+            'full_badge_text_color' => '#ffffff',
+            'full_badge_bg_color' => '#b42318',
         );
     }
 
@@ -1126,7 +1148,7 @@ class IFRD_Schedule_Display {
                     continue;
                 }
 
-                if (in_array($key, array('calendar_registration_links', 'calendar_session_selector'), true)) {
+                if (in_array($key, array('calendar_registration_links', 'calendar_session_selector', 'failure_alert_enabled'), true)) {
                     $clean[$key] = isset($input[$key]) ? '1' : '0';
                     continue;
                 }
@@ -1135,8 +1157,10 @@ class IFRD_Schedule_Display {
 
                 if ($key === 'calendar_color_strength') {
                     $clean[$key] = (string) min(100, max(0, intval($value)));
-                } elseif (in_array($key, array('gold_resource_id', 'silver_resource_id', 'refresh_seconds', 'max_visible', 'calendar_cache_seconds'), true)) {
-                    $clean[$key] = (string) max(1, intval($value));
+                } elseif (in_array($key, array('gold_resource_id', 'silver_resource_id', 'refresh_seconds', 'max_visible', 'calendar_cache_seconds', 'failure_alert_threshold'), true)) {
+                    $clean[$key] = $key === 'failure_alert_threshold' ? (string) min(24, max(1, intval($value))) : (string) max(1, intval($value));
+                } elseif ($key === 'failure_alert_email') {
+                    $clean[$key] = sanitize_email($value);
                 } elseif ($key === 'calendar_default_view') {
                     $clean[$key] = in_array($value, array('day', 'week'), true) ? $value : 'week';
                 } elseif ($key === 'locker_name_map') {
@@ -1190,6 +1214,15 @@ class IFRD_Schedule_Display {
             <?php if (!empty($_GET['schedule-screens-refreshed'])): ?>
                 <div class="notice notice-success is-dismissible"><p>Schedule screen refresh requested. Open schedule displays should reload within about 60 seconds.</p></div>
             <?php endif; ?>
+            <section class="ifrd-admin-schedule-preview">
+                <div class="ifrd-admin-preview-head"><strong>Live display preview</strong><span><?php echo $next_banner_at ? 'Next banner: ' . esc_html(str_replace('T', ' at ', $next_banner_at)) : 'No upcoming banner change'; ?></span></div>
+                <div class="ifrd-admin-preview-screen">
+                    <div class="ifrd-admin-preview-title"><strong><?php echo esc_html($o['display_title']); ?></strong><small><?php echo esc_html($o['display_subtitle']); ?></small></div>
+                    <div class="ifrd-admin-preview-rinks"><span><?php echo esc_html($o['gold_title']); ?></span><span><?php echo esc_html($o['silver_title']); ?></span></div>
+                    <div class="ifrd-admin-preview-banner" data-admin-banner-preview><?php if (!empty($effective_banner['url'])): ?><?php if (IFRD_Banner_Media::is_video($effective_banner['url'], $effective_banner['type'])): ?><video muted loop autoplay playsinline src="<?php echo esc_url($effective_banner['url']); ?>"></video><?php else: ?><img src="<?php echo esc_url($effective_banner['url']); ?>" alt=""><?php endif; ?><?php else: ?><span>No banner selected</span><?php endif; ?></div>
+                </div>
+            </section>
+            <style>.ifrd-admin-schedule-preview{max-width:760px;margin:18px 0 24px}.ifrd-admin-preview-head{display:flex;justify-content:space-between;gap:16px;margin-bottom:8px;color:#50575e}.ifrd-admin-preview-screen{aspect-ratio:16/9;padding:18px;box-sizing:border-box;border-radius:12px;background:<?php echo esc_attr($o['bg_color']); ?>;color:<?php echo esc_attr($o['text_color']); ?>;display:grid;grid-template-rows:auto 1fr auto;gap:12px;overflow:hidden}.ifrd-admin-preview-title strong{display:block;font-size:24px}.ifrd-admin-preview-title small{color:<?php echo esc_attr($o['muted_color']); ?>}.ifrd-admin-preview-rinks{display:grid;grid-template-columns:1fr 1fr;gap:12px}.ifrd-admin-preview-rinks span{padding:12px;border-radius:10px;background:<?php echo esc_attr($o['panel_color']); ?>;font-size:20px;font-weight:700}.ifrd-admin-preview-banner{min-height:60px;display:flex;align-items:center;justify-content:center;color:<?php echo esc_attr($o['muted_color']); ?>}.ifrd-admin-preview-banner img,.ifrd-admin-preview-banner video{display:block;max-width:100%;max-height:90px;object-fit:contain}</style>
             <form method="post" action="options.php">
                 <?php settings_fields('ifrd_schedule_group'); ?>
                 <?php if (current_user_can('manage_options')): ?>
@@ -1203,6 +1236,9 @@ class IFRD_Schedule_Display {
                     <tr><th>Refresh Seconds</th><td><input type="number" class="small-text" name="<?php echo esc_attr(self::OPTION); ?>[refresh_seconds]" value="<?php echo esc_attr($o['refresh_seconds']); ?>"></td></tr>
                     <tr><th>Max Visible Per Rink</th><td><input type="number" class="small-text" name="<?php echo esc_attr(self::OPTION); ?>[max_visible]" value="<?php echo esc_attr($o['max_visible']); ?>"></td></tr>
                     <tr><th>Full Session Wording</th><td><input class="regular-text" name="<?php echo esc_attr(self::OPTION); ?>[full_session_label]" value="<?php echo esc_attr($o['full_session_label']); ?>"><p class="description">Shown before the registered-skater count when registration reaches the event capacity, for example <code>FULL - 20 registered skaters</code>. Leave blank to omit the full-session wording.</p></td></tr>
+                    <tr><th>Refresh Failure Emails</th><td><label><input type="checkbox" name="<?php echo esc_attr(self::OPTION); ?>[failure_alert_enabled]" value="1" <?php checked(!empty($o['failure_alert_enabled'])); ?>> Email when repeated scheduled refreshes fail</label><p class="description">Sends one outage email after the threshold is reached and one recovery email after the next successful refresh.</p></td></tr>
+                    <tr><th>Failure Threshold</th><td><input type="number" min="1" max="24" class="small-text" name="<?php echo esc_attr(self::OPTION); ?>[failure_alert_threshold]" value="<?php echo esc_attr($o['failure_alert_threshold']); ?>"><p class="description">Consecutive five-minute refresh failures before notifying. The default of 3 is approximately 15 minutes.</p></td></tr>
+                    <tr><th>Alert Email</th><td><input type="email" class="regular-text" name="<?php echo esc_attr(self::OPTION); ?>[failure_alert_email]" value="<?php echo esc_attr($o['failure_alert_email']); ?>"></td></tr>
                     <tr><th>Calendar Cache Seconds</th><td><input type="number" min="60" class="small-text" name="<?php echo esc_attr(self::OPTION); ?>[calendar_cache_seconds]" value="<?php echo esc_attr($o['calendar_cache_seconds']); ?>"><p class="description">Caches each week for the public day/week calendar. The default is 900 seconds (15 minutes).</p></td></tr>
                     <tr><th>Calendar Default View</th><td><select name="<?php echo esc_attr(self::OPTION); ?>[calendar_default_view]"><option value="week" <?php selected($o['calendar_default_view'], 'week'); ?>>Week</option><option value="day" <?php selected($o['calendar_default_view'], 'day'); ?>>Day</option></select></td></tr>
                     <tr><th>Calendar Event Color Strength</th><td><input type="number" min="0" max="100" step="5" class="small-text" name="<?php echo esc_attr(self::OPTION); ?>[calendar_color_strength]" value="<?php echo esc_attr($o['calendar_color_strength']); ?>">%<p class="description">Controls event-block color intensity in the selectable calendar. <code>50</code> is muted, <code>100</code> uses the full Dash or category color, and <code>0</code> removes the background fill.</p></td></tr>
@@ -1233,7 +1269,7 @@ class IFRD_Schedule_Display {
                 </table>
                 <h2>Colors</h2>
                 <table class="form-table">
-                    <?php foreach (array('bg_color'=>'Background','panel_color'=>'Panel','text_color'=>'Text','muted_color'=>'Muted Text','accent_color'=>'Accent','now_color'=>'Now','next_color'=>'Up Next','later_color'=>'Later') as $key => $label): ?>
+                    <?php foreach (array('bg_color'=>'Background','panel_color'=>'Panel','text_color'=>'Text','muted_color'=>'Muted Text','accent_color'=>'Accent','now_color'=>'Now','next_color'=>'Up Next','later_color'=>'Later','full_badge_text_color'=>'FULL Badge Text','full_badge_bg_color'=>'FULL Badge Background') as $key => $label): ?>
                         <tr><th><?php echo esc_html($label); ?></th><td><input type="color" name="<?php echo esc_attr(self::OPTION); ?>[<?php echo esc_attr($key); ?>]" value="<?php echo esc_attr($o[$key]); ?>"></td></tr>
                     <?php endforeach; ?>
                 </table>
@@ -1271,6 +1307,7 @@ class IFRD_Schedule_Display {
         </div>
         <?php IFRD_Banner_Media::print_picker_script(); ?>
         <?php IFRD_Scheduled_Media::print_editor_script(); ?>
+        <script>(function(){const field=document.getElementById('ifrd-schedule-banner');const preview=document.querySelector('[data-admin-banner-preview]');if(!field||!preview)return;field.addEventListener('input',function(){const url=field.value.trim();const type=field.closest('.ifrd-media-picker').querySelector('.ifrd-media-type');const video=(type&&type.value==='video')||/\.(mp4|m4v|webm|ogv|ogg|mov)(?:[?#]|$)/i.test(url);preview.innerHTML=url?(video?'<video muted loop autoplay playsinline src="'+url.replace(/"/g,'&quot;')+'"></video>':'<img src="'+url.replace(/"/g,'&quot;')+'" alt="">'):'<span>No banner selected</span>';});})();</script>
         <?php
     }
 
@@ -1705,6 +1742,8 @@ class IFRD_Schedule_Display {
 
         foreach ($events as &$event) {
             $event['registrantText'] = '';
+            $event['isFull'] = false;
+            $event['fullLabel'] = '';
 
             if ($this->event_qualifies_for_participant_display($event, $participant_settings['qualifying_keywords'])) {
                 $registrant_count = $this->get_event_registrant_count(
@@ -1724,6 +1763,8 @@ class IFRD_Schedule_Display {
                     $full_label = trim((string) ($schedule_settings['full_session_label'] ?? 'FULL'));
                     if ($capacity > 0 && $registrant_count >= $capacity && $full_label !== '') {
                         $event['registrantText'] = $full_label . ' - ' . $event['registrantText'];
+                        $event['isFull'] = true;
+                        $event['fullLabel'] = $full_label;
                     }
                 }
             }
@@ -2015,6 +2056,34 @@ class IFRD_Schedule_Display {
         return $merged;
     }
 
+    private function note_refresh_failure($error) {
+        $o = $this->opts();
+        $state = wp_parse_args(get_option(self::REFRESH_HEALTH_OPTION, array()), array('failures' => 0, 'alerted' => 0, 'first_failed_at' => 0, 'last_error' => ''));
+        $state['failures'] = absint($state['failures']) + 1;
+        $state['first_failed_at'] = absint($state['first_failed_at']) ?: time();
+        $state['last_error'] = is_wp_error($error) ? $error->get_error_message() : sanitize_text_field((string) $error);
+        $threshold = max(1, min(24, intval($o['failure_alert_threshold'] ?? 3)));
+        $recipient = sanitize_email((string) ($o['failure_alert_email'] ?? get_option('admin_email', '')));
+        if (!empty($o['failure_alert_enabled']) && !$state['alerted'] && $state['failures'] >= $threshold && is_email($recipient)) {
+            $subject = sprintf('[%s] Schedule display refresh failure', wp_specialchars_decode(get_bloginfo('name'), ENT_QUOTES));
+            $message = "The Ice & Field schedule has failed to refresh " . $state['failures'] . " consecutive times.\n\nFirst failure: " . wp_date('F j, Y g:i a', $state['first_failed_at']) . "\nMost recent error: " . $state['last_error'] . "\n\nThe last successful schedule remains available to the TV displays.\n";
+            if (wp_mail($recipient, $subject, $message)) $state['alerted'] = 1;
+        }
+        update_option(self::REFRESH_HEALTH_OPTION, $state, false);
+    }
+
+    private function note_refresh_success() {
+        $state = wp_parse_args(get_option(self::REFRESH_HEALTH_OPTION, array()), array('failures' => 0, 'alerted' => 0));
+        if (!empty($state['alerted'])) {
+            $o = $this->opts();
+            $recipient = sanitize_email((string) ($o['failure_alert_email'] ?? get_option('admin_email', '')));
+            if (!empty($o['failure_alert_enabled']) && is_email($recipient)) {
+                wp_mail($recipient, sprintf('[%s] Schedule display refresh recovered', wp_specialchars_decode(get_bloginfo('name'), ENT_QUOTES)), "The Ice & Field schedule refreshed successfully again at " . wp_date('F j, Y g:i a') . ".\n");
+            }
+        }
+        delete_option(self::REFRESH_HEALTH_OPTION);
+    }
+
     private function payload($force = false) {
         $cached = $force ? false : get_transient(self::CACHE);
         if ($cached) {
@@ -2052,6 +2121,7 @@ class IFRD_Schedule_Display {
             ), array('cache' => false));
 
             if (is_wp_error($body)) {
+                if ($force) $this->note_refresh_failure($body);
                 if (is_array($stale)) return $stale;
                 return $body;
             }
@@ -2108,24 +2178,32 @@ class IFRD_Schedule_Display {
             return $event['resourceId'] === intval($o['silver_resource_id']);
         }));
 
-        $gold_visible = array_slice($gold, 0, $max);
-        $silver_visible = array_slice($silver, 0, $max);
-
-        // Enrich only visible events to avoid excessive API calls.
-        $gold_visible = $this->add_locker_data_to_events($gold_visible, $o['locker_name_map']);
-        $silver_visible = $this->add_locker_data_to_events($silver_visible, $o['locker_name_map']);
+        // Every event can appear on a rotating TV page, so enrich the complete
+        // display set before slicing the backward-compatible first page.
+        $gold_all = $this->add_locker_data_to_events($gold, $o['locker_name_map']);
+        $silver_all = $this->add_locker_data_to_events($silver, $o['locker_name_map']);
+        $gold_visible = array_slice($gold_all, 0, $max);
+        $silver_visible = array_slice($silver_all, 0, $max);
 
         $payload = array(
             'updatedAt' => current_time('mysql'),
+            'generatedAt' => gmdate('c'),
             'gold' => $gold_visible,
             'silver' => $silver_visible,
+            'goldAll' => $gold_all,
+            'silverAll' => $silver_all,
+            'pageSize' => $max,
             'goldAdditional' => max(0, count($gold) - $max),
             'silverAdditional' => max(0, count($silver) - $max),
         );
 
         set_transient(self::CACHE, $payload, 240);
         set_transient($stale_cache_key, $payload, 2 * DAY_IN_SECONDS);
-        IFRD_Static_Schedule_Cache::write('today-' . substr($query_start, 0, 10), $payload);
+        $static_written = IFRD_Static_Schedule_Cache::write('today-' . substr($query_start, 0, 10), $payload);
+        if ($force) {
+            if ($static_written) $this->note_refresh_success();
+            else $this->note_refresh_failure('The static schedule file could not be written.');
+        }
 
         return $payload;
         } finally {
@@ -2158,7 +2236,7 @@ class IFRD_Schedule_Display {
         $today = new DateTimeImmutable('now', new DateTimeZone($this->schedule_timezone_name()));
         $static_schedule_url = IFRD_Static_Schedule_Cache::url('today-' . $today->format('Y-m-d'));
         $style = sprintf(
-            '--ifr-bg:%s;--ifr-panel:%s;--ifr-text:%s;--ifr-muted:%s;--ifr-accent:%s;--ifr-now:%s;--ifr-next:%s;--ifr-later:%s;',
+            '--ifr-bg:%s;--ifr-panel:%s;--ifr-text:%s;--ifr-muted:%s;--ifr-accent:%s;--ifr-now:%s;--ifr-next:%s;--ifr-later:%s;--ifr-full-text:%s;--ifr-full-bg:%s;',
             esc_attr($o['bg_color']),
             esc_attr($o['panel_color']),
             esc_attr($o['text_color']),
@@ -2166,12 +2244,14 @@ class IFRD_Schedule_Display {
             esc_attr($o['accent_color']),
             esc_attr($o['now_color']),
             esc_attr($o['next_color']),
-            esc_attr($o['later_color'])
+            esc_attr($o['later_color']),
+            esc_attr($o['full_badge_text_color']),
+            esc_attr($o['full_badge_bg_color'])
         );
 
         ob_start();
         ?>
-        <div id="<?php echo esc_attr($id); ?>" class="ifrd-schedule-app" style="<?php echo esc_attr($style); ?>">
+        <div id="<?php echo esc_attr($id); ?>" class="ifrd-schedule-app" style="<?php echo esc_attr($style); ?>" data-ifrd-static-url="<?php echo esc_url($static_schedule_url); ?>" data-ifrd-ajax-url="<?php echo esc_url(admin_url('admin-ajax.php')); ?>" data-ifrd-refresh-version="<?php echo esc_attr($screen_refresh_version); ?>" data-ifrd-refresh-action="<?php echo esc_attr(IFRD_Video_For_Screens::AJAX_ACTION); ?>" data-ifrd-refresh-seconds="<?php echo esc_attr(max(30, intval($o['refresh_seconds']))); ?>" data-ifrd-max-visible="<?php echo esc_attr(max(1, intval($o['max_visible']))); ?>">
             <div class="ifrd-schedule-topbar">
                 <div class="ifrd-schedule-brand">
                     <?php if (!empty($o['logo_url'])): ?><img class="ifrd-schedule-logo" src="<?php echo esc_url($o['logo_url']); ?>" alt="Logo"><?php endif; ?>
@@ -2180,14 +2260,14 @@ class IFRD_Schedule_Display {
                 <div class="ifrd-schedule-clock"><strong data-time>--:--</strong><span data-date>Loading...</span></div>
             </div>
             <div class="ifrd-schedule-grid">
-                <section class="ifrd-schedule-panel"><h2><?php echo esc_html($o['gold_title']); ?></h2><div data-list="gold"></div></section>
-                <section class="ifrd-schedule-panel"><h2><?php echo esc_html($o['silver_title']); ?></h2><div data-list="silver"></div></section>
+                <section class="ifrd-schedule-panel"><h2><?php echo esc_html($o['gold_title']); ?></h2><div class="ifrd-schedule-list" data-list="gold"></div></section>
+                <section class="ifrd-schedule-panel"><h2><?php echo esc_html($o['silver_title']); ?></h2><div class="ifrd-schedule-list" data-list="silver"></div></section>
             </div>
             <div class="ifrd-schedule-footer">
-                <span data-status>API status: connecting...</span>
+                <span class="ifrd-schedule-health" data-status>Display 2.8 • API status: connecting… 0s</span>
 				<span data-updated>Last updated: --</span>
 			</div>
-			<div class="ifrd-schedule-footer">
+			<div class="ifrd-schedule-footer ifrd-schedule-banner-footer">
                 <?php if (!empty($o['banner_url'])): ?>
                     <?php if (!empty($o['banner_link'])): ?><a href="<?php echo esc_url($o['banner_link']); ?>"><?php endif; ?>
                     <?php if (IFRD_Banner_Media::is_video($o['banner_url'], $o['banner_media_type'] ?? 'auto')): ?>
@@ -2208,17 +2288,20 @@ class IFRD_Schedule_Display {
         .ifrd-schedule-grid{display:grid!important;grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important;gap:14px;min-height:0}
         .ifrd-schedule-panel{background:var(--ifr-panel);border-radius:22px;padding:12px 14px;overflow:hidden;min-width:0;border:1px solid rgba(255,255,255,.1)}
         .ifrd-schedule-panel h2{font-size:clamp(24px,2vw,40px);line-height:1;margin:0 0 8px}
-        .ifrd-schedule-event{display:grid;grid-template-columns:minmax(92px,7vw) 1fr auto;gap:10px;align-items:center;padding:7px 0;border-top:1px solid rgba(255,255,255,.08)}
-        .ifrd-schedule-event:first-child{border-top:0}.ifrd-schedule-resurfacing .ifrd-schedule-title{color:var(--ifr-text)}.ifrd-schedule-time{font-weight:850;font-size:clamp(14px,1.1vw,21px);line-height:1.08}.ifrd-schedule-time span{display:block;color:var(--ifr-muted);font-size:.82em;font-weight:500;margin-top:2px}
+        .ifrd-schedule-event{display:grid;grid-template-columns:minmax(92px,7vw) 1fr auto;gap:10px;align-items:center;padding:7px 8px;border-top:1px solid rgba(255,255,255,.08);border-left:4px solid transparent;border-radius:8px}
+        .ifrd-schedule-event:first-child{border-top-color:transparent}.ifrd-schedule-event.is-now{border-left-color:var(--ifr-now);background:rgba(255,255,255,.07)}.ifrd-schedule-event.is-later{opacity:.82}.ifrd-schedule-resurfacing .ifrd-schedule-title{color:var(--ifr-text)}.ifrd-schedule-time{font-weight:850;font-size:clamp(14px,1.1vw,21px);line-height:1.08}.ifrd-schedule-time span{display:block;color:var(--ifr-muted);font-size:.82em;font-weight:500;margin-top:2px}.ifrd-schedule-relative{color:var(--ifr-text)!important;font-weight:800!important}
         .ifrd-schedule-title{font-weight:850;font-size:clamp(16px,1.35vw,26px);line-height:1.1}.ifrd-schedule-meta{color:var(--ifr-muted);font-size:clamp(11px,.95vw,17px);margin-top:2px}.ifrd-schedule-subblocks{color:var(--ifr-muted);font-size:clamp(11px,.95vw,17px);margin-top:4px;line-height:1.25}.ifrd-schedule-subblocks strong{color:var(--ifr-text);font-weight:850}
-        .ifrd-schedule-badge{font-size:clamp(10px,.85vw,15px);font-weight:850;white-space:nowrap;background:rgba(255,255,255,.08);border-radius:999px;padding:6px 9px}.ifrd-schedule-badge.now{color:var(--ifr-now)}.ifrd-schedule-badge.next{color:var(--ifr-next)}.ifrd-schedule-badge.later{color:var(--ifr-later)}.ifrd-schedule-badge.past{color:var(--ifr-muted)}
-        .ifrd-schedule-additional,.ifrd-schedule-empty,.ifrd-schedule-error{color:var(--ifr-muted);font-size:clamp(13px,1vw,18px);font-weight:700;padding-top:8px}.ifrd-schedule-error{color:#ffd4d4}
-        .ifrd-schedule-footer{display:flex;align-items:stretch;justify-content:space-between;gap:12px;color:var(--ifr-muted);font-size:8px;margin-top: -8px;margin-bottom: 0px;}.ifrd-schedule-banner{min-height:90px;max-height:140px;max-width:100%;object-fit:contain;border-radius:8px}.ifrd-schedule-locker{display:block}
+        .ifrd-schedule-badges{display:flex;flex-direction:column;align-items:flex-end;gap:5px}.ifrd-schedule-badge{font-size:clamp(10px,.85vw,15px);font-weight:850;white-space:nowrap;background:rgba(255,255,255,.08);border-radius:999px;padding:6px 9px}.ifrd-schedule-badge.now{color:var(--ifr-now);background:rgba(255,255,255,.12)}.ifrd-schedule-badge.next{color:var(--ifr-next)}.ifrd-schedule-badge.later{color:var(--ifr-later)}.ifrd-schedule-badge.past{color:var(--ifr-muted)}.ifrd-registration-meta{display:flex;align-items:center;gap:6px}.ifrd-full-inline{display:inline-block;color:var(--ifr-full-text);background:var(--ifr-full-bg);border-radius:999px;padding:2px 6px;font-size:.72em;font-weight:850;line-height:1.15;white-space:nowrap}
+        .ifrd-schedule-additional,.ifrd-schedule-empty,.ifrd-schedule-error{color:var(--ifr-muted);font-size:clamp(13px,1vw,18px);font-weight:700;padding-top:8px}.ifrd-schedule-error{color:#ffd4d4}.ifrd-schedule-group-label{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:6px 0 0;padding:6px 8px 2px;border-top:1px solid rgba(255,255,255,.14);color:var(--ifr-later);font-size:clamp(11px,.9vw,16px);font-weight:850;text-transform:uppercase;letter-spacing:.08em}.ifrd-schedule-rotation{color:var(--ifr-muted);font-size:clamp(10px,.8vw,14px);font-weight:800;text-transform:none;letter-spacing:0}.ifrd-schedule-later-page.is-rotating{animation:ifrd-page-slide .45s ease-out}@keyframes ifrd-page-slide{from{opacity:.25;transform:translateY(10px)}to{opacity:1;transform:none}}
+        .ifrd-schedule-footer{display:flex;align-items:stretch;justify-content:space-between;gap:12px;color:var(--ifr-muted);font-size:8px;margin-top: -8px;margin-bottom: 0px;}.ifrd-schedule-health:empty{display:none}.ifrd-schedule-banner-footer{width:100%;justify-content:center;min-width:0}.ifrd-schedule-banner-footer>a{display:flex;width:100%;justify-content:center;min-width:0}.ifrd-schedule-banner{display:block;width:100%;min-height:90px;max-height:140px;object-fit:contain;object-position:center center;border-radius:8px}.ifrd-schedule-locker{display:block}
         @media(max-width:99999px){.ifrd-schedule-grid{grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important}}
         </style>
-        <script>
+        <script type="text/plain" data-ifrd-legacy-script>
         (function(){
             const root=document.getElementById('<?php echo esc_js($id); ?>');
+            const connectionStatus=root.querySelector('[data-status]');
+            const connectionStarted=Date.now();
+            const connectionTimer=setInterval(function(){connectionStatus.textContent='Display 2.7.17 • API status: connecting… '+Math.floor((Date.now()-connectionStarted)/1000)+'s';},1000);
             function esc(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
             function clock(){root.querySelector('[data-time]').textContent=new Date().toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});root.querySelector('[data-date]').textContent=new Date().toLocaleDateString([],{weekday:'long',month:'long',day:'numeric'});}
             function badge(e){let n=Date.now(),s=new Date(e.start).getTime(),end=new Date(e.end).getTime();if(end<=n)return ['PAST','past'];if(s<=n&&end>n)return ['ON ICE NOW','now'];let mins=(s-n)/60000;if(mins>0&&mins<=60)return ['UP NEXT','next'];return ['LATER','later'];}
@@ -2228,7 +2311,7 @@ class IFRD_Schedule_Display {
             let currentScheduleData=null;
             function displaySchedule(data){currentScheduleData=data;render('gold',data.gold||[],data.goldAdditional||0);render('silver',data.silver||[],data.silverAdditional||0);const updated=data.cachedAt?new Date(data.cachedAt):new Date();root.querySelector('[data-updated]').textContent='Last updated: '+updated.toLocaleTimeString([],{hour:'numeric',minute:'2-digit',second:'2-digit'});}
             function showCachedSchedule(){try{const cached=JSON.parse(localStorage.getItem(scheduleCacheKey));if(cached&&cached.cachedDay===localDayKey()){displaySchedule(cached);root.querySelector('[data-status]').textContent='API status: connecting — showing saved schedule';return true;}if(cached){localStorage.removeItem(scheduleCacheKey);}}catch(e){try{localStorage.removeItem(scheduleCacheKey);}catch(ignore){}}return false;}
-            async function load(){const status=root.querySelector('[data-status]');try{status.textContent='API status: updating...';let schedule=null;const staticUrl=<?php echo wp_json_encode($static_schedule_url); ?>;if(staticUrl){try{const staticResponse=await fetch(staticUrl,{cache:'no-store'});if(staticResponse.ok)schedule=await staticResponse.json();}catch(ignore){}}if(!schedule){let f=new FormData();f.append('action','ifrd_schedule_data');let r=await fetch('<?php echo esc_url(admin_url('admin-ajax.php')); ?>',{method:'POST',body:f,cache:'no-store'});if(!r.ok)throw new Error('Schedule refresh failed');let p=await r.json();if(!p.success)throw new Error(p.data?.message||'Unable to load schedule');schedule=p.data;}schedule=Object.assign({},schedule,{cachedAt:Date.now(),cachedDay:localDayKey()});displaySchedule(schedule);try{localStorage.setItem(scheduleCacheKey,JSON.stringify(schedule));}catch(ignore){}status.textContent='API status: connected';}catch(e){const gold=root.querySelector('[data-list="gold"]');const silver=root.querySelector('[data-list="silver"]');const hasVisibleSchedule=(gold&&gold.children.length>0)||(silver&&silver.children.length>0);status.textContent=hasVisibleSchedule?'API status: refresh failed — showing last schedule':'API status: error';if(!hasVisibleSchedule&&gold){gold.innerHTML='<div class="ifrd-schedule-error">'+esc(e.message)+'</div>';}if(window.console&&console.error)console.error(e);}}
+            async function load(){const status=root.querySelector('[data-status]');try{let schedule=null;const staticUrl=<?php echo wp_json_encode($static_schedule_url); ?>;if(staticUrl){try{const staticResponse=await fetch(staticUrl,{cache:'no-store'});if(staticResponse.ok)schedule=await staticResponse.json();}catch(ignore){}}if(!schedule){let f=new FormData();f.append('action','ifrd_schedule_data');let r=await fetch('<?php echo esc_url(admin_url('admin-ajax.php')); ?>',{method:'POST',body:f,cache:'no-store'});if(!r.ok)throw new Error('Schedule refresh failed');let p=await r.json();if(!p.success)throw new Error(p.data?.message||'Unable to load schedule');schedule=p.data;}schedule=Object.assign({},schedule,{cachedAt:Date.now(),cachedDay:localDayKey()});displaySchedule(schedule);try{localStorage.setItem(scheduleCacheKey,JSON.stringify(schedule));}catch(ignore){}clearInterval(connectionTimer);status.textContent='API status: connected';}catch(e){clearInterval(connectionTimer);const gold=root.querySelector('[data-list="gold"]');const silver=root.querySelector('[data-list="silver"]');const hasVisibleSchedule=(gold&&gold.children.length>0)||(silver&&silver.children.length>0);status.textContent=hasVisibleSchedule?'API status: refresh failed — showing last schedule':'API status: error';if(!hasVisibleSchedule&&gold){gold.innerHTML='<div class="ifrd-schedule-error">'+esc(e.message)+'</div>';}if(window.console&&console.error)console.error(e);}}
             const embeddedRefreshVersion=<?php echo wp_json_encode($screen_refresh_version); ?>;
             const initialPageUrl=new URL(window.location.href);
             let currentRefreshVersion=initialPageUrl.searchParams.get('screen_refresh')||embeddedRefreshVersion;
@@ -2237,6 +2320,7 @@ class IFRD_Schedule_Display {
             clock();setInterval(clock,1000);showCachedSchedule();load();setInterval(load,<?php echo max(30,intval($o['refresh_seconds']))*1000; ?>);setInterval(function(){if(currentScheduleData)displaySchedule(currentScheduleData);},30000);
         })();
         </script>
+        <script src="<?php echo esc_url(plugin_dir_url(__FILE__) . 'assets/schedule-display.js?ver=2.8'); ?>"></script>
         <?php
         return ob_get_clean();
     }

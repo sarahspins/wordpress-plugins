@@ -1,4 +1,32 @@
-Ice & Field Rink Displays v2.7.13
+Ice & Field Rink Displays v2.8
+
+Version 2.8 adds a live seconds countdown beside Page X of Y so viewers can see when the next Later page will appear. The countdown is shown only for rinks with multiple pages. This release also incorporates the complete enhanced TV schedule work developed in the 2.7.18–2.7.29 local test builds.
+
+Version 2.7.29 skips the twelve-second rotating-page DOM update and animation for any rink that has only one page. Its pinned and Later rows remain untouched until the normal schedule or clock refresh.
+
+Version 2.7.28 advances the TV browser's saved-schedule cache after the all-page locker-room enrichment. Screens therefore discard older locally stored page-two records and load the enriched static snapshot containing Later-page locker assignments.
+
+Version 2.7.27 separates each rink into pinned and rotating DOM regions. Twelve-second page changes replace and animate only the Later section; ON ICE NOW and UP NEXT rows remain untouched until their normal data/clock update. Page X of Y now appears right-aligned in the Later header.
+
+Version 2.7.26 enriches every event available to the rotating TV pages with locker-room and qualifying registration metadata before publishing the static snapshot. Later pages therefore retain locker assignments and FULL/count details rather than only the original first page receiving that information.
+
+Version 2.7.25 pins both current and UP NEXT sessions on every rotating page, rotating only sessions in the Later group. Individual LATER pills are restored beneath the Later header, while the page indicator remains the simplified Page X of Y format.
+
+Version 2.7.24 keeps UP NEXT pills on qualifying sessions and simplifies the overflow indicator to Page X of Y, without the animated arrow or Schedule rotating wording.
+
+Version 2.7.23 adds a Later divider after current and Up Next sessions. Later rows no longer repeat an individual LATER pill, giving rotating pages a clearer visual hierarchy while preserving chronological order.
+
+Version 2.7.22 places a smaller FULL pill immediately beside the registered-skater count instead of stacking it with the right-side session-status badge. Overflow rotation no longer wraps early events into a partially filled final page, so every rotated page remains chronological.
+
+Version 2.7.21 adds administrator color controls for the FULL pill text and background. The display removes trailing dash, en dash, em dash, or colon punctuation from the configured FULL wording inside the pill and keeps the registered-skater count separate.
+
+Version 2.7.20 makes the schedule banner footer explicitly full width and centers both linked and unlinked banner media. Images and videos use the complete available width while retaining contained aspect-ratio positioning.
+
+Version 2.7.19 restores the requested TV enhancements on top of the verified external-loader architecture: current-session emphasis, starts/ends-in timing, separate configurable FULL badges, quiet healthy status, and 12-second overflow rotation with an animated visual cue. The suite-13 banner markup remains unchanged. The Schedule Display admin adds a 16:9 preview, next-banner summary, Active/Upcoming/Past/Draft schedule labels, and configurable repeated-refresh failure and recovery emails (default threshold: three five-minute failures).
+
+Version 2.7.18 is an unpublished diagnostic build that runs the TV schedule loader from an external JavaScript asset. This prevents WordPress content formatting from converting inline JavaScript <code>&amp;&amp;</code> operators into invalid HTML-entity text before the browser receives them.
+
+Version 2.7.17 is an unpublished diagnostic build based directly on the known-working suite-13 display markup, loader, and banner layout. Its only TV-facing addition is a versioned elapsed-seconds connection indicator so startup can be observed without the 2.7.14–2.7.16 front-end rewrite.
 
 Version 2.7.13 hides expired rows whenever a rink snapshot still contains current or upcoming events. The most recently ended event appears with PAST only when every event in that rink's available snapshot has expired, making it a true stale-data fallback rather than a normal schedule row.
 
