@@ -21,7 +21,7 @@ Suite 13 is published from commit `1addfb7b99b7114981a69022f9e6c2a3eeea9cd8`. Th
 - Dash Connector 1.7.17 includes guarded event reassignment, manual and automatic history/Undo, event-type repair, bounded seven-day event searches, Public Skating protections, preserved nonzero Public Skating capacities, automatic-update email summaries, completed-month visibility cleanup, schedule-gap reports, and GitHub updating.
 - Programming 1.9.2.4 includes lightweight Season discovery, per-Season Check Changes, protected manual and daily synchronization, classifications, Learn to Play recurring drop-in Team handling, public lifecycle/order fixes, and staged AJAX preparation for Preview, Check Changes, and Import.
 - Productions 3.7.1 and Productions Theme 1.6.7 are stable and published.
-- Rink Displays 2.7.13 includes scheduled media, TV schedule logic, atomic static schedule JSON, bounded Dash queries, slower screen polling, clock-based Now/Up Next recalculation, and expired-row cleanup.
+- Rink Displays 2.7.13 is published. Rink Displays 2.7.14 is active development: stronger current-session emphasis, relative timing, separate FULL badges, paged overflow rotation with an animated cue, quiet healthy status, admin banner preview/schedule-state labels, and configurable repeated-refresh failure/recovery email alerts.
 - The wiki is public and enabled at `https://github.com/sarahspins/wordpress-plugins/wiki`.
 
 ## Hosting and API context
