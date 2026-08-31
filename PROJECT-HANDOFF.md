@@ -4,24 +4,24 @@ Last updated: August 31, 2026
 
 ## Current published release
 
-GitHub release: `suite-14`
+GitHub release: `suite-15`
 
 | Component | Published version |
 | --- | ---: |
 | Dash Connector | 1.7.17 |
 | Programming | 1.9.2.4 |
 | Productions | 3.7.1 |
-| Rink Displays | 2.8 |
+| Rink Displays | 2.8.1 |
 | Productions Theme | 1.6.7 |
 
-Suite 14 contains all five ZIPs and `ice-field-updates.json`. It promotes the tested Rink Displays 2.8 schedule-display enhancements while leaving the other four component versions unchanged. The GitHub wiki update is pending explicit approval.
+Suite 15 contains all five ZIPs and `ice-field-updates.json`. It promotes the tested Rink Displays 2.8.1 adaptive-pagination update while leaving the other four component versions unchanged. The GitHub wiki update is pending explicit approval.
 
 ## Current state
 
 - Dash Connector 1.7.17 includes guarded event reassignment, manual and automatic history/Undo, event-type repair, bounded seven-day event searches, Public Skating protections, preserved nonzero Public Skating capacities, automatic-update email summaries, completed-month visibility cleanup, schedule-gap reports, and GitHub updating.
 - Programming 1.9.2.4 includes lightweight Season discovery, per-Season Check Changes, protected manual and daily synchronization, classifications, Learn to Play recurring drop-in Team handling, public lifecycle/order fixes, and staged AJAX preparation for Preview, Check Changes, and Import.
 - Productions 3.7.1 and Productions Theme 1.6.7 are stable and published.
-- Rink Displays 2.8 includes the external schedule loader, scheduled media, improved current/up-next/later presentation, multi-page Later rotation, per-second page countdown, stable pinned and single-page rink regions, all-page locker/registration enrichment, full-session styling, atomic static schedule JSON, and refresh monitoring.
+- Rink Displays 2.8.1 includes the external schedule loader, scheduled media, improved current/up-next/later presentation, per-rink height-based Later pagination, per-second page countdown, stable pinned and single-page rink regions, all-page locker/registration enrichment, smaller relative Starts/Ends text, atomic static schedule JSON, and refresh monitoring.
 - The wiki is public and enabled at `https://github.com/sarahspins/wordpress-plugins/wiki`.
 
 ## Hosting and API context
@@ -50,7 +50,7 @@ Participant-display development is tabled. Do not include or resume per-rink par
 ## Next likely work
 
 - Observe Programming 1.9.2.4 on the Flywheel site and capture which AJAX stage fails if another gateway error occurs.
-- Observe Rink Displays 2.8 on the shows website and LG screens, especially page rotation, locker assignments, and the single-page no-animation behavior.
+- Observe Rink Displays 2.8.1 on the shows website and LG screens, especially adaptive pagination after content or viewport changes.
 - Keep component README/changelog/roadmap files and the GitHub wiki synchronized with behavior changes.
 
 ## Moving to another computer

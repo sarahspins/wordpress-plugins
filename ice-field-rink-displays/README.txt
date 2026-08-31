@@ -1,4 +1,6 @@
-Ice & Field Rink Displays v2.8
+Ice & Field Rink Displays v2.8.1
+
+Version 2.8.1 paginates each rink from its actual available panel height instead of assuming every event row occupies the same space. Pinned rows remain fixed, Later events are added until the next complete row would overflow, and pagination is recalculated after fonts load or the viewport changes. The Ends/Starts in X min line is also smaller so it remains useful without competing with the primary time.
 
 Version 2.8 adds a live seconds countdown beside Page X of Y so viewers can see when the next Later page will appear. The countdown is shown only for rinks with multiple pages. This release also incorporates the complete enhanced TV schedule work developed in the 2.7.18–2.7.29 local test builds.
 

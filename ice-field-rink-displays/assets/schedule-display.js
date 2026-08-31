@@ -11,9 +11,9 @@
         function beginConnection() {
             started = Date.now();
             if (timer) window.clearInterval(timer);
-            status.textContent = 'Display 2.8 • API status: connecting… 0s';
+            status.textContent = 'Display 2.8.1 • API status: connecting… 0s';
             timer = window.setInterval(function () {
-                status.textContent = 'Display 2.8 • API status: connecting… ' + Math.floor((Date.now() - started) / 1000) + 's';
+                status.textContent = 'Display 2.8.1 • API status: connecting… ' + Math.floor((Date.now() - started) / 1000) + 's';
             }, 1000);
         }
         function finishConnection(message) {
@@ -57,6 +57,7 @@
         }
 
         var rotationPage = {gold: 0, silver: 0};
+        var rotationPages = {gold: null, silver: null};
         var rotationSeconds = 12;
         var rotationDeadline = Date.now() + (rotationSeconds * 1000);
 
@@ -84,17 +85,11 @@
             var pageCount = 1;
             var page = 0;
             if (activeItems.length) {
-                pinned = currentItems.concat(upNextItems).slice(0, pageSize);
-                var slots = pageSize - pinned.length;
-                if (slots > 0) {
-                    pageCount = Math.max(1, Math.ceil(laterItems.length / slots));
-                    page = rotationPage[key] % pageCount;
-                    laterShown = laterItems.slice(page * slots, page * slots + slots);
-                }
+                pinned = currentItems.concat(upNextItems);
             } else if (pastItems.length) {
                 pinned = [pastItems[pastItems.length - 1]];
             }
-            if (!pinned.length && !laterShown.length) {
+            if (!pinned.length && !laterItems.length) {
                 element.innerHTML = '<div class="ifrd-schedule-empty">No more events today.</div>';
                 return;
             }
@@ -124,6 +119,39 @@
                 pinnedHtml += '<article class="ifrd-schedule-event ifrd-schedule-resurfacing is-now"><div class="ifrd-schedule-time"></div><div><div class="ifrd-schedule-title">Resurfacing</div></div><div class="ifrd-schedule-badges"><div class="ifrd-schedule-badge now">ON ICE NOW</div></div></article>';
             }
             pinnedHtml += pinned.map(eventHtml).join('');
+
+            function paginateLaterByHeight() {
+                if (!laterItems.length) return [];
+                var panel = element.closest('.ifrd-schedule-panel');
+                var panelRect = panel ? panel.getBoundingClientRect() : null;
+                var listRect = element.getBoundingClientRect();
+                var availableHeight = panelRect ? Math.max(1, panelRect.bottom - listRect.top - 10) : 0;
+                if (!availableHeight) return [laterItems.slice(0, pageSize)];
+
+                var pages = [];
+                var current = [];
+                for (var eventIndex = 0; eventIndex < laterItems.length; eventIndex += 1) {
+                    var trial = current.concat([laterItems[eventIndex]]);
+                    var trialHtml = '<div class="ifrd-schedule-group-label"><span>Later:</span></div>' + trial.map(eventHtml).join('');
+                    element.innerHTML = '<div class="ifrd-schedule-pinned">' + pinnedHtml + '</div><div class="ifrd-schedule-later-page">' + trialHtml + '</div>';
+                    if (element.scrollHeight <= availableHeight || current.length === 0) {
+                        current = trial;
+                    } else {
+                        pages.push(current);
+                        current = [laterItems[eventIndex]];
+                    }
+                }
+                if (current.length) pages.push(current);
+                return pages;
+            }
+
+            if (!animate || !rotationPages[key]) {
+                rotationPages[key] = paginateLaterByHeight();
+            }
+            var pages = rotationPages[key] || [];
+            pageCount = Math.max(1, pages.length);
+            page = rotationPage[key] % pageCount;
+            laterShown = pages[page] || [];
             var pageText = 'Page ' + (page + 1) + ' of ' + pageCount;
             var countdown = Math.max(0, Math.ceil((rotationDeadline - Date.now()) / 1000));
             var pageLabel = pageCount > 1 ? '<span class="ifrd-schedule-rotation" data-page-label="' + pageText + '">' + pageText + ' • ' + countdown + 's</span>' : '';
@@ -169,7 +197,7 @@
                 var cached = JSON.parse(window.localStorage.getItem(cacheKey));
                 if (cached && cached.cachedDay === localDayKey()) {
                     displaySchedule(cached);
-                    status.textContent = 'Display 2.8 • API status: connecting — showing saved schedule';
+                    status.textContent = 'Display 2.8.1 • API status: connecting — showing saved schedule';
                     return true;
                 }
                 if (cached) window.localStorage.removeItem(cacheKey);
@@ -247,6 +275,22 @@
         }, rotationSeconds * 1000);
         window.setInterval(checkForScreenRefresh, 60000);
         window.setTimeout(checkForScreenRefresh, 5000);
+        var resizeTimer = null;
+        window.addEventListener('resize', function () {
+            window.clearTimeout(resizeTimer);
+            resizeTimer = window.setTimeout(function () {
+                rotationPages.gold = null;
+                rotationPages.silver = null;
+                if (currentScheduleData) displaySchedule(currentScheduleData, false);
+            }, 200);
+        });
+        if (document.fonts && document.fonts.ready) {
+            document.fonts.ready.then(function () {
+                rotationPages.gold = null;
+                rotationPages.silver = null;
+                if (currentScheduleData) displaySchedule(currentScheduleData, false);
+            });
+        }
         document.addEventListener('visibilitychange', function () { if (!document.hidden) checkForScreenRefresh(); });
     }
 
