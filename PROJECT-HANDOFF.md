@@ -14,7 +14,7 @@ GitHub release: `suite-14`
 | Rink Displays | 2.8 |
 | Productions Theme | 1.6.7 |
 
-Suite 14 contains all five ZIPs and `ice-field-updates.json`. It promotes the tested Rink Displays 2.8 schedule-display enhancements while leaving the other four component versions unchanged. The GitHub wiki was updated with the suite.
+Suite 14 contains all five ZIPs and `ice-field-updates.json`. It promotes the tested Rink Displays 2.8 schedule-display enhancements while leaving the other four component versions unchanged. The GitHub wiki update is pending explicit approval.
 
 ## Current state
 
