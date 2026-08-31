@@ -1,6 +1,6 @@
 === Ice & Field Programming ===
 Contributors: iceandfield
-Stable tag: 1.9.2.2
+Stable tag: 1.9.2.4
 Requires at least: 6.4
 Requires PHP: 7.4
 Requires Plugins: ice-field-dash-connector
@@ -11,7 +11,7 @@ Manage seasons, program groups, levels, classes, leagues, camps, clinics, and pu
 
 Ice & Field Programming is the public program and registration module for the main Ice & Field website.
 
-Version 1.9.2.2 adds a per-Season “Pin this Season to the top” display override. Pinned Seasons appear before automatically date-sorted Seasons in customer-facing catalogs and offering lists, while all unpinned Seasons retain their existing chronological order.
+Version 1.9.2.4 includes the AJAX batching introduced in 1.9.2.3 and forces browsers to load the corrected progress-bar styling. Protected previews, comparisons, and imports prepare Teams, Leagues, Products, registration availability, and Events in separate requests. A progress overlay identifies the active stage, and the final protected action reuses those prepared caches instead of asking one PHP process to load every Dash collection. Version 1.9.2.2 adds a per-Season “Pin this Season to the top” display override. Pinned Seasons appear before automatically date-sorted Seasons in customer-facing catalogs and offering lists, while all unpinned Seasons retain their existing chronological order.
 
 Version 1.9.2.1 separates lightweight Season discovery from hierarchy comparison work for compatibility with hosts that enforce short gateway timeouts. Opening or refreshing Season Discovery no longer rebuilds every imported Season. Use Check Changes on one imported Season to refresh only that comparison; protected previews request fresh Teams for the selected Season while reusing cached shared Dash indexes.
 
@@ -36,7 +36,7 @@ The Monitoring screen stores broader Season-family discovery rules. Daily synchr
 == Installation ==
 
 1. Install and configure Ice & Field Dash Connector v1.3.0 or newer.
-2. Upload the complete ice-field-programming-v1.9.1.10 ZIP in Plugins > Add Plugin > Upload Plugin.
+2. Upload the complete Ice & Field Programming ZIP in Plugins > Add Plugin > Upload Plugin.
 3. Activate Ice & Field Programming.
 4. Open Programming in the WordPress admin menu.
 5. Open Dash Sync, choose a Dash Season, and preview its Team classes and standalone registrable Leagues.

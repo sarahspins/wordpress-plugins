@@ -2,7 +2,7 @@
 /*
 Plugin Name: Ice & Field Rink Displays
 Description: Combined Dash/DaySmart schedule display and rink participants/check-in display for Ice & Field.
-Version: 2.7.9
+Version: 2.7.13
 Author: Ice & Field
 Requires Plugins: ice-field-dash-connector
 Update URI: https://github.com/sarahspins/wordpress-plugins/tree/main/ice-field-rink-displays
@@ -73,6 +73,55 @@ class IFRD_Dash_Connector {
         echo '<p><strong>Status:</strong> <span style="color:#18713c">Connected and ready</span></p>';
         echo '<p><strong>Company:</strong> ' . esc_html(IFDC_Client::company()) . ' &nbsp; <a class="button" href="' .
             esc_url(admin_url('admin.php?page=ifdc-dashboard')) . '">Open Dash Connector</a></p>';
+    }
+}
+
+/**
+ * Public, shared schedule snapshots served directly by the web server.
+ * WordPress builds these files; display browsers never need to boot PHP to
+ * read a successful schedule refresh.
+ */
+class IFRD_Static_Schedule_Cache {
+    const DIRECTORY = 'ice-field-schedule-cache';
+
+    private static function location() {
+        $uploads = wp_upload_dir(null, false);
+        if (!empty($uploads['error']) || empty($uploads['basedir']) || empty($uploads['baseurl'])) return null;
+        return array(
+            'directory' => trailingslashit($uploads['basedir']) . self::DIRECTORY,
+            'url' => trailingslashit($uploads['baseurl']) . self::DIRECTORY,
+        );
+    }
+
+    private static function safe_name($name) {
+        return sanitize_file_name(strtolower((string) $name)) . '.json';
+    }
+
+    public static function base_url() {
+        $location = self::location();
+        return $location ? trailingslashit($location['url']) : '';
+    }
+
+    public static function url($name) {
+        $base = self::base_url();
+        return $base !== '' ? $base . self::safe_name($name) : '';
+    }
+
+    public static function write($name, $payload) {
+        $location = self::location();
+        if (!$location || !is_array($payload)) return false;
+        if (!is_dir($location['directory']) && !wp_mkdir_p($location['directory'])) return false;
+
+        $destination = trailingslashit($location['directory']) . self::safe_name($name);
+        $temporary = $destination . '.tmp-' . wp_generate_password(8, false, false);
+        $json = wp_json_encode($payload, JSON_UNESCAPED_SLASHES);
+        if (!is_string($json) || file_put_contents($temporary, $json . "\n", LOCK_EX) === false) return false;
+        @chmod($temporary, 0644);
+        if (!@rename($temporary, $destination)) {
+            @unlink($temporary);
+            return false;
+        }
+        return true;
     }
 }
 
@@ -360,7 +409,7 @@ class IFRD_Video_For_Screens {
     const OPTION = 'ifrd_video_screen_settings';
     const REFRESH_OPTION = 'ifrd_video_screen_refresh_version';
     const PLUGIN_VERSION_OPTION = 'ifrd_plugin_version';
-    const PLUGIN_VERSION = '2.7.9';
+    const PLUGIN_VERSION = '2.7.13';
     const AJAX_ACTION = 'ifrd_video_screen_refresh_status';
     const CAPABILITY = 'edit_pages';
 
@@ -504,7 +553,7 @@ class IFRD_Video_For_Screens {
         <div class="wrap">
             <h1>Video for Screens</h1>
             <?php if (!empty($_GET['screens-refreshed'])): ?>
-                <div class="notice notice-success is-dismissible"><p>Refresh requested. Open video screens should reload within about 30 seconds.</p></div>
+                <div class="notice notice-success is-dismissible"><p>Refresh requested. Open video screens should reload within about 60 seconds.</p></div>
             <?php endif; ?>
 
             <form method="post" action="options.php">
@@ -617,7 +666,7 @@ class IFRD_Video_For_Screens {
                 }catch(ignore){}
             }
 
-            window.setInterval(checkForRefresh,30000);
+            window.setInterval(checkForRefresh,60000);
             window.setTimeout(checkForRefresh,5000);
             document.addEventListener('visibilitychange',function(){if(!document.hidden)checkForRefresh();});
 
@@ -766,7 +815,7 @@ class IFRD_Additional_Video_Screen {
         <div class="wrap">
             <h1><?php echo esc_html($this->title); ?></h1>
             <?php if (!empty($_GET['screens-refreshed'])): ?>
-                <div class="notice notice-success is-dismissible"><p>Refresh requested. Open screens should reload within about 30 seconds.</p></div>
+                <div class="notice notice-success is-dismissible"><p>Refresh requested. Open screens should reload within about 60 seconds.</p></div>
             <?php endif; ?>
             <form method="post" action="options.php">
                 <?php settings_fields($this->settings_group); ?>
@@ -856,7 +905,7 @@ class IFRD_Shortcodes_Page {
                     <h3>Attributes</h3>
                     <p>None. Configure its headings, rink IDs, colors, logo, banner, timezone, visible event count, and refresh interval under <a href="<?php echo esc_url(admin_url('admin.php?page=ifrd-schedule-display')); ?>">Displays → Schedule Display</a>.</p>
                     <p><strong>Placement:</strong> A blank or full-width page template normally works best because this display is designed to fill the browser viewport.</p>
-                    <p><strong>Remote video update:</strong> Saving a different schedule banner asks open TV schedule pages to reload. The same settings page also includes an <em>Update Video Now</em> button for forcing the reload without changing the selected media. Screens check for the request every 30 seconds.</p>
+                    <p><strong>Remote video update:</strong> Saving a different schedule banner asks open TV schedule pages to reload. The same settings page also includes an <em>Update Video Now</em> button for forcing the reload without changing the selected media. Screens check for the request every 60 seconds.</p>
                 </section>
 
                 <section class="ifrd-shortcodes-card">
@@ -901,7 +950,7 @@ class IFRD_Shortcodes_Page {
                     <?php echo $this->shortcode_example('[video_for_screens]'); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
                     <h3>Attributes</h3>
                     <p>None. Choose the video under <a href="<?php echo esc_url(admin_url('admin.php?page=ifrd-video-for-screens')); ?>">Displays → Video for Screens</a>.</p>
-                    <p><strong>Remote refresh:</strong> The same page includes a Refresh Screens Now button. Open screens check for that request every 30 seconds and reload automatically.</p>
+                    <p><strong>Remote refresh:</strong> The same page includes a Refresh Screens Now button. Open screens check for that request every 60 seconds and reload automatically.</p>
                 </section>
 
                 <section class="ifrd-shortcodes-card">
@@ -940,7 +989,10 @@ class IFRD_Shortcodes_Page {
  */
 class IFRD_Schedule_Display {
     const OPTION = 'ifrd_schedule_settings';
-    const CACHE = 'ifrd_schedule_payload_v276_full_sessions';
+    const CACHE = 'ifrd_schedule_payload_v2711_static';
+    const STALE_CACHE = 'ifrd_schedule_payload_stale_v2711';
+    const CACHE_LOCK = 'ifrd_schedule_payload_lock_v2711';
+    const CRON_HOOK = 'ifrd_refresh_static_today_schedule';
     const CAPABILITY = 'edit_pages';
 
     public function __construct() {
@@ -952,6 +1004,28 @@ class IFRD_Schedule_Display {
         add_shortcode('rink_schedule_display', array($this, 'shortcode'));
         add_action('wp_ajax_ifrd_schedule_data', array($this, 'ajax'));
         add_action('wp_ajax_nopriv_ifrd_schedule_data', array($this, 'ajax'));
+        add_filter('cron_schedules', array($this, 'cron_schedules'));
+        add_action('init', array($this, 'ensure_cron'));
+        add_action(self::CRON_HOOK, array($this, 'warm_static_cache'));
+    }
+
+    public function cron_schedules($schedules) {
+        $schedules['ifrd_five_minutes'] = array('interval' => 5 * MINUTE_IN_SECONDS, 'display' => 'Every five minutes');
+        return $schedules;
+    }
+
+    public function ensure_cron() {
+        if (!wp_next_scheduled(self::CRON_HOOK)) {
+            wp_schedule_event(time() + 30, 'ifrd_five_minutes', self::CRON_HOOK);
+        }
+    }
+
+    public static function deactivate() {
+        wp_clear_scheduled_hook(self::CRON_HOOK);
+    }
+
+    public function warm_static_cache() {
+        $this->payload(true);
     }
 
     public function defaults() {
@@ -1114,7 +1188,7 @@ class IFRD_Schedule_Display {
         <div class="wrap">
             <h1>Schedule Display</h1>
             <?php if (!empty($_GET['schedule-screens-refreshed'])): ?>
-                <div class="notice notice-success is-dismissible"><p>Schedule screen refresh requested. Open schedule displays should reload within about 30 seconds.</p></div>
+                <div class="notice notice-success is-dismissible"><p>Schedule screen refresh requested. Open schedule displays should reload within about 60 seconds.</p></div>
             <?php endif; ?>
             <form method="post" action="options.php">
                 <?php settings_fields('ifrd_schedule_group'); ?>
@@ -1941,14 +2015,28 @@ class IFRD_Schedule_Display {
         return $merged;
     }
 
-    private function payload() {
-        $cached = get_transient(self::CACHE);
+    private function payload($force = false) {
+        $cached = $force ? false : get_transient(self::CACHE);
         if ($cached) {
+            $cached_date = new DateTimeImmutable('now', new DateTimeZone($this->schedule_timezone_name()));
+            IFRD_Static_Schedule_Cache::write('today-' . $cached_date->format('Y-m-d'), $cached);
             return $cached;
         }
 
         $o = $this->opts();
         list($now, $day_start, $day_end) = $this->schedule_now_bounds();
+        $timezone = new DateTimeZone($this->schedule_timezone_name());
+        $query_start = (new DateTimeImmutable('@' . $day_start))->setTimezone($timezone)->format('Y-m-d\\TH:i:s');
+        $query_end = (new DateTimeImmutable('@' . $day_end))->setTimezone($timezone)->format('Y-m-d\\TH:i:s');
+        $stale_cache_key = self::STALE_CACHE . '_' . substr($query_start, 0, 10);
+        $stale = get_transient($stale_cache_key);
+        if (get_transient(self::CACHE_LOCK)) {
+            if (is_array($stale)) return $stale;
+            return new WP_Error('ifrd_schedule_refreshing', 'The schedule is already refreshing. Please try again shortly.');
+        }
+        set_transient(self::CACHE_LOCK, 1, 2 * MINUTE_IN_SECONDS);
+
+        try {
 
         $events = array();
         $page = 1;
@@ -1956,12 +2044,15 @@ class IFRD_Schedule_Display {
 
         do {
             $body = IFRD_Dash_Connector::get('events', array(
+                'filter[start__gte]' => $query_start,
+                'filter[start__lte]' => $query_end,
                 'sort' => 'start',
                 'page[number]' => $page,
                 'page[size]' => 100,
             ), array('cache' => false));
 
             if (is_wp_error($body)) {
+                if (is_array($stale)) return $stale;
                 return $body;
             }
 
@@ -2033,8 +2124,13 @@ class IFRD_Schedule_Display {
         );
 
         set_transient(self::CACHE, $payload, 240);
+        set_transient($stale_cache_key, $payload, 2 * DAY_IN_SECONDS);
+        IFRD_Static_Schedule_Cache::write('today-' . substr($query_start, 0, 10), $payload);
 
         return $payload;
+        } finally {
+            delete_transient(self::CACHE_LOCK);
+        }
     }
 
     public function ajax() {
@@ -2059,6 +2155,8 @@ class IFRD_Schedule_Display {
         $o['banner_media_type'] = $effective_banner['type'];
         $id = 'ifrd_sched_' . wp_generate_password(8, false);
         $screen_refresh_version = IFRD_Video_For_Screens::current_display_version();
+        $today = new DateTimeImmutable('now', new DateTimeZone($this->schedule_timezone_name()));
+        $static_schedule_url = IFRD_Static_Schedule_Cache::url('today-' . $today->format('Y-m-d'));
         $style = sprintf(
             '--ifr-bg:%s;--ifr-panel:%s;--ifr-text:%s;--ifr-muted:%s;--ifr-accent:%s;--ifr-now:%s;--ifr-next:%s;--ifr-later:%s;',
             esc_attr($o['bg_color']),
@@ -2113,7 +2211,7 @@ class IFRD_Schedule_Display {
         .ifrd-schedule-event{display:grid;grid-template-columns:minmax(92px,7vw) 1fr auto;gap:10px;align-items:center;padding:7px 0;border-top:1px solid rgba(255,255,255,.08)}
         .ifrd-schedule-event:first-child{border-top:0}.ifrd-schedule-resurfacing .ifrd-schedule-title{color:var(--ifr-text)}.ifrd-schedule-time{font-weight:850;font-size:clamp(14px,1.1vw,21px);line-height:1.08}.ifrd-schedule-time span{display:block;color:var(--ifr-muted);font-size:.82em;font-weight:500;margin-top:2px}
         .ifrd-schedule-title{font-weight:850;font-size:clamp(16px,1.35vw,26px);line-height:1.1}.ifrd-schedule-meta{color:var(--ifr-muted);font-size:clamp(11px,.95vw,17px);margin-top:2px}.ifrd-schedule-subblocks{color:var(--ifr-muted);font-size:clamp(11px,.95vw,17px);margin-top:4px;line-height:1.25}.ifrd-schedule-subblocks strong{color:var(--ifr-text);font-weight:850}
-        .ifrd-schedule-badge{font-size:clamp(10px,.85vw,15px);font-weight:850;white-space:nowrap;background:rgba(255,255,255,.08);border-radius:999px;padding:6px 9px}.ifrd-schedule-badge.now{color:var(--ifr-now)}.ifrd-schedule-badge.next{color:var(--ifr-next)}.ifrd-schedule-badge.later{color:var(--ifr-later)}
+        .ifrd-schedule-badge{font-size:clamp(10px,.85vw,15px);font-weight:850;white-space:nowrap;background:rgba(255,255,255,.08);border-radius:999px;padding:6px 9px}.ifrd-schedule-badge.now{color:var(--ifr-now)}.ifrd-schedule-badge.next{color:var(--ifr-next)}.ifrd-schedule-badge.later{color:var(--ifr-later)}.ifrd-schedule-badge.past{color:var(--ifr-muted)}
         .ifrd-schedule-additional,.ifrd-schedule-empty,.ifrd-schedule-error{color:var(--ifr-muted);font-size:clamp(13px,1vw,18px);font-weight:700;padding-top:8px}.ifrd-schedule-error{color:#ffd4d4}
         .ifrd-schedule-footer{display:flex;align-items:stretch;justify-content:space-between;gap:12px;color:var(--ifr-muted);font-size:8px;margin-top: -8px;margin-bottom: 0px;}.ifrd-schedule-banner{min-height:90px;max-height:140px;max-width:100%;object-fit:contain;border-radius:8px}.ifrd-schedule-locker{display:block}
         @media(max-width:99999px){.ifrd-schedule-grid{grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important}}
@@ -2123,19 +2221,20 @@ class IFRD_Schedule_Display {
             const root=document.getElementById('<?php echo esc_js($id); ?>');
             function esc(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
             function clock(){root.querySelector('[data-time]').textContent=new Date().toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});root.querySelector('[data-date]').textContent=new Date().toLocaleDateString([],{weekday:'long',month:'long',day:'numeric'});}
-            function badge(e){let n=Date.now(),s=new Date(e.start).getTime(),end=new Date(e.end).getTime();if(s<=n&&end>n)return ['ON ICE NOW','now'];let mins=(s-n)/60000;if(mins>0&&mins<=60)return ['UP NEXT','next'];return ['LATER','later'];}
-            function render(key,items,add){const el=root.querySelector('[data-list="'+key+'"]'); if(!items.length){el.innerHTML='<div class="ifrd-schedule-empty">No more events today.</div>';return;} const now=Date.now(); const hasCurrent=items.some(e=>{let s=new Date(e.start).getTime(),end=new Date(e.end).getTime();return s<=now&&end>now;}); const firstStart=new Date(items[0].start).getTime(); const beforeFirstEvent=now<firstStart; let html=''; if(!hasCurrent && !beforeFirstEvent){html+='<article class="ifrd-schedule-event ifrd-schedule-resurfacing"><div class="ifrd-schedule-time"></div><div><div class="ifrd-schedule-title">Resurfacing</div></div><div class="ifrd-schedule-badge now">ON ICE NOW</div></article>';} html+=items.map(e=>{let b=badge(e);let metaParts=[];if(e.note)metaParts.push(esc(e.note));if(e.registrantText)metaParts.push(esc(e.registrantText));let meta=metaParts.length?'<div class="ifrd-schedule-meta">'+metaParts.join(' • ')+'</div>':'';let locker=e.lockerText?'<div class="ifrd-schedule-meta ifrd-schedule-locker">'+esc(e.lockerText)+'</div>':'';let blocks=(e.subBlocks&&e.subBlocks.length)?'<div class="ifrd-schedule-subblocks">'+e.subBlocks.map(x=>'<div><strong>'+esc(x.time)+'</strong>'+((x.title)?' — '+esc(x.title):'')+'</div>').join('')+'</div>':'';return '<article class="ifrd-schedule-event"><div class="ifrd-schedule-time">'+esc(e.startLabel)+'<span>to '+esc(e.endLabel)+'</span></div><div><div class="ifrd-schedule-title">'+esc(e.title)+'</div>'+blocks+meta+locker+'</div><div class="ifrd-schedule-badge '+b[1]+'">'+b[0]+'</div></article>';}).join(''); el.innerHTML=html+(add>0?'<div class="ifrd-schedule-additional">+'+add+' additional events scheduled</div>':'');}
+            function badge(e){let n=Date.now(),s=new Date(e.start).getTime(),end=new Date(e.end).getTime();if(end<=n)return ['PAST','past'];if(s<=n&&end>n)return ['ON ICE NOW','now'];let mins=(s-n)/60000;if(mins>0&&mins<=60)return ['UP NEXT','next'];return ['LATER','later'];}
+            function render(key,items,add){const el=root.querySelector('[data-list="'+key+'"]');const now=Date.now();const allItems=Array.isArray(items)?items:[];const pastItems=allItems.filter(e=>new Date(e.end).getTime()<=now);const activeItems=allItems.filter(e=>new Date(e.end).getTime()>now);items=activeItems.length?activeItems:(pastItems.length?[pastItems[pastItems.length-1]]:[]);if(!items.length){el.innerHTML='<div class="ifrd-schedule-empty">No more events today.</div>';return;}const hasCurrent=activeItems.some(e=>{let s=new Date(e.start).getTime(),end=new Date(e.end).getTime();return s<=now&&end>now;});const hasUpcoming=activeItems.some(e=>new Date(e.start).getTime()>now);let html='';if(!hasCurrent&&pastItems.length&&hasUpcoming){html+='<article class="ifrd-schedule-event ifrd-schedule-resurfacing"><div class="ifrd-schedule-time"></div><div><div class="ifrd-schedule-title">Resurfacing</div></div><div class="ifrd-schedule-badge now">ON ICE NOW</div></article>';}html+=items.map(e=>{let b=badge(e);let metaParts=[];if(e.note)metaParts.push(esc(e.note));if(e.registrantText)metaParts.push(esc(e.registrantText));let meta=metaParts.length?'<div class="ifrd-schedule-meta">'+metaParts.join(' • ')+'</div>':'';let locker=e.lockerText?'<div class="ifrd-schedule-meta ifrd-schedule-locker">'+esc(e.lockerText)+'</div>':'';let blocks=(e.subBlocks&&e.subBlocks.length)?'<div class="ifrd-schedule-subblocks">'+e.subBlocks.map(x=>'<div><strong>'+esc(x.time)+'</strong>'+((x.title)?' — '+esc(x.title):'')+'</div>').join('')+'</div>':'';return '<article class="ifrd-schedule-event"><div class="ifrd-schedule-time">'+esc(e.startLabel)+'<span>to '+esc(e.endLabel)+'</span></div><div><div class="ifrd-schedule-title">'+esc(e.title)+'</div>'+blocks+meta+locker+'</div><div class="ifrd-schedule-badge '+b[1]+'">'+b[0]+'</div></article>';}).join('');el.innerHTML=html+(add>0?'<div class="ifrd-schedule-additional">+'+add+' additional events scheduled</div>':'');}
             const scheduleCacheKey='ifrd_schedule_last_success_v231';
             function localDayKey(){const d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');}
-            function displaySchedule(data){render('gold',data.gold||[],data.goldAdditional||0);render('silver',data.silver||[],data.silverAdditional||0);const updated=data.cachedAt?new Date(data.cachedAt):new Date();root.querySelector('[data-updated]').textContent='Last updated: '+updated.toLocaleTimeString([],{hour:'numeric',minute:'2-digit',second:'2-digit'});}
+            let currentScheduleData=null;
+            function displaySchedule(data){currentScheduleData=data;render('gold',data.gold||[],data.goldAdditional||0);render('silver',data.silver||[],data.silverAdditional||0);const updated=data.cachedAt?new Date(data.cachedAt):new Date();root.querySelector('[data-updated]').textContent='Last updated: '+updated.toLocaleTimeString([],{hour:'numeric',minute:'2-digit',second:'2-digit'});}
             function showCachedSchedule(){try{const cached=JSON.parse(localStorage.getItem(scheduleCacheKey));if(cached&&cached.cachedDay===localDayKey()){displaySchedule(cached);root.querySelector('[data-status]').textContent='API status: connecting — showing saved schedule';return true;}if(cached){localStorage.removeItem(scheduleCacheKey);}}catch(e){try{localStorage.removeItem(scheduleCacheKey);}catch(ignore){}}return false;}
-            async function load(){const status=root.querySelector('[data-status]');try{status.textContent='API status: updating...';let f=new FormData();f.append('action','ifrd_schedule_data');let r=await fetch('<?php echo esc_url(admin_url('admin-ajax.php')); ?>',{method:'POST',body:f,cache:'no-store'});if(!r.ok)throw new Error('Schedule refresh failed');let p=await r.json();if(!p.success)throw new Error(p.data?.message||'Unable to load schedule');const schedule=Object.assign({},p.data,{cachedAt:Date.now(),cachedDay:localDayKey()});displaySchedule(schedule);try{localStorage.setItem(scheduleCacheKey,JSON.stringify(schedule));}catch(ignore){}status.textContent='API status: connected';}catch(e){const gold=root.querySelector('[data-list="gold"]');const silver=root.querySelector('[data-list="silver"]');const hasVisibleSchedule=(gold&&gold.children.length>0)||(silver&&silver.children.length>0);status.textContent=hasVisibleSchedule?'API status: refresh failed — showing last schedule':'API status: error';if(!hasVisibleSchedule&&gold){gold.innerHTML='<div class="ifrd-schedule-error">'+esc(e.message)+'</div>';}if(window.console&&console.error)console.error(e);}}
+            async function load(){const status=root.querySelector('[data-status]');try{status.textContent='API status: updating...';let schedule=null;const staticUrl=<?php echo wp_json_encode($static_schedule_url); ?>;if(staticUrl){try{const staticResponse=await fetch(staticUrl,{cache:'no-store'});if(staticResponse.ok)schedule=await staticResponse.json();}catch(ignore){}}if(!schedule){let f=new FormData();f.append('action','ifrd_schedule_data');let r=await fetch('<?php echo esc_url(admin_url('admin-ajax.php')); ?>',{method:'POST',body:f,cache:'no-store'});if(!r.ok)throw new Error('Schedule refresh failed');let p=await r.json();if(!p.success)throw new Error(p.data?.message||'Unable to load schedule');schedule=p.data;}schedule=Object.assign({},schedule,{cachedAt:Date.now(),cachedDay:localDayKey()});displaySchedule(schedule);try{localStorage.setItem(scheduleCacheKey,JSON.stringify(schedule));}catch(ignore){}status.textContent='API status: connected';}catch(e){const gold=root.querySelector('[data-list="gold"]');const silver=root.querySelector('[data-list="silver"]');const hasVisibleSchedule=(gold&&gold.children.length>0)||(silver&&silver.children.length>0);status.textContent=hasVisibleSchedule?'API status: refresh failed — showing last schedule':'API status: error';if(!hasVisibleSchedule&&gold){gold.innerHTML='<div class="ifrd-schedule-error">'+esc(e.message)+'</div>';}if(window.console&&console.error)console.error(e);}}
             const embeddedRefreshVersion=<?php echo wp_json_encode($screen_refresh_version); ?>;
             const initialPageUrl=new URL(window.location.href);
             let currentRefreshVersion=initialPageUrl.searchParams.get('screen_refresh')||embeddedRefreshVersion;
             async function checkForScreenRefresh(){try{const body=new URLSearchParams();body.set('action',<?php echo wp_json_encode(IFRD_Video_For_Screens::AJAX_ACTION); ?>);const response=await fetch(<?php echo wp_json_encode(admin_url('admin-ajax.php')); ?>,{method:'POST',headers:{'Accept':'application/json','Content-Type':'application/x-www-form-urlencoded; charset=UTF-8'},body:body.toString(),credentials:'same-origin',cache:'no-store'});const payload=await response.json();const latest=String(payload&&payload.success&&payload.data&&payload.data.version||'');if(!latest||latest===currentRefreshVersion)return;currentRefreshVersion=latest;const target=new URL(window.location.href);target.searchParams.set('screen_refresh',latest);window.location.replace(target.toString());}catch(ignore){}}
-            setInterval(checkForScreenRefresh,30000);setTimeout(checkForScreenRefresh,5000);document.addEventListener('visibilitychange',function(){if(!document.hidden)checkForScreenRefresh();});
-            clock();setInterval(clock,1000);showCachedSchedule();load();setInterval(load,<?php echo max(30,intval($o['refresh_seconds']))*1000; ?>);
+            setInterval(checkForScreenRefresh,60000);setTimeout(checkForScreenRefresh,5000);document.addEventListener('visibilitychange',function(){if(!document.hidden)checkForScreenRefresh();});
+            clock();setInterval(clock,1000);showCachedSchedule();load();setInterval(load,<?php echo max(30,intval($o['refresh_seconds']))*1000; ?>);setInterval(function(){if(currentScheduleData)displaySchedule(currentScheduleData);},30000);
         })();
         </script>
         <?php
@@ -2721,6 +2820,7 @@ class IFRD_Schedule_Calendar {
         add_shortcode('rink_schedule_list', array($this, 'shortcode'));
         add_action('wp_ajax_' . self::AJAX_ACTION, array($this, 'ajax'));
         add_action('wp_ajax_nopriv_' . self::AJAX_ACTION, array($this, 'ajax'));
+        add_filter('cron_schedules', array($this, 'cron_schedules'));
         add_action('init', array($this, 'ensure_cron'));
         add_action(self::CRON_HOOK, array($this, 'warm_cache'));
         add_action(self::REFRESH_HOOK, array($this, 'refresh_week'), 10, 1);
@@ -2732,10 +2832,15 @@ class IFRD_Schedule_Calendar {
         delete_option('ifrd_calendar_warm_schedule');
     }
 
+    public function cron_schedules($schedules) {
+        $schedules['ifrd_fifteen_minutes'] = array('interval' => 15 * MINUTE_IN_SECONDS, 'display' => 'Every fifteen minutes');
+        return $schedules;
+    }
+
     public function register_assets() {
         $base = plugin_dir_url(__FILE__) . 'assets/';
-        wp_register_style('ifrd-schedule-calendar', $base . 'schedule-calendar.css', array(), '2.7.9');
-        wp_register_script('ifrd-schedule-calendar', $base . 'schedule-calendar.js', array(), '2.7.9', true);
+        wp_register_style('ifrd-schedule-calendar', $base . 'schedule-calendar.css', array(), '2.7.11');
+        wp_register_script('ifrd-schedule-calendar', $base . 'schedule-calendar.js', array(), '2.7.11', true);
     }
 
     private function next_cache_warm_timestamp() {
@@ -2750,19 +2855,19 @@ class IFRD_Schedule_Calendar {
     }
 
     public function ensure_cron() {
-        $schedule_version = '2.5.7-midnight-noon';
+        $schedule_version = '2.7.11-every-fifteen-minutes';
         if (get_option('ifrd_calendar_warm_schedule') !== $schedule_version) {
             wp_clear_scheduled_hook(self::CRON_HOOK);
             update_option('ifrd_calendar_warm_schedule', $schedule_version, false);
-            // Prime the new cache shortly after this update is activated, while
-            // also establishing the permanent midnight/noon schedule.
+            // Prime shortly after activation, then keep the shared static files
+            // warm without making display browsers rebuild them.
             wp_schedule_single_event(time() + 5, self::CRON_HOOK);
-            wp_schedule_event($this->next_cache_warm_timestamp(), 'twicedaily', self::CRON_HOOK);
+            wp_schedule_event(time() + 15 * MINUTE_IN_SECONDS, 'ifrd_fifteen_minutes', self::CRON_HOOK);
             return;
         }
 
         if (!wp_next_scheduled(self::CRON_HOOK)) {
-            wp_schedule_event($this->next_cache_warm_timestamp(), 'twicedaily', self::CRON_HOOK);
+            wp_schedule_event(time() + 15, 'ifrd_fifteen_minutes', self::CRON_HOOK);
         }
     }
 
@@ -2799,6 +2904,7 @@ class IFRD_Schedule_Calendar {
 
         $config = array(
             'ajaxUrl' => admin_url('admin-ajax.php'),
+            'staticBaseUrl' => IFRD_Static_Schedule_Cache::base_url(),
             'action' => self::AJAX_ACTION,
             'nonce' => wp_create_nonce(self::NONCE_ACTION),
             'initialDate' => $today->format('Y-m-d'),
@@ -2888,7 +2994,10 @@ class IFRD_Schedule_Calendar {
 
         $current = $this->week_start_for('');
         $this->get_week($current, true);
-        $this->get_week($current->modify('+7 days'), true);
+        $next_args = array($current->modify('+7 days')->format('Y-m-d'));
+        if (!wp_next_scheduled(self::REFRESH_HOOK, $next_args)) {
+            wp_schedule_single_event(time() + 90, self::REFRESH_HOOK, $next_args);
+        }
     }
 
     public function refresh_week($week_start_value) {
@@ -2918,7 +3027,7 @@ class IFRD_Schedule_Calendar {
         $o = $this->opts();
         $version = absint(get_option('ifrd_calendar_cache_version', 1));
         $identity = implode('|', array(
-            '2.5.7',
+            '2.7.11',
             $version,
             $week_start->format('Y-m-d'),
             $o['display_timezone'] ?? 'America/Chicago',
@@ -2962,6 +3071,7 @@ class IFRD_Schedule_Calendar {
             $cached = get_transient($cache_key);
             if (is_array($cached)) {
                 $cached['cacheStatus'] = 'cached';
+                IFRD_Static_Schedule_Cache::write('week-' . $week_start->format('Y-m-d'), $cached);
                 return $cached;
             }
 
@@ -2979,24 +3089,40 @@ class IFRD_Schedule_Calendar {
             }
         }
 
-        $payload = $this->fetch_week($week_start, $ttl, $force);
-
-        if (is_wp_error($payload)) {
-            $stale = get_transient($stale_key);
+        $lock_key = $cache_key . '_lock';
+        $stale = get_transient($stale_key);
+        if (get_transient($lock_key)) {
             if (is_array($stale)) {
-                $stale['cacheStatus'] = 'stale';
-                $stale['warning'] = 'Showing the most recently cached schedule while Dash is unavailable.';
+                $stale['cacheStatus'] = 'stale-refreshing';
+                $stale['warning'] = 'Showing the cached schedule while an update runs in the background.';
                 return $stale;
             }
-
-            return $payload;
+            return new WP_Error('ifrd_calendar_refreshing', 'This schedule week is already refreshing. Please try again shortly.');
         }
 
-        $payload['cacheStatus'] = 'fresh';
-        set_transient($cache_key, $payload, $ttl);
-        set_transient($stale_key, $payload, 2 * DAY_IN_SECONDS);
+        set_transient($lock_key, 1, 3 * MINUTE_IN_SECONDS);
+        try {
+            $payload = $this->fetch_week($week_start, $ttl, $force);
 
-        return $payload;
+            if (is_wp_error($payload)) {
+                if (is_array($stale)) {
+                    $stale['cacheStatus'] = 'stale';
+                    $stale['warning'] = 'Showing the most recently cached schedule while Dash is unavailable.';
+                    return $stale;
+                }
+
+                return $payload;
+            }
+
+            $payload['cacheStatus'] = 'fresh';
+            set_transient($cache_key, $payload, $ttl);
+            set_transient($stale_key, $payload, 2 * DAY_IN_SECONDS);
+            IFRD_Static_Schedule_Cache::write('week-' . $week_start->format('Y-m-d'), $payload);
+
+            return $payload;
+        } finally {
+            delete_transient($lock_key);
+        }
     }
 
     private function parse_datetime($value) {
@@ -3898,10 +4024,12 @@ class IFRD_Schedule_Calendar {
         $events = array();
         $page = 1;
         $last_page = 1;
-        $max_pages = 100;
+        $max_pages = 25;
 
         do {
             $payload = IFRD_Dash_Connector::get('events', array(
+                'filter[start__gte]' => $week_start->format('Y-m-d\\TH:i:s'),
+                'filter[start__lte]' => $week_end->modify('-1 second')->format('Y-m-d\\TH:i:s'),
                 'sort' => 'start',
                 'page' => array('number' => $page, 'size' => 100),
             ), array(
@@ -4004,3 +4132,4 @@ new IFRD_Additional_Video_Screen('pricing', 'Pricing Page', 'ifrd-pricing-page',
 new IFRD_Additional_Video_Screen('public_skating_rules', 'Public Skating Rules Page', 'ifrd-public-skating-rules-page', 'public_skating_rules_page');
 new IFRD_Shortcodes_Page();
 register_deactivation_hook(__FILE__, array('IFRD_Schedule_Calendar', 'deactivate'));
+register_deactivation_hook(__FILE__, array('IFRD_Schedule_Display', 'deactivate'));

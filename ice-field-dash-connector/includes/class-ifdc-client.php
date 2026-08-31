@@ -172,7 +172,9 @@ class IFDC_Client {
         $included = [];
         $page = 0;
         $max_pages = isset($args['max_pages']) ? max(1, absint($args['max_pages'])) : 25;
-        unset($args['max_pages']);
+        $collect_included = !isset($args['collect_included']) || !empty($args['collect_included']);
+        $collection_filter = isset($args['collection_filter']) && is_callable($args['collection_filter']) ? $args['collection_filter'] : null;
+        unset($args['max_pages'], $args['collect_included'], $args['collection_filter']);
         $next = $path;
         $next_query = $query;
 
@@ -182,10 +184,11 @@ class IFDC_Client {
             if (is_wp_error($result)) return $result;
             $items = isset($result['data']) ? $result['data'] : $result;
             if (is_array($items)) {
+                if ($collection_filter && self::is_list($items)) $items = array_values(array_filter($items, $collection_filter));
                 if (self::is_list($items)) $all = array_merge($all, $items);
                 elseif (!empty($items)) $all[] = $items;
             }
-            if (!empty($result['included']) && is_array($result['included'])) $included = array_merge($included, $result['included']);
+            if ($collect_included && !empty($result['included']) && is_array($result['included'])) $included = array_merge($included, $result['included']);
             $next = $result['links']['next'] ?? '';
             $next_query = [];
         }
@@ -233,15 +236,16 @@ class IFDC_Client {
     }
 
     /**
-     * Update an event's destination class, capacity, name, or any combination.
+     * Update an event's destination class, capacity, name, event type, or any combination.
      * A null team ID preserves the current class/team relationship.
      */
-    public static function update_event_assignment($event_id, $team_id = null, $capacity = null, $event_name = null) {
+    public static function update_event_assignment($event_id, $team_id = null, $capacity = null, $event_name = null, $event_type_id = null) {
         $event_id = absint($event_id);
         $team_id = $team_id === null ? null : absint($team_id);
         $event_name = $event_name === null ? null : trim(sanitize_text_field($event_name));
+        $event_type_id = $event_type_id === null ? null : absint($event_type_id);
         if ($event_name === '') $event_name = null;
-        if (!$event_id || (!$team_id && $capacity === null && $event_name === null)) {
+        if (!$event_id || (!$team_id && $capacity === null && $event_name === null && !$event_type_id)) {
             return new WP_Error('ifdc_invalid_assignment', 'A valid event ID and at least one update are required.');
         }
 
@@ -249,6 +253,7 @@ class IFDC_Client {
         if ($team_id) $attributes['hteam_id'] = $team_id;
         if ($capacity !== null) $attributes['register_capacity'] = max(0, absint($capacity));
         if ($event_name !== null) $attributes['desc'] = $event_name;
+        if ($event_type_id) $attributes['event_type_id'] = $event_type_id;
 
         $result = self::request('PATCH', 'events/' . $event_id, [
             'data' => [
@@ -262,7 +267,7 @@ class IFDC_Client {
     }
 
     /** Restore the complete state captured before one automatic event update. */
-    public static function restore_automatic_event_state($event_id, $team_id, $capacity, $event_name) {
+    public static function restore_automatic_event_state($event_id, $team_id, $capacity, $event_name, $event_type_id = null) {
         $event_id = absint($event_id);
         if (!$event_id) return new WP_Error('ifdc_invalid_event', 'A valid event ID is required.');
 
@@ -270,11 +275,12 @@ class IFDC_Client {
             'data' => [
                 'type' => 'events',
                 'id' => (string) $event_id,
-                'attributes' => [
+                'attributes' => array_filter([
                     'hteam_id' => absint($team_id) ?: null,
                     'register_capacity' => max(0, absint($capacity)),
                     'desc' => sanitize_text_field($event_name),
-                ],
+                    'event_type_id' => $event_type_id === null ? null : absint($event_type_id),
+                ], function($value, $key) { return $key !== 'event_type_id' || $value; }, ARRAY_FILTER_USE_BOTH),
             ],
         ]);
         if (!is_wp_error($result)) self::clear_cache();

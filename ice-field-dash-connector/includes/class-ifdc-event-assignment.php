@@ -216,6 +216,11 @@ class IFDC_Event_Assignment {
                         <input type="text" class="regular-text" id="ifdc-assignment-event-name" placeholder="Preserve existing event names">
                         <p class="description">Enter a consistent name to include already-assigned events whose names differ. Event type 10 defaults to Public Skating.</p>
                     </div>
+                    <div class="ifdc-capacity-setting">
+                        <label for="ifdc-assignment-new-event-type"><strong>Set event type ID</strong> <span class="description">(optional)</span></label>
+                        <input type="number" min="1" id="ifdc-assignment-new-event-type" placeholder="Preserve existing event types">
+                        <p class="description">Changes the selected events to this Dash event type. The current type is checked again immediately before each update and verified afterward.</p>
+                    </div>
                 </section>
             </div>
 
@@ -523,6 +528,7 @@ class IFDC_Event_Assignment {
             'event_type_id' => self::PUBLIC_SKATING_EVENT_TYPE_ID,
             'destination_resolver' => 'public_skating',
             'automate_name' => true,
+            'capacity_only_if_empty' => true,
         ];
         $suppressed_event_ids = array_values(array_filter(array_map('absint', (array) get_option(self::AUTOMATION_SUPPRESSED_OPTION, []))));
 
@@ -572,7 +578,9 @@ class IFDC_Event_Assignment {
                 $current_capacity = absint($attrs['register_capacity'] ?? 0);
                 $current_name = sanitize_text_field($attrs['desc'] ?? $definition['name']);
                 $team_needs_update = $target && $current_team_id !== absint($target['id']);
-                $capacity_needs_update = $definition['capacity'] !== null && $current_capacity !== absint($definition['capacity']);
+                $capacity_needs_update = $definition['capacity'] !== null &&
+                    $current_capacity !== absint($definition['capacity']) &&
+                    (empty($definition['capacity_only_if_empty']) || $current_capacity === 0);
                 $name_needs_update = strcasecmp(trim($current_name), trim($definition['name'])) !== 0;
                 $automated_name_needs_update = !empty($definition['automate_name']) && $name_needs_update;
                 if (!$team_needs_update && !$capacity_needs_update && !$name_needs_update) continue;
@@ -587,6 +595,7 @@ class IFDC_Event_Assignment {
                     'resource_id' => absint($attrs['resource_id'] ?? 0),
                     'team_id' => $current_team_id,
                     'capacity' => $current_capacity,
+                    'capacity_update' => $capacity_needs_update,
                     'assignment_update' => $team_needs_update || $capacity_needs_update || $automated_name_needs_update,
                     'name_mismatch' => $name_needs_update,
                 ];
@@ -608,6 +617,7 @@ class IFDC_Event_Assignment {
                 'rename_count' => $rename_count,
                 'event_name' => $definition['name'],
                 'automate_name' => !empty($definition['automate_name']),
+                'capacity_only_if_empty' => !empty($definition['capacity_only_if_empty']),
                 'manual_only' => !empty($definition['manual_only']),
                 'events' => $updates,
             ];
@@ -774,12 +784,12 @@ class IFDC_Event_Assignment {
             $before = (array) ($change['before'] ?? []);
             $after = (array) ($change['after'] ?? []);
             $lines[] = sprintf(
-                '#%d %s%s — Team %d → %d; capacity %d → %d; name “%s” → “%s”',
+                '#%d %s%s — %s → %s; capacity %d → %d; name “%s” → “%s”',
                 absint($change['event_id'] ?? 0),
                 sanitize_text_field($change['event_name'] ?? 'Event'),
                 !empty($change['event_start']) ? ' (' . sanitize_text_field($change['event_start']) . ')' : '',
-                absint($before['team_id'] ?? 0),
-                absint($after['team_id'] ?? 0),
+                self::format_email_team($before),
+                self::format_email_team($after),
                 absint($before['capacity'] ?? 0),
                 absint($after['capacity'] ?? 0),
                 sanitize_text_field($before['name'] ?? ''),
@@ -789,6 +799,13 @@ class IFDC_Event_Assignment {
         $lines[] = '';
         $lines[] = 'Review history or use guarded Undo: ' . admin_url('admin.php?page=ifdc-update-history');
         return IFDC_Mailer::send('automatic_event_updates', $recipients, $subject, implode("\n", $lines));
+    }
+
+    private static function format_email_team($state) {
+        $team_id = absint($state['team_id'] ?? 0);
+        if (!$team_id) return 'Unassigned';
+        $team_name = sanitize_text_field($state['team_name'] ?? '');
+        return $team_name !== '' ? sprintf('%s (%d)', $team_name, $team_id) : sprintf('Team %d', $team_id);
     }
 
     public static function history_page() {
@@ -821,8 +838,8 @@ class IFDC_Event_Assignment {
                                 <td><strong><?php echo ($item['source'] ?? 'automatic') === 'manual' ? 'Manual' : 'Automatic'; ?></strong><?php if (!empty($item['user_name'])): ?><br><span class="description"><?php echo esc_html($item['user_name']); ?></span><?php endif; ?></td>
                                 <td><strong>#<?php echo esc_html(absint($item['event_id'] ?? 0)); ?> <?php echo esc_html($item['event_name'] ?? 'Event'); ?></strong><br><span class="description"><?php echo esc_html($item['event_start'] ?? ''); ?></span></td>
                                 <td><?php echo esc_html($item['group'] ?? ''); ?></td>
-                                <td><?php echo !empty($before['team_id']) ? 'Team #' . esc_html(absint($before['team_id'])) : 'Unassigned'; ?><br>Capacity <?php echo esc_html(absint($before['capacity'] ?? 0)); ?><br><?php echo esc_html($before['name'] ?? ''); ?></td>
-                                <td><?php echo !empty($after['team_id']) ? 'Team #' . esc_html(absint($after['team_id'])) : 'Unassigned'; ?><br>Capacity <?php echo esc_html(absint($after['capacity'] ?? 0)); ?><br><?php echo esc_html($after['name'] ?? ''); ?></td>
+                                <td><?php echo !empty($before['team_id']) ? 'Team #' . esc_html(absint($before['team_id'])) : 'Unassigned'; ?><br>Capacity <?php echo esc_html(absint($before['capacity'] ?? 0)); ?><?php if (array_key_exists('event_type_id', $before)): ?><br>Type <?php echo esc_html(absint($before['event_type_id'])); ?><?php endif; ?><br><?php echo esc_html($before['name'] ?? ''); ?></td>
+                                <td><?php echo !empty($after['team_id']) ? 'Team #' . esc_html(absint($after['team_id'])) : 'Unassigned'; ?><br>Capacity <?php echo esc_html(absint($after['capacity'] ?? 0)); ?><?php if (array_key_exists('event_type_id', $after)): ?><br>Type <?php echo esc_html(absint($after['event_type_id'])); ?><?php endif; ?><br><?php echo esc_html($after['name'] ?? ''); ?></td>
                                 <td>
                                     <?php if ($undone): ?>
                                         <span class="ifdc-status is-ready">Undone<?php echo $paused ? ' · automation paused' : ''; ?></span>
@@ -871,13 +888,15 @@ class IFDC_Event_Assignment {
             $matches = $record &&
                 absint($attrs['hteam_id'] ?? 0) === absint($after['team_id'] ?? 0) &&
                 absint($attrs['register_capacity'] ?? 0) === absint($after['capacity'] ?? 0) &&
-                sanitize_text_field($attrs['desc'] ?? '') === sanitize_text_field($after['name'] ?? '');
+                sanitize_text_field($attrs['desc'] ?? '') === sanitize_text_field($after['name'] ?? '') &&
+                (!array_key_exists('event_type_id', $after) || absint($attrs['event_type_id'] ?? 0) === absint($after['event_type_id']));
             if ($matches) {
                 $restore = IFDC_Client::restore_automatic_event_state(
                     absint($item['event_id'] ?? 0),
                     absint($before['team_id'] ?? 0),
                     absint($before['capacity'] ?? 0),
-                    sanitize_text_field($before['name'] ?? '')
+                    sanitize_text_field($before['name'] ?? ''),
+                    array_key_exists('event_type_id', $before) ? absint($before['event_type_id']) : null
                 );
                 if (!is_wp_error($restore)) {
                     $verify_payload = IFDC_Client::get_data('events/' . absint($item['event_id'] ?? 0), [], ['force' => true, 'cache' => false]);
@@ -886,7 +905,8 @@ class IFDC_Event_Assignment {
                     $success = $verify &&
                         absint($verify_attrs['hteam_id'] ?? 0) === absint($before['team_id'] ?? 0) &&
                         absint($verify_attrs['register_capacity'] ?? 0) === absint($before['capacity'] ?? 0) &&
-                        sanitize_text_field($verify_attrs['desc'] ?? '') === sanitize_text_field($before['name'] ?? '');
+                        sanitize_text_field($verify_attrs['desc'] ?? '') === sanitize_text_field($before['name'] ?? '') &&
+                        (!array_key_exists('event_type_id', $before) || absint($verify_attrs['event_type_id'] ?? 0) === absint($before['event_type_id']));
                 }
             }
         }
@@ -944,13 +964,13 @@ class IFDC_Event_Assignment {
         $result = ['updated' => 0, 'unchanged' => 0, 'errors' => 0, 'error_messages' => [], 'changes' => []];
         foreach ($automated_groups as $group) {
             $target_id = absint($group['target']['id']);
-            $capacity = absint($group['capacity']);
             $event_name = !empty($group['automate_name']) ? sanitize_text_field($group['event_name'] ?? '') : null;
             if ($event_name === '') $event_name = null;
             $result['unchanged'] += absint($group['ready_count'] ?? 0);
             foreach ((array) ($group['events'] ?? []) as $event) {
                 $event_id = absint($event['id'] ?? 0);
                 if (!$event_id) continue;
+                $capacity = !empty($event['capacity_update']) ? absint($group['capacity']) : null;
                 $update = IFDC_Client::update_event_assignment($event_id, $target_id, $capacity, $event_name);
                 if (is_wp_error($update)) {
                     $result['errors']++;
@@ -964,14 +984,16 @@ class IFDC_Event_Assignment {
                 if (
                     !$verify ||
                     absint($attrs['hteam_id'] ?? 0) !== $target_id ||
-                    absint($attrs['register_capacity'] ?? 0) !== $capacity ||
+                    ($capacity !== null && absint($attrs['register_capacity'] ?? 0) !== $capacity) ||
+                    ($capacity === null && absint($attrs['register_capacity'] ?? 0) !== absint($event['capacity'] ?? 0)) ||
                     ($event_name !== null && sanitize_text_field($attrs['desc'] ?? '') !== $event_name)
                 ) {
                     $result['errors']++;
-                    $result['error_messages'][] = '#' . $event_id . ': Dash did not retain the verified assignment, capacity, and event name.';
+                    $result['error_messages'][] = '#' . $event_id . ': Dash did not retain the verified assignment, preserved/repaired capacity, and event name.';
                     continue;
                 }
                 $result['updated']++;
+                $before_team_id = absint($event['team_id'] ?? 0);
                 $result['changes'][] = [
                     'event_id' => $event_id,
                     'event_name' => sanitize_text_field($attrs['desc'] ?? $event['name'] ?? ''),
@@ -979,13 +1001,15 @@ class IFDC_Event_Assignment {
                     'month' => $month,
                     'group' => sanitize_text_field($group['name'] ?? ''),
                     'before' => [
-                        'team_id' => absint($event['team_id'] ?? 0),
+                        'team_id' => $before_team_id,
+                        'team_name' => $before_team_id ? self::resource_name('teams', $before_team_id) : '',
                         'capacity' => absint($event['capacity'] ?? 0),
                         'name' => sanitize_text_field($event['name'] ?? ''),
                     ],
                     'after' => [
                         'team_id' => $target_id,
-                        'capacity' => $capacity,
+                        'team_name' => sanitize_text_field($group['target']['name'] ?? ''),
+                        'capacity' => absint($attrs['register_capacity'] ?? 0),
                         'name' => sanitize_text_field($attrs['desc'] ?? ''),
                     ],
                 ];
@@ -1126,46 +1150,67 @@ class IFDC_Event_Assignment {
         $event_type = absint($_POST['event_type'] ?? 0);
         $include_other = !empty($_POST['include_other']);
         $only_unlimited = !empty($_POST['only_unlimited']);
-        $query = [
-            'filter[start__gte]' => $start . 'T00:00:00',
-            'filter[start__lte]' => $end . 'T23:59:59',
-            'sort' => 'start',
-            'page[size]' => 500,
-        ];
-        if ($name !== '') $query['filter[desc__contains]'] = $name;
-        if ($event_type) $query['filter[event_type_id]'] = $event_type;
-
-        $result = IFDC_Client::get_events($query, [
-            'force' => true,
-            'cache' => false,
-            'max_pages' => 10,
-        ]);
-        if (is_wp_error($result)) self::send_wp_error($result);
-
         $events = [];
         $total_matches = 0;
-        foreach ((array) ($result['data'] ?? []) as $record) {
-            $attrs = self::attributes($record);
-            if ($name !== '' && stripos((string) ($attrs['desc'] ?? ''), $name) === false) continue;
-            if ($event_type && absint($attrs['event_type_id'] ?? 0) !== $event_type) continue;
-            $current_team_id = absint($attrs['hteam_id'] ?? 0);
-            $current_capacity = absint($attrs['register_capacity'] ?? 0);
-            if (self::is_protected_public_skating_event($attrs)) continue;
-            if (!$include_other && $current_team_id) continue;
-            if ($only_unlimited && $current_capacity > 0) continue;
-            $total_matches++;
-            if (count($events) >= self::MAX_RESULTS) continue;
-            $events[] = [
-                'id' => absint($record['id'] ?? 0),
-                'name' => sanitize_text_field($attrs['desc'] ?? 'Untitled event'),
-                'start' => sanitize_text_field($attrs['start'] ?? ''),
-                'end' => sanitize_text_field($attrs['end'] ?? ''),
-                'event_type_id' => absint($attrs['event_type_id'] ?? 0),
-                'resource_id' => absint($attrs['resource_id'] ?? 0),
-                'team_id' => $current_team_id,
-                'level_id' => absint($attrs['league_id'] ?? 0),
-                'capacity' => array_key_exists('register_capacity', $attrs) && $attrs['register_capacity'] !== null ? absint($attrs['register_capacity']) : null,
+        $truncated = false;
+        $first = new DateTimeImmutable($start);
+        $last = new DateTimeImmutable($end);
+        for ($chunk_first = $first; $chunk_first <= $last; $chunk_first = $chunk_last->modify('+1 day')) {
+            // Do not pass DateTime objects through min(): older production PHP
+            // versions can attempt to coerce them to numbers and fatally abort
+            // this AJAX request. Compare them directly instead.
+            $candidate_last = $chunk_first->modify('+6 days');
+            $chunk_last = $candidate_last > $last ? $last : $candidate_last;
+            $query = [
+                'filter[start__gte]' => $chunk_first->format('Y-m-d') . 'T00:00:00',
+                'filter[start__lte]' => $chunk_last->format('Y-m-d') . 'T23:59:59',
+                'sort' => 'start',
+                // A 500-event response can exhaust a 128 MB WordPress process
+                // while PHP is decoding Dash's JSON:API payload. Smaller pages
+                // keep peak memory bounded without changing the result set.
+                'page[size]' => 100,
             ];
+            if ($event_type) $query['filter[event_type_id]'] = $event_type;
+            $result = IFDC_Client::get_events($query, [
+                'force' => true,
+                'cache' => false,
+                'max_pages' => 10,
+                'collect_included' => false,
+                // Discard nonmatching records page-by-page so they never build
+                // up in the collection held by this WordPress request.
+                'collection_filter' => function($record) use ($name, $event_type, $include_other, $only_unlimited) {
+                    $attrs = self::attributes($record);
+                    if ($name !== '' && stripos((string) ($attrs['desc'] ?? ''), $name) === false) return false;
+                    if ($event_type && absint($attrs['event_type_id'] ?? 0) !== $event_type) return false;
+                    $current_team_id = absint($attrs['hteam_id'] ?? 0);
+                    $current_capacity = absint($attrs['register_capacity'] ?? 0);
+                    if (self::is_protected_public_skating_event($attrs)) return false;
+                    if (!$include_other && $current_team_id) return false;
+                    if ($only_unlimited && $current_capacity > 0) return false;
+                    return true;
+                },
+            ]);
+            if (is_wp_error($result)) self::send_wp_error($result);
+            $truncated = $truncated || !empty($result['meta']['truncated']);
+            foreach ((array) ($result['data'] ?? []) as $record) {
+                $attrs = self::attributes($record);
+                $current_team_id = absint($attrs['hteam_id'] ?? 0);
+                $current_capacity = absint($attrs['register_capacity'] ?? 0);
+                $total_matches++;
+                if (count($events) >= self::MAX_RESULTS) continue;
+                $events[] = [
+                    'id' => absint($record['id'] ?? 0),
+                    'name' => sanitize_text_field($attrs['desc'] ?? 'Untitled event'),
+                    'start' => sanitize_text_field($attrs['start'] ?? ''),
+                    'end' => sanitize_text_field($attrs['end'] ?? ''),
+                    'event_type_id' => absint($attrs['event_type_id'] ?? 0),
+                    'resource_id' => absint($attrs['resource_id'] ?? 0),
+                    'team_id' => $current_team_id,
+                    'level_id' => absint($attrs['league_id'] ?? 0),
+                    'capacity' => array_key_exists('register_capacity', $attrs) && $attrs['register_capacity'] !== null ? absint($attrs['register_capacity']) : null,
+                ];
+            }
+            unset($result);
         }
 
         usort($events, function($a, $b) {
@@ -1176,7 +1221,7 @@ class IFDC_Event_Assignment {
             'events' => $events,
             'count' => count($events),
             'total_matches' => $total_matches,
-            'limited' => $total_matches > self::MAX_RESULTS || !empty($result['meta']['truncated']),
+            'limited' => $total_matches > self::MAX_RESULTS || $truncated,
         ]);
     }
 
@@ -1282,13 +1327,20 @@ class IFDC_Event_Assignment {
         $capacity = $capacity_raw === '' ? null : min(9999, absint($capacity_raw));
         $event_name = trim(sanitize_text_field(wp_unslash($_POST['event_name'] ?? '')));
         if ($event_name === '') $event_name = null;
+        $event_type_raw = sanitize_text_field(wp_unslash($_POST['new_event_type'] ?? ''));
+        if ($event_type_raw !== '' && (!ctype_digit($event_type_raw) || absint($event_type_raw) < 1)) {
+            wp_send_json_error(['message' => 'Event type ID must be a whole number greater than zero.'], 400);
+        }
+        $event_type_id = $event_type_raw === '' ? null : absint($event_type_raw);
         $raw_ids = isset($_POST['event_ids']) ? (array) wp_unslash($_POST['event_ids']) : [];
         $raw_expected = isset($_POST['expected_team_ids']) ? (array) wp_unslash($_POST['expected_team_ids']) : [];
         $raw_expected_capacities = isset($_POST['expected_capacities']) ? (array) wp_unslash($_POST['expected_capacities']) : [];
         $raw_expected_names = isset($_POST['expected_event_names']) ? (array) wp_unslash($_POST['expected_event_names']) : [];
+        $raw_expected_event_types = isset($_POST['expected_event_types']) ? (array) wp_unslash($_POST['expected_event_types']) : [];
         $expected_team_ids = [];
         $expected_capacities = [];
         $expected_names = [];
+        $expected_event_types = [];
         foreach ($raw_expected as $event_id => $expected_team_id) {
             $expected_team_ids[absint($event_id)] = absint($expected_team_id);
         }
@@ -1298,9 +1350,12 @@ class IFDC_Event_Assignment {
         foreach ($raw_expected_names as $event_id => $expected_name) {
             $expected_names[absint($event_id)] = sanitize_text_field($expected_name);
         }
+        foreach ($raw_expected_event_types as $event_id => $expected_event_type) {
+            $expected_event_types[absint($event_id)] = absint($expected_event_type);
+        }
         $event_ids = array_slice(array_values(array_unique(array_filter(array_map('absint', $raw_ids)))), 0, self::MAX_UPDATE_BATCH);
-        if (!$event_ids || (!$team_id && $capacity === null && $event_name === null)) {
-            wp_send_json_error(['message' => 'Choose at least one event and a destination class, capacity, or event name.'], 400);
+        if (!$event_ids || (!$team_id && $capacity === null && $event_name === null && $event_type_id === null)) {
+            wp_send_json_error(['message' => 'Choose at least one event and a destination class, capacity, event name, or event type.'], 400);
         }
 
         if ($team_id) {
@@ -1327,6 +1382,7 @@ class IFDC_Event_Assignment {
             $current_team_id = absint($attrs['hteam_id'] ?? 0);
             $current_capacity = absint($attrs['register_capacity'] ?? 0);
             $current_name = sanitize_text_field($attrs['desc'] ?? '');
+            $current_event_type = absint($attrs['event_type_id'] ?? 0);
             if (self::is_protected_public_skating_event($attrs)) {
                 $skipped[] = [
                     'id' => $event_id,
@@ -1355,13 +1411,18 @@ class IFDC_Event_Assignment {
                 ];
                 continue;
             }
+            if ($event_type_id !== null && (!array_key_exists($event_id, $expected_event_types) || $current_event_type !== $expected_event_types[$event_id])) {
+                $errors[] = ['id' => $event_id, 'message' => 'The event type changed after the preview. Search again before updating this event.'];
+                continue;
+            }
             $team_matches = !$team_id || $current_team_id === $team_id;
             $capacity_matches = $capacity === null || $current_capacity === $capacity;
             $name_matches = $event_name === null || $current_name === $event_name;
-            if ($team_matches && $capacity_matches && $name_matches) {
+            $event_type_matches = $event_type_id === null || $current_event_type === $event_type_id;
+            if ($team_matches && $capacity_matches && $name_matches && $event_type_matches) {
                 $skipped[] = [
                     'id' => $event_id,
-                    'message' => 'The requested class/team, capacity, and event name are already set.',
+                    'message' => 'The requested class/team, capacity, event name, and event type are already set.',
                 ];
                 continue;
             }
@@ -1373,7 +1434,7 @@ class IFDC_Event_Assignment {
                 continue;
             }
 
-            $result = IFDC_Client::update_event_assignment($event_id, $team_id ?: null, $capacity, $event_name);
+            $result = IFDC_Client::update_event_assignment($event_id, $team_id ?: null, $capacity, $event_name, $event_type_id);
             if (is_wp_error($result)) {
                 $errors[] = ['id' => $event_id, 'message' => $result->get_error_message()];
                 continue;
@@ -1402,6 +1463,10 @@ class IFDC_Event_Assignment {
                 $errors[] = ['id' => $event_id, 'message' => 'Dash did not retain the requested event name.'];
                 continue;
             }
+            if ($event_type_id !== null && absint($verify_attrs['event_type_id'] ?? 0) !== $event_type_id) {
+                $errors[] = ['id' => $event_id, 'message' => 'Dash did not retain the requested event type.'];
+                continue;
+            }
             $updated[] = $event_id;
             $history_changes[] = [
                 'event_id' => $event_id,
@@ -1413,11 +1478,13 @@ class IFDC_Event_Assignment {
                     'team_id' => $current_team_id,
                     'capacity' => $current_capacity,
                     'name' => $current_name,
+                    'event_type_id' => $current_event_type,
                 ],
                 'after' => [
                     'team_id' => absint($verify_attrs['hteam_id'] ?? 0),
                     'capacity' => absint($verify_attrs['register_capacity'] ?? 0),
                     'name' => sanitize_text_field($verify_attrs['desc'] ?? ''),
+                    'event_type_id' => absint($verify_attrs['event_type_id'] ?? 0),
                 ],
             ];
         }

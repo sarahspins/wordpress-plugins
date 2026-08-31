@@ -1,7 +1,26 @@
 Ice & Field Dash Connector
-Version 1.7.12
+Version 1.7.17
 
 Shared Dash/DaySmart connection for Ice & Field WordPress plugins.
+
+1.7.17 updates:
+- Automatic event-update emails display Team 0 as “Unassigned” and identify assigned Teams as “Name (ID)”
+
+1.7.16 fixes:
+- Event searches use smaller Dash API pages and release each weekly response after filtering, preventing memory-limit HTTP 500 errors on 128 MB hosts.
+
+1.7.15 fixes:
+- Event Assignment searches no longer use object-valued min(), which could cause an HTTP 500 on some PHP versions.
+
+1.7.14 protects:
+- Public Skating capacities are automatically set to 250 only when the existing value is 0 or missing
+- Existing nonzero Public Skating capacities are treated as intentional manual adjustments and preserved during Team assignment and name repairs
+- The explicit single-event capacity editor remains available for deliberate manual changes
+
+1.7.13 adds:
+- A guarded optional Event Type ID update in the single-event assignment workflow
+- Event-type preview, stale-data protection, post-write verification, history display, and Undo support
+- Reliable name searching performed locally across seven-day Dash event batches so matching events are not omitted by Dash's incomplete description filter
 
 1.7.12 updates:
 - Simplifies both schedule-gap email section descriptions to “Openings of 45 minutes or longer:”

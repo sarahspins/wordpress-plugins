@@ -11,7 +11,88 @@ if (!defined('ABSPATH')) exit;
 class IFPROG_Preview {
     const SEASONS_TRANSIENT = 'ifprog_preview_seasons';
 
-    public static function init() {}
+    public static function init() {
+        add_action('wp_ajax_ifprog_warm_preview_stage', [__CLASS__, 'ajax_warm_preview_stage']);
+    }
+
+    public static function ajax_warm_preview_stage() {
+        check_ajax_referer('ifprog_preview_batch', 'nonce');
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(['message' => 'You do not have permission to prepare a protected import.'], 403);
+        }
+        if (!IFPROG_Dash::ready()) {
+            wp_send_json_error(['message' => 'The shared Dash Connector is not connected.'], 400);
+        }
+
+        $stage = sanitize_key(wp_unslash($_POST['stage'] ?? ''));
+        $season_id = absint($_POST['season_id'] ?? 0);
+        $dropin_team_id = absint($_POST['dropin_team_id'] ?? 0);
+        if (!$season_id) {
+            wp_send_json_error(['message' => 'A Dash Season ID is required.'], 400);
+        }
+
+        $seasons = get_transient(self::SEASONS_TRANSIENT);
+        $season_record = is_array($seasons) ? self::find_record($seasons, $season_id) : null;
+        if (!$season_record) {
+            $season_result = IFPROG_Dash::seasons(['cache_ttl' => 900, 'force' => false]);
+            if (is_wp_error($season_result)) {
+                wp_send_json_error(['message' => $season_result->get_error_message()], 502);
+            }
+            $seasons = self::collection_data($season_result);
+            set_transient(self::SEASONS_TRANSIENT, $seasons, 15 * MINUTE_IN_SECONDS);
+            $season_record = self::find_record($seasons, $season_id);
+        }
+        if (!$season_record) {
+            wp_send_json_error(['message' => 'The selected Dash Season was not found.'], 404);
+        }
+
+        $args = ['cache_ttl' => 900, 'force' => true];
+        switch ($stage) {
+            case 'teams':
+                $result = IFPROG_Dash::teams($season_id, $args);
+                break;
+            case 'leagues':
+                $result = IFPROG_Dash::leagues($args);
+                break;
+            case 'products':
+                $result = IFPROG_Dash::products($args);
+                break;
+            case 'availability':
+                $result = IFPROG_Dash::registration_infos($args);
+                break;
+            case 'events':
+                $season = self::attributes($season_record);
+                $start = self::date_only($season['start_date'] ?? '');
+                $end = self::date_only($season['end_date'] ?? '');
+                if ($start === '' || $end === '') {
+                    $result = [];
+                    break;
+                }
+                $result = IFPROG_Dash::events([
+                    'filter[start__gte]' => $start . 'T00:00:00',
+                    'filter[start__lte]' => $end . 'T23:59:59',
+                    'sort' => 'start',
+                    'page[size]' => 500,
+                ], wp_parse_args($args, ['max_pages' => 25]));
+                break;
+            case 'dropin':
+                if (!$dropin_team_id) {
+                    wp_send_json_error(['message' => 'A drop-in Team ID is required for this stage.'], 400);
+                }
+                $result = IFPROG_Dash::team($dropin_team_id, $args);
+                break;
+            default:
+                wp_send_json_error(['message' => 'Unknown preparation stage.'], 400);
+        }
+
+        if (is_wp_error($result)) {
+            wp_send_json_error(['message' => $result->get_error_message()], 502);
+        }
+        wp_send_json_success([
+            'stage' => $stage,
+            'peak_memory_bytes' => memory_get_peak_usage(true),
+        ]);
+    }
 
     public static function page() {
         if (!current_user_can('manage_options')) return;
@@ -22,6 +103,7 @@ class IFPROG_Preview {
         $action_notice = '';
         $selected_season_id = absint($_POST['ifprog_dash_season_id'] ?? ($_GET['ifprog_dash_season_id'] ?? 0));
         $dropin_team_id = absint($_POST['ifprog_dropin_team_id'] ?? 0);
+        $batched_preview = !empty($_POST['ifprog_batched_preview']);
         $view = sanitize_key(wp_unslash($_POST['ifprog_discovery_view'] ?? ($_GET['ifprog_view'] ?? 'inbox')));
         $view = $view === 'all' ? 'all' : 'inbox';
         $filter = sanitize_key(wp_unslash($_POST['ifprog_discovery_filter'] ?? ($_GET['ifprog_filter'] ?? 'all')));
@@ -68,8 +150,8 @@ class IFPROG_Preview {
                     $error = new WP_Error('ifprog_dash_not_ready', 'The shared Dash Connector must be connected before discovery or preview can be loaded.');
                 } else {
                     $season_result = IFPROG_Dash::seasons([
-                        'cache_ttl' => 300,
-                        'force' => true,
+                        'cache_ttl' => $batched_preview ? 900 : 300,
+                        'force' => !$batched_preview,
                     ]);
                     if (is_wp_error($season_result)) {
                         $error = $season_result;
@@ -110,7 +192,7 @@ class IFPROG_Preview {
                         } else {
                             $started = microtime(true);
                             $memory_before = memory_get_usage(true);
-                            $preview = self::build($selected_season, true, false, $dropin_team_id ? [$dropin_team_id] : []);
+                            $preview = self::build($selected_season, !$batched_preview, false, $dropin_team_id ? [$dropin_team_id] : []);
                             if (is_wp_error($preview)) {
                                 $error = $preview;
                                 $preview = null;

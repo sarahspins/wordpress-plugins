@@ -1,5 +1,18 @@
 # Ice & Field Programming Changelog
 
+## 1.9.2.4
+
+- Corrects the AJAX preparation progress fill when the overlay is rendered outside the Programming admin wrapper.
+- Keeps the Close button hidden unless a preparation stage fails.
+- Increments the plugin asset version so browsers do not reuse the original 1.9.2.3 admin stylesheet.
+
+## 1.9.2.3
+
+- Splits protected Season previews, comparisons, and imports into sequential AJAX preparation requests for Teams, Leagues, Products, registration availability, and Events.
+- Reuses the freshly prepared Dash caches when building the final review instead of repeating every collection request in one PHP process.
+- Shows a blocking progress overlay with the current preparation stage and identifies the exact failed Dash collection without making import changes.
+- Includes the manually supplied Learn to Play drop-in Team as its own isolated preparation step.
+
 ## 1.9.2.2
 
 - Adds a per-Season **Pin this Season to the top** presentation override.

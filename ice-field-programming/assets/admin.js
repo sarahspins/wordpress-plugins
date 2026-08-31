@@ -108,6 +108,102 @@
         button.textContent = 'Refreshing…';
     });
 
+    function batchOverlay() {
+        var overlay = document.querySelector('[data-ifprog-batch-overlay]');
+        if (overlay) return overlay;
+        overlay = document.createElement('div');
+        overlay.className = 'ifprog-batch-overlay';
+        overlay.setAttribute('data-ifprog-batch-overlay', '');
+        overlay.innerHTML = '<div class="ifprog-batch-dialog" role="status" aria-live="polite">' +
+            '<h2>Preparing Dash data</h2><p data-ifprog-batch-status>Starting…</p>' +
+            '<div class="ifprog-batch-track"><span data-ifprog-batch-bar></span></div>' +
+            '<p class="ifprog-batch-detail" data-ifprog-batch-detail></p>' +
+            '<button type="button" class="button" data-ifprog-batch-close hidden>Close</button></div>';
+        document.body.appendChild(overlay);
+        overlay.querySelector('[data-ifprog-batch-close]').addEventListener('click', function () {
+            overlay.remove();
+        });
+        return overlay;
+    }
+
+    document.addEventListener('submit', function (event) {
+        var form = event.target;
+        var button = event.submitter;
+        if (!window.ifprogPreviewBatch || !button || button.name !== 'ifprog_preview_action') return;
+        if (['preview', 'check_season', 'import'].indexOf(button.value) === -1) return;
+        if (form.querySelector('input[name="ifprog_batched_preview"]')) return;
+
+        var season = form.querySelector('input[name="ifprog_dash_season_id"]');
+        if (!season || !season.value) return;
+        event.preventDefault();
+
+        var dropin = form.querySelector('input[name="ifprog_dropin_team_id"]');
+        var stages = [
+            ['teams', 'Loading Teams'],
+            ['leagues', 'Loading Leagues'],
+            ['products', 'Loading Products'],
+            ['availability', 'Loading registration availability'],
+            ['events', 'Loading scheduled Events']
+        ];
+        if (dropin && dropin.value) stages.push(['dropin', 'Loading the recurring drop-in Team']);
+
+        var overlay = batchOverlay();
+        var status = overlay.querySelector('[data-ifprog-batch-status]');
+        var detail = overlay.querySelector('[data-ifprog-batch-detail]');
+        var bar = overlay.querySelector('[data-ifprog-batch-bar]');
+        var close = overlay.querySelector('[data-ifprog-batch-close]');
+        bar.style.backgroundColor = '#1473a8';
+        var index = 0;
+
+        function runNext() {
+            if (index >= stages.length) {
+                status.textContent = 'Dash data is ready. Building the protected review…';
+                bar.style.width = '100%';
+                var batched = document.createElement('input');
+                batched.type = 'hidden';
+                batched.name = 'ifprog_batched_preview';
+                batched.value = '1';
+                form.appendChild(batched);
+                var action = document.createElement('input');
+                action.type = 'hidden';
+                action.name = button.name;
+                action.value = button.value;
+                form.appendChild(action);
+                form.submit();
+                return;
+            }
+
+            status.textContent = stages[index][1] + '…';
+            detail.textContent = 'Step ' + (index + 1) + ' of ' + stages.length;
+            bar.style.width = Math.round((index / stages.length) * 100) + '%';
+            var payload = new FormData();
+            payload.append('action', 'ifprog_warm_preview_stage');
+            payload.append('nonce', window.ifprogPreviewBatch.nonce);
+            payload.append('stage', stages[index][0]);
+            payload.append('season_id', season.value);
+            if (dropin && dropin.value) payload.append('dropin_team_id', dropin.value);
+
+            fetch(window.ifprogPreviewBatch.ajaxUrl, {method: 'POST', credentials: 'same-origin', body: payload})
+                .then(function (response) {
+                    return response.json().catch(function () { throw new Error('The server returned an unreadable response.'); });
+                })
+                .then(function (response) {
+                    if (!response.success) {
+                        throw new Error(response.data && response.data.message ? response.data.message : 'This Dash request failed.');
+                    }
+                    index += 1;
+                    runNext();
+                })
+                .catch(function (error) {
+                    status.textContent = stages[index][1] + ' failed';
+                    detail.textContent = error.message + ' No import changes were made.';
+                    overlay.classList.add('ifprog-batch-overlay--error');
+                    close.hidden = false;
+                });
+        }
+        runNext();
+    });
+
     document.addEventListener('click', function (event) {
         var button = event.target.closest('[data-ifprog-copy-target]');
         if (!button) return;
