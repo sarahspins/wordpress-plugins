@@ -17,8 +17,9 @@ class IFDC_Event_Assignment {
     const AUTOMATION_EMAIL_OPTION = 'ifdc_event_assignment_notification_emails';
     const AUTOMATION_HISTORY_OPTION = 'ifdc_event_assignment_history';
     const AUTOMATION_SUPPRESSED_OPTION = 'ifdc_event_assignment_suppressed_events';
+    const ASSIGNMENT_RULES_OPTION = 'ifdc_event_assignment_rules';
     const MAX_HISTORY_ITEMS = 500;
-    const PUBLIC_SKATING_EVENT_TYPE_ID = 10;
+    const PUBLIC_SKATING_EVENT_TYPE_ID = '10';
     const PUBLIC_SKATING_EXCLUDED_TEAM_IDS = [117, 118, 218, 219, 220, 221, 328, 329];
 
     public static function init() {
@@ -31,6 +32,7 @@ class IFDC_Event_Assignment {
         add_action(self::NIGHTLY_HOOK, [__CLASS__, 'run_scheduled']);
         add_action('admin_post_ifdc_run_nightly_assignments', [__CLASS__, 'admin_run_nightly']);
         add_action('admin_post_ifdc_save_assignment_automation', [__CLASS__, 'admin_save_automation']);
+        add_action('admin_post_ifdc_save_assignment_rules', [__CLASS__, 'admin_save_assignment_rules']);
         add_action('admin_post_ifdc_undo_automatic_event_update', [__CLASS__, 'admin_undo_automatic_event_update']);
         add_action('admin_post_ifdc_resume_automatic_event_update', [__CLASS__, 'admin_resume_automatic_event_update']);
         add_action('init', [__CLASS__, 'ensure_nightly_schedule']);
@@ -55,6 +57,134 @@ class IFDC_Event_Assignment {
         );
     }
 
+    private static function default_assignment_rules() {
+        return [
+            ['key' => 'open_freestyle', 'enabled' => 1, 'name' => 'Open Freestyle', 'match_text' => 'Open Freestyle', 'match_mode' => 'contains', 'event_type_id' => '', 'destination_mode' => 'monthly', 'destination_name' => 'Open Freestyle', 'fixed_team_id' => 0, 'capacity' => 20, 'capacity_mode' => 'enforce', 'event_name' => '', 'automate_name' => 0, 'automation_enabled' => 1, 'cleanup_enabled' => 1],
+            ['key' => 'stick_puck', 'enabled' => 1, 'name' => 'Stick & Puck', 'match_text' => 'Stick & Puck', 'match_mode' => 'contains', 'event_type_id' => '', 'destination_mode' => 'monthly', 'destination_name' => 'Stick & Puck', 'fixed_team_id' => 0, 'capacity' => 25, 'capacity_mode' => 'enforce', 'event_name' => '', 'automate_name' => 0, 'automation_enabled' => 1, 'cleanup_enabled' => 1],
+            ['key' => 'private_hockey', 'enabled' => 1, 'name' => 'Private Hockey Coaches Ice', 'match_text' => 'Private Hockey Coaches Ice', 'match_mode' => 'contains', 'event_type_id' => '', 'destination_mode' => 'monthly', 'destination_name' => 'Private Hockey Coaches Ice', 'fixed_team_id' => 0, 'capacity' => 25, 'capacity_mode' => 'enforce', 'event_name' => '', 'automate_name' => 0, 'automation_enabled' => 1, 'cleanup_enabled' => 1],
+            ['key' => 'public_skating', 'enabled' => 1, 'name' => 'Public Skating', 'match_text' => 'Public Skating', 'match_mode' => 'contains', 'event_type_id' => self::PUBLIC_SKATING_EVENT_TYPE_ID, 'destination_mode' => 'monthly', 'destination_name' => 'Public Skating', 'fixed_team_id' => 0, 'capacity' => 250, 'capacity_mode' => 'empty', 'event_name' => 'Public Skating', 'automate_name' => 1, 'automation_enabled' => 1, 'cleanup_enabled' => 1],
+        ];
+    }
+
+    private static function blank_assignment_rule() {
+        return ['key' => '', 'enabled' => 1, 'name' => '', 'match_text' => '', 'match_mode' => 'contains', 'event_type_id' => '', 'destination_mode' => 'monthly', 'destination_name' => '', 'fixed_team_id' => 0, 'capacity' => 0, 'capacity_mode' => 'preserve', 'event_name' => '', 'automate_name' => 0, 'automation_enabled' => 1, 'cleanup_enabled' => 0];
+    }
+
+    private static function sanitize_event_type_id($value) {
+        $value = trim(sanitize_text_field((string) $value));
+        return preg_match('/^[A-Za-z0-9_-]{1,32}$/', $value) ? $value : '';
+    }
+
+    private static function event_type_options() {
+        $cached = get_transient('ifdc_event_type_options_v1');
+        if (is_array($cached) && $cached) return $cached;
+        $result = IFDC_Client::get_event_types();
+        $options = [];
+        if (!is_wp_error($result)) {
+            foreach ((array) ($result['data'] ?? []) as $record) {
+                $attrs = is_array($record['attributes'] ?? null) ? $record['attributes'] : [];
+                $id = self::sanitize_event_type_id($attrs['event_type_id'] ?? ($record['id'] ?? ''));
+                if ($id === '') continue;
+                $label = '';
+                foreach (['description', 'desc', 'name', 'title'] as $key) {
+                    if (!empty($attrs[$key]) && is_scalar($attrs[$key])) {
+                        $label = sanitize_text_field((string) $attrs[$key]);
+                        break;
+                    }
+                }
+                $options[$id] = $label !== '' ? $label : 'Event type';
+            }
+        }
+        $options[self::PUBLIC_SKATING_EVENT_TYPE_ID] = $options[self::PUBLIC_SKATING_EVENT_TYPE_ID] ?? 'Public Skating';
+        $options['9'] = $options['9'] ?? 'Open Freestyle';
+        $options['k'] = $options['k'] ?? 'Stick & Puck';
+        uksort($options, 'strnatcasecmp');
+        set_transient('ifdc_event_type_options_v1', $options, is_wp_error($result) ? HOUR_IN_SECONDS : 12 * HOUR_IN_SECONDS);
+        return $options;
+    }
+
+    private static function render_event_type_select($id, $name, $selected, $options, $preserve_label) {
+        $selected = self::sanitize_event_type_id($selected);
+        if ($selected !== '' && !isset($options[$selected])) $options[$selected] = 'Currently configured';
+        echo '<select id="' . esc_attr($id) . '"' . ($name !== '' ? ' name="' . esc_attr($name) . '"' : '') . '>';
+        echo '<option value="">' . esc_html($preserve_label) . '</option>';
+        foreach ($options as $type_id => $description) {
+            echo '<option value="' . esc_attr($type_id) . '" ' . selected($selected, (string) $type_id, false) . '>' . esc_html($description . ' — ID ' . $type_id) . '</option>';
+        }
+        echo '</select>';
+    }
+
+    private static function sanitize_assignment_rule($raw, $index) {
+        $raw = is_array($raw) ? $raw : [];
+        $rule = self::blank_assignment_rule();
+        $rule['name'] = sanitize_text_field(wp_unslash($raw['name'] ?? ''));
+        if ($rule['name'] === '') return null;
+        $rule['key'] = sanitize_key($raw['key'] ?? '');
+        if ($rule['key'] === '') $rule['key'] = sanitize_key($rule['name']);
+        if ($rule['key'] === '') $rule['key'] = 'rule_' . absint($index);
+        $rule['enabled'] = !empty($raw['enabled']) ? 1 : 0;
+        $rule['match_text'] = sanitize_text_field(wp_unslash($raw['match_text'] ?? $rule['name']));
+        $rule['match_mode'] = in_array(($raw['match_mode'] ?? ''), ['contains', 'exact'], true) ? $raw['match_mode'] : 'contains';
+        $rule['event_type_id'] = self::sanitize_event_type_id($raw['event_type_id'] ?? '');
+        $rule['destination_mode'] = ($raw['destination_mode'] ?? '') === 'fixed' ? 'fixed' : 'monthly';
+        $rule['destination_name'] = sanitize_text_field(wp_unslash($raw['destination_name'] ?? $rule['name']));
+        $rule['fixed_team_id'] = absint($raw['fixed_team_id'] ?? 0);
+        $rule['capacity'] = min(9999, absint($raw['capacity'] ?? 0));
+        $rule['capacity_mode'] = in_array(($raw['capacity_mode'] ?? ''), ['enforce', 'empty', 'preserve'], true) ? $raw['capacity_mode'] : 'preserve';
+        $rule['event_name'] = sanitize_text_field(wp_unslash($raw['event_name'] ?? ''));
+        $rule['automate_name'] = !empty($raw['automate_name']) && $rule['event_name'] !== '' ? 1 : 0;
+        $rule['automation_enabled'] = !empty($raw['automation_enabled']) ? 1 : 0;
+        $rule['cleanup_enabled'] = !empty($raw['cleanup_enabled']) && $rule['destination_mode'] === 'monthly' ? 1 : 0;
+
+        // These protections cannot be weakened by settings.
+        if ($rule['key'] === 'public_skating' || $rule['event_type_id'] === self::PUBLIC_SKATING_EVENT_TYPE_ID) {
+            $rule['key'] = 'public_skating';
+            $rule['event_type_id'] = self::PUBLIC_SKATING_EVENT_TYPE_ID;
+            $rule['capacity_mode'] = 'empty';
+            $rule['event_name'] = 'Public Skating';
+            $rule['automate_name'] = 1;
+        }
+        return $rule;
+    }
+
+    private static function assignment_rules() {
+        $saved = get_option(self::ASSIGNMENT_RULES_OPTION, null);
+        if (!is_array($saved)) return self::default_assignment_rules();
+        $rules = [];
+        $keys = [];
+        foreach ($saved as $index => $raw) {
+            $rule = self::sanitize_assignment_rule($raw, $index);
+            if (!$rule) continue;
+            $base = $rule['key'];
+            $suffix = 2;
+            while (isset($keys[$rule['key']])) $rule['key'] = $base . '_' . $suffix++;
+            $keys[$rule['key']] = true;
+            $rules[] = $rule;
+        }
+        return $rules ?: self::default_assignment_rules();
+    }
+
+    private static function rule_summary($rule) {
+        $capacity = ($rule['capacity_mode'] ?? 'preserve') === 'preserve' ? 'Preserve capacity' : 'Capacity ' . absint($rule['capacity'] ?? 0) . (($rule['capacity_mode'] ?? '') === 'empty' ? ' if empty' : '');
+        return $capacity . (empty($rule['automation_enabled']) ? ' · manual preview only' : ' · automatic');
+    }
+
+    private static function render_assignment_rule($index, $rule, $event_types) {
+        $prefix = 'assignment_rules[' . $index . ']';
+        ?>
+        <fieldset class="ifdc-assignment-rule" style="border:1px solid #ccd0d4;padding:12px;margin:12px 0;background:#fff;">
+            <input type="hidden" name="<?php echo esc_attr($prefix); ?>[key]" value="<?php echo esc_attr($rule['key']); ?>">
+            <p><label><input type="checkbox" name="<?php echo esc_attr($prefix); ?>[enabled]" value="1" <?php checked(!empty($rule['enabled'])); ?>> <strong>Enabled</strong></label> <button type="button" class="button-link-delete ifdc-remove-assignment-rule" style="float:right;">Remove</button></p>
+            <p><label><strong>Session label</strong><br><input class="regular-text" required name="<?php echo esc_attr($prefix); ?>[name]" value="<?php echo esc_attr($rule['name']); ?>"></label></p>
+            <p><label><strong>Match event name</strong><br><input class="regular-text" name="<?php echo esc_attr($prefix); ?>[match_text]" value="<?php echo esc_attr($rule['match_text']); ?>"></label> <select name="<?php echo esc_attr($prefix); ?>[match_mode]"><option value="contains" <?php selected($rule['match_mode'], 'contains'); ?>>Contains</option><option value="exact" <?php selected($rule['match_mode'], 'exact'); ?>>Exact</option></select> <label>or Event Type <?php self::render_event_type_select('', $prefix . '[event_type_id]', $rule['event_type_id'], $event_types, 'Any event type'); ?></label></p>
+            <p><label><strong>Destination</strong> <select name="<?php echo esc_attr($prefix); ?>[destination_mode]"><option value="monthly" <?php selected($rule['destination_mode'], 'monthly'); ?>>Monthly Team discovery</option><option value="fixed" <?php selected($rule['destination_mode'], 'fixed'); ?>>Fixed Team ID</option></select></label> <label>Monthly session name <input name="<?php echo esc_attr($prefix); ?>[destination_name]" value="<?php echo esc_attr($rule['destination_name']); ?>"></label> <label>Fixed Team ID <input class="small-text" type="number" min="0" name="<?php echo esc_attr($prefix); ?>[fixed_team_id]" value="<?php echo esc_attr($rule['fixed_team_id']); ?>"></label></p>
+            <p><label><strong>Capacity</strong> <input class="small-text" type="number" min="0" max="9999" name="<?php echo esc_attr($prefix); ?>[capacity]" value="<?php echo esc_attr($rule['capacity']); ?>"></label> <select name="<?php echo esc_attr($prefix); ?>[capacity_mode]"><option value="enforce" <?php selected($rule['capacity_mode'], 'enforce'); ?>>Always enforce</option><option value="empty" <?php selected($rule['capacity_mode'], 'empty'); ?>>Only when empty</option><option value="preserve" <?php selected($rule['capacity_mode'], 'preserve'); ?>>Preserve existing</option></select></p>
+            <p><label><strong>Standard event name</strong> <input name="<?php echo esc_attr($prefix); ?>[event_name]" value="<?php echo esc_attr($rule['event_name']); ?>"></label> <label><input type="checkbox" name="<?php echo esc_attr($prefix); ?>[automate_name]" value="1" <?php checked(!empty($rule['automate_name'])); ?>> Apply automatically</label></p>
+            <p><label><input type="checkbox" name="<?php echo esc_attr($prefix); ?>[automation_enabled]" value="1" <?php checked(!empty($rule['automation_enabled'])); ?>> Include in automatic checker</label> &nbsp; <label><input type="checkbox" name="<?php echo esc_attr($prefix); ?>[cleanup_enabled]" value="1" <?php checked(!empty($rule['cleanup_enabled'])); ?>> Include monthly Team in completed-month cleanup</label></p>
+        </fieldset>
+        <?php
+    }
+
     public static function page() {
         $now = current_time('timestamp');
         $month = wp_date('Y-m', $now);
@@ -65,6 +195,8 @@ class IFDC_Event_Assignment {
         $mail_status = IFDC_Mailer::status('automatic_event_updates');
         $automation_timezone = self::automation_timezone();
         $visibility_month = (new DateTimeImmutable('first day of last month', $automation_timezone))->format('Y-m');
+        $assignment_rules = self::assignment_rules();
+        $event_types = self::event_type_options();
         ?>
         <div class="wrap ifdc-wrap ifdc-assignment-wrap">
             <div class="ifdc-explorer-heading">
@@ -83,19 +215,46 @@ class IFDC_Event_Assignment {
                 <div class="ifdc-card-heading">
                     <div>
                         <p class="ifdc-eyebrow">Standard monthly workflow</p>
-                        <h2>Prepare All 4 Sessions</h2>
-                        <p class="description">Find destinations, class assignments, and capacity corrections for the four recurring session types in one pass.</p>
+                        <h2>Prepare Enabled Sessions</h2>
+                        <p class="description">Find destinations, class assignments, and capacity corrections for every enabled event rule in one pass.</p>
                     </div>
                     <label class="ifdc-standard-month">Month
                         <input type="month" id="ifdc-standard-assignment-month" value="<?php echo esc_attr($month); ?>">
                     </label>
                 </div>
                 <div class="ifdc-standard-definitions">
-                    <span><strong>Open Freestyle</strong><small>Capacity 20</small></span>
-                    <span><strong>Stick &amp; Puck</strong><small>Capacity 25</small></span>
-                    <span><strong>Private Hockey Coaches Ice</strong><small>Capacity 25</small></span>
-                    <span><strong>Public Skating</strong><small>Capacity 250 · themed events protected</small></span>
+                    <?php foreach ($assignment_rules as $rule): if (empty($rule['enabled'])) continue; ?>
+                        <span><strong><?php echo esc_html($rule['name']); ?></strong><small><?php echo esc_html(self::rule_summary($rule)); ?></small></span>
+                    <?php endforeach; ?>
                 </div>
+                <?php if (current_user_can('manage_options')): ?>
+                    <details class="ifdc-assignment-rules" style="margin:16px 0;">
+                        <summary><strong>Event Assignment Rules</strong></summary>
+                        <p class="description">Add recurring or specialty sessions to the monthly preview and automatic checker. Public Skating protections remain enforced regardless of these settings.</p>
+                        <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+                            <input type="hidden" name="action" value="ifdc_save_assignment_rules">
+                            <?php wp_nonce_field('ifdc_save_assignment_rules'); ?>
+                            <div id="ifdc-assignment-rule-rows">
+                                <?php foreach ($assignment_rules as $index => $rule): self::render_assignment_rule($index, $rule, $event_types); endforeach; ?>
+                            </div>
+                            <p><button type="button" class="button" id="ifdc-add-assignment-rule">Add Session Rule</button> <button type="submit" class="button button-primary">Save Event Assignment Rules</button></p>
+                        </form>
+                        <template id="ifdc-assignment-rule-template"><?php self::render_assignment_rule('__INDEX__', self::blank_assignment_rule(), $event_types); ?></template>
+                        <script>
+                        document.addEventListener('click', function(event) {
+                            if (event.target && event.target.id === 'ifdc-add-assignment-rule') {
+                                var template = document.getElementById('ifdc-assignment-rule-template');
+                                var rows = document.getElementById('ifdc-assignment-rule-rows');
+                                var index = String(Date.now());
+                                rows.insertAdjacentHTML('beforeend', template.innerHTML.replace(/__INDEX__/g, index));
+                            }
+                            if (event.target && event.target.classList.contains('ifdc-remove-assignment-rule')) {
+                                event.target.closest('.ifdc-assignment-rule').remove();
+                            }
+                        });
+                        </script>
+                    </details>
+                <?php endif; ?>
                 <div class="notice notice-info inline">
                     <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
                         <input type="hidden" name="action" value="ifdc_save_assignment_automation">
@@ -128,7 +287,7 @@ class IFDC_Event_Assignment {
                     </form>
                 </div>
                 <p>
-                    <button type="button" class="button button-primary" id="ifdc-prepare-standard-assignments">Prepare All 4</button>
+                    <button type="button" class="button button-primary" id="ifdc-prepare-standard-assignments">Prepare Enabled Sessions</button>
                     <button type="button" class="button button-primary" id="ifdc-apply-standard-assignments" disabled>Update Selected Groups</button>
                 </p>
                 <div id="ifdc-standard-assignment-status" class="ifdc-result" hidden></div>
@@ -144,7 +303,7 @@ class IFDC_Event_Assignment {
                     <div>
                         <p class="ifdc-eyebrow">Registration cleanup pilot</p>
                         <h2>Completed Monthly Visibility</h2>
-                        <p class="description">Preview the four recurring monthly Teams before making completed months inactive and turning off Online Registration in Dash. Levels and events remain unchanged.</p>
+                        <p class="description">Preview monthly Teams from rules that enable completed-month cleanup before making them inactive and turning off Online Registration in Dash. Levels and events remain unchanged.</p>
                     </div>
                     <label class="ifdc-standard-month">Completed month
                         <input type="month" id="ifdc-completed-visibility-month" value="<?php echo esc_attr($visibility_month); ?>">
@@ -166,7 +325,12 @@ class IFDC_Event_Assignment {
                 </div>
             </section>
 
-            <h2 class="ifdc-single-workflow-heading">Single Event Type or Capacity Repair</h2>
+            <h2 class="ifdc-single-workflow-heading">Bulk Event Type, Assignment, or Capacity Repair</h2>
+
+            <div class="notice notice-info inline">
+                <p><strong>Wrong event type on many events?</strong> Use correction mode to search the selected month by its current Event Type ID, select all matches, and set the correct Event Type ID without changing Team assignments, capacities, or names.</p>
+                <p><button type="button" class="button" id="ifdc-event-type-correction-mode">Start Bulk Event Type Correction</button></p>
+            </div>
 
             <div class="ifdc-assignment-grid">
                 <section class="ifdc-card">
@@ -177,10 +341,10 @@ class IFDC_Event_Assignment {
                             <input type="month" id="ifdc-assignment-month" value="<?php echo esc_attr($month); ?>">
                         </label>
                         <label>Event name contains
-                            <input type="text" id="ifdc-assignment-name" value="Open Freestyle" placeholder="Open Freestyle">
+                            <input type="text" id="ifdc-assignment-name" value="" placeholder="Optional — leave blank for all events of the selected type">
                         </label>
-                        <label>Event type ID <span class="description">(optional)</span>
-                            <input type="number" min="1" id="ifdc-assignment-type" placeholder="9">
+                        <label>Event type <span class="description">(optional)</span>
+                            <?php self::render_event_type_select('ifdc-assignment-type', '', '', $event_types, 'All event types'); ?>
                         </label>
                     </div>
                     <label class="ifdc-checkbox-row">
@@ -217,8 +381,8 @@ class IFDC_Event_Assignment {
                         <p class="description">Enter a consistent name to include already-assigned events whose names differ. Event type 10 defaults to Public Skating.</p>
                     </div>
                     <div class="ifdc-capacity-setting">
-                        <label for="ifdc-assignment-new-event-type"><strong>Set event type ID</strong> <span class="description">(optional)</span></label>
-                        <input type="number" min="1" id="ifdc-assignment-new-event-type" placeholder="Preserve existing event types">
+                        <label for="ifdc-assignment-new-event-type"><strong>Set event type</strong> <span class="description">(optional)</span></label>
+                        <?php self::render_event_type_select('ifdc-assignment-new-event-type', '', '', $event_types, 'Preserve existing event types'); ?>
                         <p class="description">Changes the selected events to this Dash event type. The current type is checked again immediately before each update and verified afterward.</p>
                     </div>
                 </section>
@@ -348,12 +512,7 @@ class IFDC_Event_Assignment {
         $end = $selected->format('Y-m-t');
         $month_label = $selected->format('F Y');
         if ($include_previous) return self::prepare_completed_visibility_range($selected, $month, $month_label);
-        $definitions = [
-            ['key' => 'open_freestyle', 'name' => 'Open Freestyle', 'include_inactive_destination' => true],
-            ['key' => 'stick_puck', 'name' => 'Stick & Puck', 'include_inactive_destination' => true],
-            ['key' => 'private_hockey', 'name' => 'Private Hockey Coaches Ice', 'include_inactive_destination' => true],
-            ['key' => 'public_skating', 'name' => 'Public Skating', 'event_type_id' => self::PUBLIC_SKATING_EVENT_TYPE_ID, 'destination_resolver' => 'public_skating', 'include_inactive_destination' => true],
-        ];
+        $definitions = self::assignment_definitions(true);
 
         // Fetch the completed month's schedule once. Repeating this paginated
         // request for every session group can exceed shorter admin-AJAX timeouts.
@@ -368,7 +527,7 @@ class IFDC_Event_Assignment {
 
         $groups = [];
         foreach ($definitions as $definition) {
-            $target = self::find_standard_destination($definition['name'], $month_label, $definition);
+            $target = self::find_standard_destination($definition['destination_name'] ?? $definition['name'], $month_label, $definition);
             $active_event_ids = [];
             $inactive_event_count = 0;
             $protected_event_count = 0;
@@ -424,11 +583,15 @@ class IFDC_Event_Assignment {
             $attrs = self::attributes($level);
             $level_names[absint($level['id'] ?? 0)] = sanitize_text_field($attrs['name'] ?? '');
         }
-        $definitions = [
-            'open_freestyle' => 'Open Freestyle',
-            'stick_puck' => 'Stick & Puck',
-            'private_hockey' => 'Private Hockey Coaches Ice',
-        ];
+        $definitions = [];
+        $public_cleanup_enabled = false;
+        foreach (self::assignment_definitions(true) as $definition) {
+            if (($definition['destination_resolver'] ?? '') === 'public_skating') {
+                $public_cleanup_enabled = true;
+                continue;
+            }
+            $definitions[$definition['key']] = $definition['destination_name'] ?? $definition['name'];
+        }
         $month_pattern = '(January|February|March|April|May|June|July|August|September|October|November|December)\s+(20\d{2})';
         $groups = [];
 
@@ -454,7 +617,7 @@ class IFDC_Event_Assignment {
                     break;
                 }
             }
-            if ($key === '') {
+            if ($key === '' && $public_cleanup_enabled) {
                 $expected_level = self::normalize_match_text($team_month->format('Y') . ' Public Skating');
                 if (
                     self::normalize_match_text($level_name) === $expected_level &&
@@ -516,26 +679,15 @@ class IFDC_Event_Assignment {
         $start = sprintf('%04d-%02d-01', $year, $month_number);
         $end = wp_date('Y-m-t', strtotime($start . ' 12:00:00'));
         $month_label = wp_date('F Y', strtotime($start . ' 12:00:00'));
-        $definitions = [
-            ['key' => 'open_freestyle', 'name' => 'Open Freestyle', 'capacity' => 20],
-            ['key' => 'stick_puck', 'name' => 'Stick & Puck', 'capacity' => 25],
-            ['key' => 'private_hockey', 'name' => 'Private Hockey Coaches Ice', 'capacity' => 25],
-        ];
-        $definitions[] = [
-            'key' => 'public_skating',
-            'name' => 'Public Skating',
-            'capacity' => 250,
-            'event_type_id' => self::PUBLIC_SKATING_EVENT_TYPE_ID,
-            'destination_resolver' => 'public_skating',
-            'automate_name' => true,
-            'capacity_only_if_empty' => true,
-        ];
+        $definitions = self::assignment_definitions();
         $suppressed_event_ids = array_values(array_filter(array_map('absint', (array) get_option(self::AUTOMATION_SUPPRESSED_OPTION, []))));
 
         $groups = [];
         $total_updates = 0;
         foreach ($definitions as $definition) {
-            $target = self::find_standard_destination($definition['name'], $month_label, $definition);
+            $target = ($definition['destination_mode'] ?? 'monthly') === 'fixed'
+                ? self::find_fixed_destination($definition['fixed_team_id'] ?? 0)
+                : self::find_standard_destination($definition['destination_name'] ?? $definition['name'], $month_label, $definition);
             $event_query = [
                 'filter[start__gte]' => $start . 'T00:00:00',
                 'filter[start__lte]' => $end . 'T23:59:59',
@@ -543,9 +695,9 @@ class IFDC_Event_Assignment {
                 'page[size]' => 500,
             ];
             if (!empty($definition['event_type_id'])) {
-                $event_query['filter[event_type_id]'] = absint($definition['event_type_id']);
+                $event_query['filter[event_type_id]'] = self::sanitize_event_type_id($definition['event_type_id']);
             } else {
-                $event_query['filter[desc__contains]'] = $definition['name'];
+                $event_query['filter[desc__contains]'] = $definition['match_text'] ?? $definition['name'];
             }
             $events_result = IFDC_Client::get_events($event_query, [
                 'force' => true,
@@ -565,9 +717,14 @@ class IFDC_Event_Assignment {
                 $record_id = absint($record['id'] ?? 0);
                 if ($respect_suppression && in_array($record_id, $suppressed_event_ids, true)) continue;
                 if (!empty($definition['event_type_id'])) {
-                    if (absint($attrs['event_type_id'] ?? 0) !== absint($definition['event_type_id'])) continue;
-                } elseif (stripos((string) ($attrs['desc'] ?? ''), $definition['name']) === false) {
-                    continue;
+                    if (self::sanitize_event_type_id($attrs['event_type_id'] ?? '') !== self::sanitize_event_type_id($definition['event_type_id'])) continue;
+                } else {
+                    $event_text = trim((string) ($attrs['desc'] ?? ''));
+                    $match_text = trim((string) ($definition['match_text'] ?? $definition['name']));
+                    $matches_name = ($definition['match_mode'] ?? 'contains') === 'exact'
+                        ? strcasecmp($event_text, $match_text) === 0
+                        : stripos($event_text, $match_text) !== false;
+                    if (!$matches_name) continue;
                 }
                 $current_team_id = absint($attrs['hteam_id'] ?? 0);
                 if (
@@ -577,11 +734,12 @@ class IFDC_Event_Assignment {
                 $found++;
                 $current_capacity = absint($attrs['register_capacity'] ?? 0);
                 $current_name = sanitize_text_field($attrs['desc'] ?? $definition['name']);
+                $desired_event_name = sanitize_text_field($definition['event_name'] ?? $definition['name']);
                 $team_needs_update = $target && $current_team_id !== absint($target['id']);
                 $capacity_needs_update = $definition['capacity'] !== null &&
                     $current_capacity !== absint($definition['capacity']) &&
                     (empty($definition['capacity_only_if_empty']) || $current_capacity === 0);
-                $name_needs_update = strcasecmp(trim($current_name), trim($definition['name'])) !== 0;
+                $name_needs_update = $desired_event_name !== '' && strcasecmp(trim($current_name), trim($desired_event_name)) !== 0;
                 $automated_name_needs_update = !empty($definition['automate_name']) && $name_needs_update;
                 if (!$team_needs_update && !$capacity_needs_update && !$name_needs_update) continue;
                 if ($team_needs_update && $current_team_id) $replacement_count++;
@@ -615,7 +773,7 @@ class IFDC_Event_Assignment {
                 'replacement_count' => $replacement_count,
                 'capacity_count' => $capacity_count,
                 'rename_count' => $rename_count,
-                'event_name' => $definition['name'],
+                'event_name' => $definition['event_name'] ?? $definition['name'],
                 'automate_name' => !empty($definition['automate_name']),
                 'capacity_only_if_empty' => !empty($definition['capacity_only_if_empty']),
                 'manual_only' => !empty($definition['manual_only']),
@@ -679,6 +837,26 @@ class IFDC_Event_Assignment {
         wp_clear_scheduled_hook(self::NIGHTLY_HOOK);
         self::ensure_nightly_schedule();
         wp_safe_redirect(admin_url('admin.php?page=ifdc-event-assignment'));
+        exit;
+    }
+
+    public static function admin_save_assignment_rules() {
+        if (!current_user_can('manage_options')) wp_die('Permission denied.');
+        check_admin_referer('ifdc_save_assignment_rules');
+        $raw_rules = isset($_POST['assignment_rules']) ? (array) wp_unslash($_POST['assignment_rules']) : [];
+        $rules = [];
+        $keys = [];
+        foreach ($raw_rules as $index => $raw) {
+            $rule = self::sanitize_assignment_rule($raw, $index);
+            if (!$rule) continue;
+            $base = $rule['key'];
+            $suffix = 2;
+            while (isset($keys[$rule['key']])) $rule['key'] = $base . '_' . $suffix++;
+            $keys[$rule['key']] = true;
+            $rules[] = $rule;
+        }
+        update_option(self::ASSIGNMENT_RULES_OPTION, $rules ?: self::default_assignment_rules(), false);
+        wp_safe_redirect(admin_url('admin.php?page=ifdc-event-assignment&ifdc_rules_saved=1'));
         exit;
     }
 
@@ -838,8 +1016,8 @@ class IFDC_Event_Assignment {
                                 <td><strong><?php echo ($item['source'] ?? 'automatic') === 'manual' ? 'Manual' : 'Automatic'; ?></strong><?php if (!empty($item['user_name'])): ?><br><span class="description"><?php echo esc_html($item['user_name']); ?></span><?php endif; ?></td>
                                 <td><strong>#<?php echo esc_html(absint($item['event_id'] ?? 0)); ?> <?php echo esc_html($item['event_name'] ?? 'Event'); ?></strong><br><span class="description"><?php echo esc_html($item['event_start'] ?? ''); ?></span></td>
                                 <td><?php echo esc_html($item['group'] ?? ''); ?></td>
-                                <td><?php echo !empty($before['team_id']) ? 'Team #' . esc_html(absint($before['team_id'])) : 'Unassigned'; ?><br>Capacity <?php echo esc_html(absint($before['capacity'] ?? 0)); ?><?php if (array_key_exists('event_type_id', $before)): ?><br>Type <?php echo esc_html(absint($before['event_type_id'])); ?><?php endif; ?><br><?php echo esc_html($before['name'] ?? ''); ?></td>
-                                <td><?php echo !empty($after['team_id']) ? 'Team #' . esc_html(absint($after['team_id'])) : 'Unassigned'; ?><br>Capacity <?php echo esc_html(absint($after['capacity'] ?? 0)); ?><?php if (array_key_exists('event_type_id', $after)): ?><br>Type <?php echo esc_html(absint($after['event_type_id'])); ?><?php endif; ?><br><?php echo esc_html($after['name'] ?? ''); ?></td>
+                                <td><?php echo !empty($before['team_id']) ? 'Team #' . esc_html(absint($before['team_id'])) : 'Unassigned'; ?><br>Capacity <?php echo esc_html(absint($before['capacity'] ?? 0)); ?><?php if (array_key_exists('event_type_id', $before)): ?><br>Type <?php echo esc_html((string) $before['event_type_id']); ?><?php endif; ?><br><?php echo esc_html($before['name'] ?? ''); ?></td>
+                                <td><?php echo !empty($after['team_id']) ? 'Team #' . esc_html(absint($after['team_id'])) : 'Unassigned'; ?><br>Capacity <?php echo esc_html(absint($after['capacity'] ?? 0)); ?><?php if (array_key_exists('event_type_id', $after)): ?><br>Type <?php echo esc_html((string) $after['event_type_id']); ?><?php endif; ?><br><?php echo esc_html($after['name'] ?? ''); ?></td>
                                 <td>
                                     <?php if ($undone): ?>
                                         <span class="ifdc-status is-ready">Undone<?php echo $paused ? ' · automation paused' : ''; ?></span>
@@ -889,14 +1067,14 @@ class IFDC_Event_Assignment {
                 absint($attrs['hteam_id'] ?? 0) === absint($after['team_id'] ?? 0) &&
                 absint($attrs['register_capacity'] ?? 0) === absint($after['capacity'] ?? 0) &&
                 sanitize_text_field($attrs['desc'] ?? '') === sanitize_text_field($after['name'] ?? '') &&
-                (!array_key_exists('event_type_id', $after) || absint($attrs['event_type_id'] ?? 0) === absint($after['event_type_id']));
+                (!array_key_exists('event_type_id', $after) || self::sanitize_event_type_id($attrs['event_type_id'] ?? '') === self::sanitize_event_type_id($after['event_type_id']));
             if ($matches) {
                 $restore = IFDC_Client::restore_automatic_event_state(
                     absint($item['event_id'] ?? 0),
                     absint($before['team_id'] ?? 0),
                     absint($before['capacity'] ?? 0),
                     sanitize_text_field($before['name'] ?? ''),
-                    array_key_exists('event_type_id', $before) ? absint($before['event_type_id']) : null
+                    array_key_exists('event_type_id', $before) ? self::sanitize_event_type_id($before['event_type_id']) : null
                 );
                 if (!is_wp_error($restore)) {
                     $verify_payload = IFDC_Client::get_data('events/' . absint($item['event_id'] ?? 0), [], ['force' => true, 'cache' => false]);
@@ -906,7 +1084,7 @@ class IFDC_Event_Assignment {
                         absint($verify_attrs['hteam_id'] ?? 0) === absint($before['team_id'] ?? 0) &&
                         absint($verify_attrs['register_capacity'] ?? 0) === absint($before['capacity'] ?? 0) &&
                         sanitize_text_field($verify_attrs['desc'] ?? '') === sanitize_text_field($before['name'] ?? '') &&
-                        (!array_key_exists('event_type_id', $before) || absint($verify_attrs['event_type_id'] ?? 0) === absint($before['event_type_id']));
+                        (!array_key_exists('event_type_id', $before) || self::sanitize_event_type_id($verify_attrs['event_type_id'] ?? '') === self::sanitize_event_type_id($before['event_type_id']));
                 }
             }
         }
@@ -1016,6 +1194,56 @@ class IFDC_Event_Assignment {
             }
         }
         return $result;
+    }
+
+    private static function assignment_definitions($cleanup_only = false) {
+        $definitions = [];
+        foreach (self::assignment_rules() as $rule) {
+            if (empty($rule['enabled'])) continue;
+            if ($cleanup_only && (empty($rule['cleanup_enabled']) || ($rule['destination_mode'] ?? '') !== 'monthly')) continue;
+            $is_public = $rule['key'] === 'public_skating' || self::sanitize_event_type_id($rule['event_type_id'] ?? '') === self::PUBLIC_SKATING_EVENT_TYPE_ID;
+            $capacity_mode = $rule['capacity_mode'] ?? 'preserve';
+            $definitions[] = [
+                'key' => $rule['key'],
+                'name' => $rule['name'],
+                'match_text' => $rule['match_text'] ?: $rule['name'],
+                'match_mode' => $rule['match_mode'],
+                'capacity' => $capacity_mode === 'preserve' ? null : absint($rule['capacity']),
+                'capacity_only_if_empty' => $capacity_mode === 'empty',
+                'event_type_id' => self::sanitize_event_type_id($rule['event_type_id']),
+                'destination_mode' => $rule['destination_mode'],
+                'destination_name' => $rule['destination_name'] ?: $rule['name'],
+                'fixed_team_id' => absint($rule['fixed_team_id']),
+                'destination_resolver' => $is_public ? 'public_skating' : '',
+                'event_name' => $rule['event_name'] ?: $rule['name'],
+                'automate_name' => !empty($rule['automate_name']),
+                'manual_only' => empty($rule['automation_enabled']),
+                'include_inactive_destination' => $cleanup_only,
+            ];
+        }
+        return $definitions;
+    }
+
+    private static function find_fixed_destination($team_id) {
+        $team_id = absint($team_id);
+        if (!$team_id) return null;
+        $payload = IFDC_Client::get_team($team_id, [], ['force' => true, 'cache' => false]);
+        if (is_wp_error($payload)) return null;
+        $record = self::data_record($payload);
+        if (!$record || absint($record['id'] ?? 0) !== $team_id) return null;
+        $attrs = self::attributes($record);
+        $season_id = absint($attrs['season_id'] ?? 0);
+        $level_id = absint($attrs['league_id'] ?? 0);
+        return [
+            'id' => $team_id,
+            'name' => sanitize_text_field($attrs['name'] ?? ('Team #' . $team_id)),
+            'season_id' => $season_id,
+            'season_name' => $season_id ? self::resource_name('seasons', $season_id) : '',
+            'level_id' => $level_id,
+            'level_name' => $level_id ? self::resource_name('leagues', $level_id) : '',
+            'inactive' => !empty($attrs['inactive']),
+            'online_signup' => !empty($attrs['online_signup']),
+        ];
     }
 
     private static function find_standard_destination($name, $month_label, $definition = []) {
@@ -1147,7 +1375,7 @@ class IFDC_Event_Assignment {
         }
 
         $name = sanitize_text_field(wp_unslash($_POST['name'] ?? ''));
-        $event_type = absint($_POST['event_type'] ?? 0);
+        $event_type = self::sanitize_event_type_id(wp_unslash($_POST['event_type'] ?? ''));
         $include_other = !empty($_POST['include_other']);
         $only_unlimited = !empty($_POST['only_unlimited']);
         $events = [];
@@ -1181,7 +1409,7 @@ class IFDC_Event_Assignment {
                 'collection_filter' => function($record) use ($name, $event_type, $include_other, $only_unlimited) {
                     $attrs = self::attributes($record);
                     if ($name !== '' && stripos((string) ($attrs['desc'] ?? ''), $name) === false) return false;
-                    if ($event_type && absint($attrs['event_type_id'] ?? 0) !== $event_type) return false;
+                    if ($event_type !== '' && self::sanitize_event_type_id($attrs['event_type_id'] ?? '') !== $event_type) return false;
                     $current_team_id = absint($attrs['hteam_id'] ?? 0);
                     $current_capacity = absint($attrs['register_capacity'] ?? 0);
                     if (self::is_protected_public_skating_event($attrs)) return false;
@@ -1203,7 +1431,7 @@ class IFDC_Event_Assignment {
                     'name' => sanitize_text_field($attrs['desc'] ?? 'Untitled event'),
                     'start' => sanitize_text_field($attrs['start'] ?? ''),
                     'end' => sanitize_text_field($attrs['end'] ?? ''),
-                    'event_type_id' => absint($attrs['event_type_id'] ?? 0),
+                    'event_type_id' => self::sanitize_event_type_id($attrs['event_type_id'] ?? ''),
                     'resource_id' => absint($attrs['resource_id'] ?? 0),
                     'team_id' => $current_team_id,
                     'level_id' => absint($attrs['league_id'] ?? 0),
@@ -1328,10 +1556,10 @@ class IFDC_Event_Assignment {
         $event_name = trim(sanitize_text_field(wp_unslash($_POST['event_name'] ?? '')));
         if ($event_name === '') $event_name = null;
         $event_type_raw = sanitize_text_field(wp_unslash($_POST['new_event_type'] ?? ''));
-        if ($event_type_raw !== '' && (!ctype_digit($event_type_raw) || absint($event_type_raw) < 1)) {
-            wp_send_json_error(['message' => 'Event type ID must be a whole number greater than zero.'], 400);
+        if ($event_type_raw !== '' && self::sanitize_event_type_id($event_type_raw) === '') {
+            wp_send_json_error(['message' => 'Choose a valid Event Type ID.'], 400);
         }
-        $event_type_id = $event_type_raw === '' ? null : absint($event_type_raw);
+        $event_type_id = $event_type_raw === '' ? null : self::sanitize_event_type_id($event_type_raw);
         $raw_ids = isset($_POST['event_ids']) ? (array) wp_unslash($_POST['event_ids']) : [];
         $raw_expected = isset($_POST['expected_team_ids']) ? (array) wp_unslash($_POST['expected_team_ids']) : [];
         $raw_expected_capacities = isset($_POST['expected_capacities']) ? (array) wp_unslash($_POST['expected_capacities']) : [];
@@ -1351,7 +1579,7 @@ class IFDC_Event_Assignment {
             $expected_names[absint($event_id)] = sanitize_text_field($expected_name);
         }
         foreach ($raw_expected_event_types as $event_id => $expected_event_type) {
-            $expected_event_types[absint($event_id)] = absint($expected_event_type);
+            $expected_event_types[absint($event_id)] = self::sanitize_event_type_id($expected_event_type);
         }
         $event_ids = array_slice(array_values(array_unique(array_filter(array_map('absint', $raw_ids)))), 0, self::MAX_UPDATE_BATCH);
         if (!$event_ids || (!$team_id && $capacity === null && $event_name === null && $event_type_id === null)) {
@@ -1382,7 +1610,7 @@ class IFDC_Event_Assignment {
             $current_team_id = absint($attrs['hteam_id'] ?? 0);
             $current_capacity = absint($attrs['register_capacity'] ?? 0);
             $current_name = sanitize_text_field($attrs['desc'] ?? '');
-            $current_event_type = absint($attrs['event_type_id'] ?? 0);
+            $current_event_type = self::sanitize_event_type_id($attrs['event_type_id'] ?? '');
             if (self::is_protected_public_skating_event($attrs)) {
                 $skipped[] = [
                     'id' => $event_id,
@@ -1463,7 +1691,7 @@ class IFDC_Event_Assignment {
                 $errors[] = ['id' => $event_id, 'message' => 'Dash did not retain the requested event name.'];
                 continue;
             }
-            if ($event_type_id !== null && absint($verify_attrs['event_type_id'] ?? 0) !== $event_type_id) {
+            if ($event_type_id !== null && self::sanitize_event_type_id($verify_attrs['event_type_id'] ?? '') !== $event_type_id) {
                 $errors[] = ['id' => $event_id, 'message' => 'Dash did not retain the requested event type.'];
                 continue;
             }
@@ -1484,7 +1712,7 @@ class IFDC_Event_Assignment {
                     'team_id' => absint($verify_attrs['hteam_id'] ?? 0),
                     'capacity' => absint($verify_attrs['register_capacity'] ?? 0),
                     'name' => sanitize_text_field($verify_attrs['desc'] ?? ''),
-                    'event_type_id' => absint($verify_attrs['event_type_id'] ?? 0),
+                    'event_type_id' => self::sanitize_event_type_id($verify_attrs['event_type_id'] ?? ''),
                 ],
             ];
         }
@@ -1506,7 +1734,7 @@ class IFDC_Event_Assignment {
 
     private static function is_protected_public_skating_event($attributes) {
         $attributes = is_array($attributes) ? $attributes : [];
-        if (absint($attributes['event_type_id'] ?? 0) !== self::PUBLIC_SKATING_EVENT_TYPE_ID) return false;
+        if (self::sanitize_event_type_id($attributes['event_type_id'] ?? '') !== self::PUBLIC_SKATING_EVENT_TYPE_ID) return false;
 
         $team_id = absint($attributes['hteam_id'] ?? 0);
         if (in_array($team_id, self::PUBLIC_SKATING_EXCLUDED_TEAM_IDS, true)) return true;

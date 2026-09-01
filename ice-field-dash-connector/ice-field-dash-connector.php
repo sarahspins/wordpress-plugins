@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Ice & Field Dash Connector
  * Description: Shared Dash/DaySmart authentication, API requests, diagnostics, and developer tools for Ice & Field plugins.
- * Version: 1.7.17
+ * Version: 1.7.21
  * Requires at least: 6.5
  * Requires PHP: 7.4
  * Update URI: https://github.com/sarahspins/wordpress-plugins/tree/main/ice-field-dash-connector
@@ -11,7 +11,7 @@
 
 if (!defined('ABSPATH')) exit;
 
-define('IFDC_VERSION', '1.7.17');
+define('IFDC_VERSION', '1.7.21');
 define('IFDC_DIR', plugin_dir_path(__FILE__));
 define('IFDC_URL', plugin_dir_url(__FILE__));
 

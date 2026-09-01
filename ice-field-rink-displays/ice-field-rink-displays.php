@@ -2,7 +2,7 @@
 /*
 Plugin Name: Ice & Field Rink Displays
 Description: Combined Dash/DaySmart schedule display and rink participants/check-in display for Ice & Field.
-Version: 2.8.1
+Version: 2.8.10
 Author: Ice & Field
 Requires Plugins: ice-field-dash-connector
 Update URI: https://github.com/sarahspins/wordpress-plugins/tree/main/ice-field-rink-displays
@@ -419,7 +419,7 @@ class IFRD_Video_For_Screens {
     const OPTION = 'ifrd_video_screen_settings';
     const REFRESH_OPTION = 'ifrd_video_screen_refresh_version';
     const PLUGIN_VERSION_OPTION = 'ifrd_plugin_version';
-    const PLUGIN_VERSION = '2.8.1';
+    const PLUGIN_VERSION = '2.8.10';
     const AJAX_ACTION = 'ifrd_video_screen_refresh_status';
     const CAPABILITY = 'edit_pages';
 
@@ -1009,6 +1009,8 @@ class IFRD_Schedule_Display {
     const STALE_CACHE = 'ifrd_schedule_payload_stale_v2711';
     const CACHE_LOCK = 'ifrd_schedule_payload_lock_v2711';
     const CRON_HOOK = 'ifrd_refresh_static_today_schedule';
+    const BACKGROUND_REFRESH_HOOK = 'ifrd_background_refresh_today_schedule';
+    const BACKGROUND_REQUEST_LOCK = 'ifrd_background_schedule_refresh_requested';
     const CAPABILITY = 'edit_pages';
     const REFRESH_HEALTH_OPTION = 'ifrd_schedule_refresh_health';
 
@@ -1021,9 +1023,12 @@ class IFRD_Schedule_Display {
         add_shortcode('rink_schedule_display', array($this, 'shortcode'));
         add_action('wp_ajax_ifrd_schedule_data', array($this, 'ajax'));
         add_action('wp_ajax_nopriv_ifrd_schedule_data', array($this, 'ajax'));
+        add_action('wp_ajax_ifrd_request_schedule_refresh', array($this, 'request_background_refresh'));
+        add_action('wp_ajax_nopriv_ifrd_request_schedule_refresh', array($this, 'request_background_refresh'));
         add_filter('cron_schedules', array($this, 'cron_schedules'));
         add_action('init', array($this, 'ensure_cron'));
         add_action(self::CRON_HOOK, array($this, 'warm_static_cache'));
+        add_action(self::BACKGROUND_REFRESH_HOOK, array($this, 'warm_static_cache'));
     }
 
     public function cron_schedules($schedules) {
@@ -1039,10 +1044,23 @@ class IFRD_Schedule_Display {
 
     public static function deactivate() {
         wp_clear_scheduled_hook(self::CRON_HOOK);
+        wp_clear_scheduled_hook(self::BACKGROUND_REFRESH_HOOK);
     }
 
     public function warm_static_cache() {
         $this->payload(true);
+    }
+
+    public function request_background_refresh() {
+        if (!get_transient(self::BACKGROUND_REQUEST_LOCK) && !get_transient(self::CACHE_LOCK)) {
+            set_transient(self::BACKGROUND_REQUEST_LOCK, 1, 3 * MINUTE_IN_SECONDS);
+            if (!wp_next_scheduled(self::BACKGROUND_REFRESH_HOOK)) {
+                wp_schedule_single_event(time(), self::BACKGROUND_REFRESH_HOOK);
+            }
+            if (function_exists('spawn_cron')) spawn_cron(time());
+            wp_send_json_success(array('queued' => true));
+        }
+        wp_send_json_success(array('queued' => false));
     }
 
     public function defaults() {
@@ -2264,7 +2282,7 @@ class IFRD_Schedule_Display {
                 <section class="ifrd-schedule-panel"><h2><?php echo esc_html($o['silver_title']); ?></h2><div class="ifrd-schedule-list" data-list="silver"></div></section>
             </div>
             <div class="ifrd-schedule-footer">
-                <span class="ifrd-schedule-health" data-status>Display 2.8.1 • API status: connecting… 0s</span>
+                <span class="ifrd-schedule-health" data-status>Display 2.8.10 • API status: connecting… 0s</span>
 				<span data-updated>Last updated: --</span>
 			</div>
 			<div class="ifrd-schedule-footer ifrd-schedule-banner-footer">
@@ -2288,8 +2306,8 @@ class IFRD_Schedule_Display {
         .ifrd-schedule-grid{display:grid!important;grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important;gap:14px;min-height:0}
         .ifrd-schedule-panel{background:var(--ifr-panel);border-radius:22px;padding:12px 14px;overflow:hidden;min-width:0;border:1px solid rgba(255,255,255,.1)}
         .ifrd-schedule-panel h2{font-size:clamp(24px,2vw,40px);line-height:1;margin:0 0 8px}
-        .ifrd-schedule-event{display:grid;grid-template-columns:minmax(92px,7vw) 1fr auto;gap:10px;align-items:center;padding:7px 8px;border-top:1px solid rgba(255,255,255,.08);border-left:4px solid transparent;border-radius:8px}
-        .ifrd-schedule-event:first-child{border-top-color:transparent}.ifrd-schedule-event.is-now{border-left-color:var(--ifr-now);background:rgba(255,255,255,.07)}.ifrd-schedule-event.is-later{opacity:.82}.ifrd-schedule-resurfacing .ifrd-schedule-title{color:var(--ifr-text)}.ifrd-schedule-time{font-weight:850;font-size:clamp(14px,1.1vw,21px);line-height:1.08}.ifrd-schedule-time span{display:block;color:var(--ifr-muted);font-size:.82em;font-weight:500;margin-top:2px}.ifrd-schedule-relative{color:var(--ifr-text)!important;font-size:.68em!important;font-weight:750!important;line-height:1.05}
+        .ifrd-schedule-event{display:grid;grid-template-columns:minmax(128px,8.5vw) minmax(0,1fr) auto;gap:12px;align-items:center;padding:5px 8px;border-top:1px solid rgba(255,255,255,.08);border-left:4px solid transparent;border-radius:8px}
+        .ifrd-schedule-event:first-child{border-top-color:transparent}.ifrd-schedule-event.is-now{border-left-color:var(--ifr-now);background:rgba(255,255,255,.07)}.ifrd-schedule-event.is-later{opacity:.82}.ifrd-schedule-resurfacing .ifrd-schedule-title{color:var(--ifr-text)}.ifrd-schedule-time{min-width:0;overflow:hidden;font-weight:850;font-size:clamp(14px,1.1vw,21px);line-height:1.08}.ifrd-schedule-time span{display:block;color:var(--ifr-muted);font-size:.82em;font-weight:500;margin-top:2px}.ifrd-schedule-relative{max-width:100%;overflow:hidden;text-overflow:clip;color:var(--ifr-text)!important;font-size:12px;font-weight:750!important;line-height:1.05;letter-spacing:-.01em;white-space:nowrap}
         .ifrd-schedule-title{font-weight:850;font-size:clamp(16px,1.35vw,26px);line-height:1.1}.ifrd-schedule-meta{color:var(--ifr-muted);font-size:clamp(11px,.95vw,17px);margin-top:2px}.ifrd-schedule-subblocks{color:var(--ifr-muted);font-size:clamp(11px,.95vw,17px);margin-top:4px;line-height:1.25}.ifrd-schedule-subblocks strong{color:var(--ifr-text);font-weight:850}
         .ifrd-schedule-badges{display:flex;flex-direction:column;align-items:flex-end;gap:5px}.ifrd-schedule-badge{font-size:clamp(10px,.85vw,15px);font-weight:850;white-space:nowrap;background:rgba(255,255,255,.08);border-radius:999px;padding:6px 9px}.ifrd-schedule-badge.now{color:var(--ifr-now);background:rgba(255,255,255,.12)}.ifrd-schedule-badge.next{color:var(--ifr-next)}.ifrd-schedule-badge.later{color:var(--ifr-later)}.ifrd-schedule-badge.past{color:var(--ifr-muted)}.ifrd-registration-meta{display:flex;align-items:center;gap:6px}.ifrd-full-inline{display:inline-block;color:var(--ifr-full-text);background:var(--ifr-full-bg);border-radius:999px;padding:2px 6px;font-size:.72em;font-weight:850;line-height:1.15;white-space:nowrap}
         .ifrd-schedule-additional,.ifrd-schedule-empty,.ifrd-schedule-error{color:var(--ifr-muted);font-size:clamp(13px,1vw,18px);font-weight:700;padding-top:8px}.ifrd-schedule-error{color:#ffd4d4}.ifrd-schedule-group-label{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:6px 0 0;padding:6px 8px 2px;border-top:1px solid rgba(255,255,255,.14);color:var(--ifr-later);font-size:clamp(11px,.9vw,16px);font-weight:850;text-transform:uppercase;letter-spacing:.08em}.ifrd-schedule-rotation{color:var(--ifr-muted);font-size:clamp(10px,.8vw,14px);font-weight:800;text-transform:none;letter-spacing:0}.ifrd-schedule-later-page.is-rotating{animation:ifrd-page-slide .45s ease-out}@keyframes ifrd-page-slide{from{opacity:.25;transform:translateY(10px)}to{opacity:1;transform:none}}
@@ -2320,7 +2338,7 @@ class IFRD_Schedule_Display {
             clock();setInterval(clock,1000);showCachedSchedule();load();setInterval(load,<?php echo max(30,intval($o['refresh_seconds']))*1000; ?>);setInterval(function(){if(currentScheduleData)displaySchedule(currentScheduleData);},30000);
         })();
         </script>
-        <script src="<?php echo esc_url(plugin_dir_url(__FILE__) . 'assets/schedule-display.js?ver=2.8.1'); ?>"></script>
+        <script src="<?php echo esc_url(plugin_dir_url(__FILE__) . 'assets/schedule-display.js?ver=2.8.10'); ?>"></script>
         <?php
         return ob_get_clean();
     }

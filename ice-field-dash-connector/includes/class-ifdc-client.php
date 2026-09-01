@@ -108,6 +108,20 @@ class IFDC_Client {
         return $query ? add_query_arg($query, $url) : $url;
     }
 
+    private static function remote_get_with_retry($url, $args) {
+        $attempts = 3;
+        $retry_statuses = [429, 502, 503, 504];
+        $response = null;
+        for ($attempt = 1; $attempt <= $attempts; $attempt++) {
+            $response = wp_remote_get($url, $args);
+            self::increment_request_count();
+            $retry = is_wp_error($response) || in_array(wp_remote_retrieve_response_code($response), $retry_statuses, true);
+            if (!$retry || $attempt === $attempts) return $response;
+            usleep($attempt === 1 ? 250000 : 750000);
+        }
+        return $response;
+    }
+
     public static function get($path_or_url, $query = [], $args = []) {
         $use_cache = array_key_exists('cache', $args) ? (bool) $args['cache'] : true;
         $force = !empty($args['force']);
@@ -129,14 +143,13 @@ class IFDC_Client {
         if (is_wp_error($token)) return $token;
         $s = self::settings();
         $started = microtime(true);
-        $res = wp_remote_get($url, wp_parse_args($args, [
+        $res = self::remote_get_with_retry($url, wp_parse_args($args, [
             'timeout' => max(5, absint($s['timeout'])),
             'headers' => [
                 'Authorization' => 'Bearer ' . $token,
                 'Accept' => 'application/vnd.api+json',
             ],
         ]));
-        self::increment_request_count();
         if (is_wp_error($res)) return $res;
 
         $code = wp_remote_retrieve_response_code($res);
@@ -225,6 +238,24 @@ class IFDC_Client {
         return self::get_collection('events', $query, $args);
     }
 
+    /** Return configured Dash event types, preserving string IDs such as "K". */
+    public static function get_event_types($args = []) {
+        foreach (['event-types', 'eventTypes', 'event_types'] as $path) {
+            $result = self::get_collection($path, ['page[size]' => 500], wp_parse_args($args, [
+                'cache_ttl' => 12 * HOUR_IN_SECONDS,
+                'max_pages' => 3,
+            ]));
+            if (!is_wp_error($result) && !empty($result['data'])) return $result;
+        }
+        return new WP_Error('ifdc_event_types_unavailable', 'Dash did not return an event-type catalog.');
+    }
+
+    private static function normalize_event_type_id($value) {
+        if ($value === null) return null;
+        $value = trim(sanitize_text_field((string) $value));
+        return preg_match('/^[A-Za-z0-9_-]{1,32}$/', $value) ? $value : '';
+    }
+
     /**
      * Attach an existing Dash class/team to one schedule event.
      *
@@ -243,9 +274,13 @@ class IFDC_Client {
         $event_id = absint($event_id);
         $team_id = $team_id === null ? null : absint($team_id);
         $event_name = $event_name === null ? null : trim(sanitize_text_field($event_name));
-        $event_type_id = $event_type_id === null ? null : absint($event_type_id);
+        $event_type_supplied = $event_type_id !== null;
+        $event_type_id = self::normalize_event_type_id($event_type_id);
         if ($event_name === '') $event_name = null;
-        if (!$event_id || (!$team_id && $capacity === null && $event_name === null && !$event_type_id)) {
+        if ($event_type_supplied && $event_type_id === '') {
+            return new WP_Error('ifdc_invalid_event_type', 'A valid Event Type ID is required.');
+        }
+        if (!$event_id || (!$team_id && $capacity === null && $event_name === null && ($event_type_id === null || $event_type_id === ''))) {
             return new WP_Error('ifdc_invalid_assignment', 'A valid event ID and at least one update are required.');
         }
 
@@ -253,7 +288,7 @@ class IFDC_Client {
         if ($team_id) $attributes['hteam_id'] = $team_id;
         if ($capacity !== null) $attributes['register_capacity'] = max(0, absint($capacity));
         if ($event_name !== null) $attributes['desc'] = $event_name;
-        if ($event_type_id) $attributes['event_type_id'] = $event_type_id;
+        if ($event_type_id !== null && $event_type_id !== '') $attributes['event_type_id'] = $event_type_id;
 
         $result = self::request('PATCH', 'events/' . $event_id, [
             'data' => [
@@ -279,8 +314,8 @@ class IFDC_Client {
                     'hteam_id' => absint($team_id) ?: null,
                     'register_capacity' => max(0, absint($capacity)),
                     'desc' => sanitize_text_field($event_name),
-                    'event_type_id' => $event_type_id === null ? null : absint($event_type_id),
-                ], function($value, $key) { return $key !== 'event_type_id' || $value; }, ARRAY_FILTER_USE_BOTH),
+                    'event_type_id' => self::normalize_event_type_id($event_type_id),
+                ], function($value, $key) { return $key !== 'event_type_id' || ($value !== null && $value !== ''); }, ARRAY_FILTER_USE_BOTH),
             ],
         ]);
         if (!is_wp_error($result)) self::clear_cache();

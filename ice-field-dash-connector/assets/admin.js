@@ -481,14 +481,12 @@ jQuery(function($){
 
     function assignmentNewEventTypeValue() {
         const raw = String($('#ifdc-assignment-new-event-type').val() || '').trim();
-        if (raw === '') return null;
-        const value = parseInt(raw, 10);
-        return Number.isNaN(value) || value < 1 ? null : value;
+        return raw === '' ? null : raw;
     }
 
     function suggestedAssignmentCapacity() {
         const context = ($('#ifdc-assignment-name').val() || '') + ' ' + (assignmentTeam ? assignmentTeam.label : '');
-        if (parseInt($('#ifdc-assignment-type').val(), 10) === 10) return 250;
+        if (String($('#ifdc-assignment-type').val() || '') === '10') return 250;
         if (/hockey|stick\s*(?:&|and)\s*puck/i.test(context)) return 25;
         if (/freestyle/i.test(context)) return 20;
         return null;
@@ -607,7 +605,7 @@ jQuery(function($){
             const teamNeedsChange = assignmentTeam && parseInt(event.team_id || 0, 10) !== assignmentTeam.id;
             const capacityNeedsChange = desiredCapacity !== null && parseInt(event.capacity || 0, 10) !== desiredCapacity;
             const nameNeedsChange = desiredName && String(event.name || '') !== desiredName;
-            const eventTypeNeedsChange = desiredEventType !== null && parseInt(event.event_type_id || 0, 10) !== desiredEventType;
+            const eventTypeNeedsChange = desiredEventType !== null && String(event.event_type_id || '') !== desiredEventType;
             return !!teamNeedsChange || capacityNeedsChange || !!nameNeedsChange || eventTypeNeedsChange;
         });
         const $wrap = $('#ifdc-assignment-events');
@@ -628,7 +626,7 @@ jQuery(function($){
             const sameDestination = assignmentTeam && assignedElsewhere && parseInt(event.team_id, 10) === assignmentTeam.id;
             const capacityNeedsChange = desiredCapacity !== null && parseInt(event.capacity || 0, 10) !== desiredCapacity;
             const nameNeedsChange = desiredName && String(event.name || '') !== desiredName;
-            const eventTypeNeedsChange = desiredEventType !== null && parseInt(event.event_type_id || 0, 10) !== desiredEventType;
+            const eventTypeNeedsChange = desiredEventType !== null && String(event.event_type_id || '') !== desiredEventType;
             const selectable = !!assignmentTeam || capacityNeedsChange || !!nameNeedsChange || eventTypeNeedsChange;
             let assignmentStatus = '<span class="ifdc-status is-ready">Unassigned</span>';
             if (sameDestination) {
@@ -850,7 +848,7 @@ jQuery(function($){
             const response = xhr.responseJSON;
             showResult($status, false, response && response.data && response.data.message ? response.data.message : 'Preparation failed (' + xhr.status + ').');
         }).always(function(){
-            $button.prop('disabled', false).text('Prepare All 4');
+            $button.prop('disabled', false).text('Prepare Enabled Sessions');
         });
     });
 
@@ -1132,6 +1130,23 @@ jQuery(function($){
         });
     });
 
+    $('#ifdc-event-type-correction-mode').on('click', function(){
+        assignmentTeam = null;
+        assignmentEvents = [];
+        $('input[name="ifdc-assignment-team"]').prop('checked', false);
+        $('#ifdc-clear-assignment-team').prop('disabled', true);
+        $('#ifdc-assignment-name').val('');
+        $('#ifdc-assignment-unlimited-only').prop('checked', false);
+        $('#ifdc-assignment-capacity').val('');
+        $('#ifdc-assignment-event-name').val('');
+        $('#ifdc-assignment-new-event-type').val('');
+        $('#ifdc-assignment-events').html('<div class="ifdc-empty-state"><span class="dashicons dashicons-randomize"></span><h3>Bulk event-type correction ready</h3><p>Choose the incorrect current event type, search, then choose the correct type under Step 2 before selecting and updating the matching events.</p></div>');
+        $('#ifdc-assignment-event-status, #ifdc-assignment-apply-status').attr('hidden', true);
+        $('#ifdc-select-all-events, #ifdc-deselect-all-events').prop('disabled', true);
+        updateAssignmentControls();
+        $('#ifdc-assignment-type').trigger('focus');
+    });
+
     $('#ifdc-search-assignment-teams').on('click', function(){
         const $button = $(this);
         const $status = $('#ifdc-assignment-team-status');
@@ -1201,7 +1216,7 @@ jQuery(function($){
     });
 
     $('#ifdc-assignment-type').on('change', function(){
-        if (parseInt($(this).val(), 10) === 10 && !assignmentEventNameValue()) {
+        if (String($(this).val() || '') === '10' && !assignmentEventNameValue()) {
             $('#ifdc-assignment-event-name').val('Public Skating');
         }
         populateAssignmentCapacity(true);
@@ -1238,7 +1253,7 @@ jQuery(function($){
         }).length;
         const eventTypeChangeCount = eventType === null ? 0 : ids.filter(function(id){
             const event = assignmentEvents.find(function(item){ return parseInt(item.id, 10) === id; });
-            return event && parseInt(event.event_type_id || 0, 10) !== eventType;
+            return event && String(event.event_type_id || '') !== eventType;
         }).length;
         let message = assignmentTeam ?
             'Assign ' + ids.length + ' event' + (ids.length === 1 ? '' : 's') + ' to:\n\n' + assignmentTeam.label :
@@ -1278,7 +1293,7 @@ jQuery(function($){
                     expectedTeamIds[id] = currentTeamId;
                     expectedCapacities[id] = event && event.capacity !== null ? parseInt(event.capacity, 10) : 0;
                     expectedEventNames[id] = event ? String(event.name || '') : '';
-                    expectedEventTypes[id] = event ? parseInt(event.event_type_id || 0, 10) : 0;
+                    expectedEventTypes[id] = event ? String(event.event_type_id || '') : '';
                     if (assignmentTeam && currentTeamId && currentTeamId !== assignmentTeam.id) chunkHasReplacement = true;
                 });
                 const response = await $.ajax({

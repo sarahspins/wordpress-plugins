@@ -11,9 +11,9 @@
         function beginConnection() {
             started = Date.now();
             if (timer) window.clearInterval(timer);
-            status.textContent = 'Display 2.8.1 • API status: connecting… 0s';
+            status.textContent = 'Display 2.8.10 • API status: connecting… 0s';
             timer = window.setInterval(function () {
-                status.textContent = 'Display 2.8.1 • API status: connecting… ' + Math.floor((Date.now() - started) / 1000) + 's';
+                status.textContent = 'Display 2.8.10 • API status: connecting… ' + Math.floor((Date.now() - started) / 1000) + 's';
             }, 1000);
         }
         function finishConnection(message) {
@@ -66,6 +66,33 @@
             var labels = root.querySelectorAll('.ifrd-schedule-rotation[data-page-label]');
             for (var index = 0; index < labels.length; index += 1) {
                 labels[index].textContent = labels[index].getAttribute('data-page-label') + ' • ' + seconds + 's';
+            }
+        }
+
+        function fitRelativeTimes(scope) {
+            var labels = (scope || root).querySelectorAll('.ifrd-schedule-relative');
+            for (var index = 0; index < labels.length; index += 1) {
+                var label = labels[index];
+                label.style.fontSize = '12px';
+                var available = 0;
+                if (label.parentElement && label.parentElement.firstChild && label.parentElement.firstChild.nodeType === 3) {
+                    var timeProbe = document.createElement('span');
+                    timeProbe.textContent = label.parentElement.firstChild.nodeValue;
+                    timeProbe.style.cssText = 'position:absolute;visibility:hidden;display:inline-block;width:auto;max-width:none;white-space:nowrap;font:inherit;';
+                    label.parentElement.appendChild(timeProbe);
+                    available = Math.floor(timeProbe.getBoundingClientRect().width);
+                    timeProbe.remove();
+                }
+                label.style.display = 'inline-block';
+                label.style.width = 'auto';
+                label.style.maxWidth = 'none';
+                var needed = label.getBoundingClientRect().width;
+                if (available > 0 && needed > available) {
+                    label.style.fontSize = Math.max(4, 12 * available / needed * 0.98).toFixed(2) + 'px';
+                }
+                label.style.display = 'block';
+                label.style.width = '';
+                label.style.maxWidth = '100%';
             }
         }
 
@@ -164,11 +191,13 @@
             }
             if (animate && existingPinned && existingLater) {
                 existingLater.innerHTML = laterHtml;
+                fitRelativeTimes(existingLater);
                 existingLater.classList.remove('is-rotating');
                 void existingLater.offsetWidth;
                 existingLater.classList.add('is-rotating');
             } else {
                 element.innerHTML = '<div class="ifrd-schedule-pinned">' + pinnedHtml + '</div><div class="ifrd-schedule-later-page">' + laterHtml + '</div>';
+                fitRelativeTimes(element);
             }
         }
 
@@ -197,7 +226,7 @@
                 var cached = JSON.parse(window.localStorage.getItem(cacheKey));
                 if (cached && cached.cachedDay === localDayKey()) {
                     displaySchedule(cached);
-                    status.textContent = 'Display 2.8.1 • API status: connecting — showing saved schedule';
+                    status.textContent = 'Display 2.8.10 • API status: connecting — showing saved schedule';
                     return true;
                 }
                 if (cached) window.localStorage.removeItem(cacheKey);
@@ -258,10 +287,26 @@
             } catch (ignore) {}
         }
 
+        var backgroundReloadTimer = null;
+        async function requestFreshSchedule() {
+            try {
+                var body = new URLSearchParams();
+                body.set('action', 'ifrd_request_schedule_refresh');
+                var response = await window.fetch(root.getAttribute('data-ifrd-ajax-url'), {method: 'POST', headers: {'Accept': 'application/json', 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'}, body: body.toString(), credentials: 'same-origin', cache: 'no-store'});
+                var payload = await response.json();
+                if (payload && payload.success && payload.data && payload.data.queued) {
+                    window.clearTimeout(backgroundReloadTimer);
+                    backgroundReloadTimer = window.setTimeout(load, 75000);
+                }
+            } catch (ignore) {}
+        }
+
         clock();
         window.setInterval(clock, 1000);
         showCachedSchedule();
         load();
+        window.setTimeout(requestFreshSchedule, 10000);
+        window.setInterval(requestFreshSchedule, 3 * 60 * 1000);
         window.setInterval(load, Math.max(30, parseInt(root.getAttribute('data-ifrd-refresh-seconds'), 10) || 300) * 1000);
         window.setInterval(function () { if (currentScheduleData) displaySchedule(currentScheduleData, false); }, 30000);
         window.setInterval(updateRotationCountdown, 1000);

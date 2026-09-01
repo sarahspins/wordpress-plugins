@@ -1,7 +1,32 @@
 Ice & Field Dash Connector
-Version 1.7.17
+Version 1.7.21
 
 Shared Dash/DaySmart connection for Ice & Field WordPress plugins.
+
+1.7.21 updates:
+- Event Type IDs are preserved as identifiers, including letter-based values such as k
+- Event-type matching, bulk correction, verification, history, and Undo no longer convert IDs to numbers
+- Event Assignment uses DaySmart event-type dropdowns with descriptions instead of requiring ID entry
+
+1.7.20 adds:
+- An explicit Bulk Event Type Correction mode on Event Assignment
+- Type-only monthly searches with the unrelated name, capacity, naming, and destination controls cleared automatically
+- Select All and the existing guarded ten-event batching for correcting large groups
+- Fresh current-type validation, post-write verification, history, and Undo through the existing event-update engine
+
+1.7.19 fixes:
+- Read-only Dash API requests retry up to two times after transport failures such as cURL 35 SSL connection resets
+- Temporary HTTP 429, 502, 503, and 504 responses use the same short bounded retry path
+- Event writes remain single-attempt so an uncertain response can never produce a duplicate change
+
+1.7.18 adds:
+- Administrator-managed Event Assignment Rules for recurring and specialty sessions
+- Event matching by partial/exact name or Event Type ID
+- Monthly destination discovery or a verified fixed Team ID
+- Per-rule capacity values with Always enforce, Only when empty, or Preserve existing behavior
+- Optional standardized event naming, automatic-check inclusion, and completed-month cleanup inclusion
+- Automatic migration of the existing Open Freestyle, Stick & Puck, Private Hockey Coaches Ice, and Public Skating behavior into default rules
+- Permanent Public Skating team/title protections and nonzero-capacity preservation regardless of configurable settings
 
 1.7.17 updates:
 - Automatic event-update emails display Team 0 as “Unassigned” and identify assigned Teams as “Name (ID)”

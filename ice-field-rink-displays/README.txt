@@ -1,4 +1,22 @@
-Ice & Field Rink Displays v2.8.1
+Ice & Field Rink Displays v2.8.10
+
+Version 2.8.10 adds a lightweight three-minute browser heartbeat that requests a non-blocking server-side rebuild of today's static schedule. The TV keeps showing its current schedule while Dash data and registration totals refresh in the background, then reloads the static snapshot after the queued rebuild has had time to finish. A shared transient prevents multiple screens from starting duplicate refreshes.
+
+Version 2.8.9 lowers the measured relative-time minimum from 6px to 4px so unusually narrow layouts can display the complete Ends/Starts message inside the protected time-cell boundary instead of clipping its final characters.
+
+Version 2.8.8 slightly reduces vertical padding within schedule event rows, fitting the schedule more efficiently while retaining the existing typography and separators.
+
+Version 2.8.7 reserves a wider responsive schedule-time column for the complete relative timing phrase. The time cell and relative line also enforce their grid boundary as a final safeguard, making overlap with the event title impossible while retaining measured font fitting.
+
+Version 2.8.6 lowers the calculated relative-time readability floor from 8px to 6px and retains fractional sizing. Narrow desktop layouts can therefore match the primary-time width precisely instead of stopping at a minimum that still overlaps the title.
+
+Version 2.8.5 measures the true inline rendered widths of the primary time and relative timing strings rather than the block element width. This makes the calculated relative font size match the visible primary time width reliably across browsers.
+
+Version 2.8.4 measures the rendered width of each event's primary start time and scales the relative Ends/Starts message to that same width. The two lines share a consistent visual edge while the relative message remains clear of the event title.
+
+Version 2.8.3 measures each relative Ends/Starts message against its actual time-column width and reduces that individual line only when needed. This prevents both wrapping and overlap with the event title across differing screen widths.
+
+Version 2.8.2 keeps the relative Ends/Starts in X min message on one line and scales it responsively from 9px to 12px. The time column therefore does not gain an extra line when the available width is narrow.
 
 Version 2.8.1 paginates each rink from its actual available panel height instead of assuming every event row occupies the same space. Pinned rows remain fixed, Later events are added until the next complete row would overflow, and pagination is recalculated after fonts load or the viewport changes. The Ends/Starts in X min line is also smaller so it remains useful without competing with the primary time.
 
