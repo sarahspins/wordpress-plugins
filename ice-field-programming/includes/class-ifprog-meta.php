@@ -73,8 +73,13 @@ class IFPROG_Meta {
         $registration_close = get_post_meta($post->ID, '_ifprog_season_registration_close', true);
         $registration_url = get_post_meta($post->ID, '_ifprog_registration_url', true);
         $dash_id = get_post_meta($post->ID, '_ifprog_dash_season_id', true);
+        $automatic_sync = get_post_meta($post->ID, '_ifprog_automatic_sync', true) === '1';
+        $automatic_sync_names = get_post_meta($post->ID, '_ifprog_automatic_sync_names', true) === '1';
+        $automatic_sync_descriptions = get_post_meta($post->ID, '_ifprog_automatic_sync_descriptions', true) === '1';
+        $automatic_sync_checked = get_post_meta($post->ID, '_ifprog_automatic_sync_last_checked', true);
         $is_production = get_post_meta($post->ID, '_ifprog_is_production', true) === '1';
         $production_id = absint(get_post_meta($post->ID, '_ifprog_production_id', true));
+        $pin_to_top = get_post_meta($post->ID, '_ifprog_season_pin_to_top', true) === '1';
         $sort_order = get_post_meta($post->ID, '_ifprog_season_order', true);
         if ($sort_order === '') $sort_order = 100;
         ?>
@@ -95,6 +100,27 @@ class IFPROG_Meta {
             <p><label><strong>Dash Season ID</strong><br>
                 <input class="widefat" type="number" min="0" name="ifprog_dash_season_id" value="<?php echo esc_attr($dash_id); ?>">
             </label></p>
+            <?php if ($dash_id): ?>
+                <p><label>
+                    <input type="checkbox" name="ifprog_automatic_sync" value="1" <?php checked($automatic_sync); ?>>
+                    <strong>Keep up to date automatically</strong>
+                </label><br>
+                <span class="description">Once daily, while this Dash Season's registration window is open, import new class offerings and refresh protected Dash fields. Local presentation and classifications remain protected.<?php echo $automatic_sync_checked ? ' Last checked: ' . esc_html($automatic_sync_checked) . '.' : ''; ?></span></p>
+                <p style="margin-left:24px"><label>
+                    <input type="checkbox" name="ifprog_automatic_sync_names" value="1" <?php checked($automatic_sync_names); ?>>
+                    Update Season, Level, and class names automatically from Dash
+                </label><br>
+                <label>
+                    <input type="checkbox" name="ifprog_automatic_sync_descriptions" value="1" <?php checked($automatic_sync_descriptions); ?>>
+                    Update Season, Level, and class descriptions automatically from Dash
+                </label><br>
+                <span class="description">Both options are off by default. Description updates stop when the WordPress copy has been edited locally.</span></p>
+            <?php endif; ?>
+            <p><label>
+                <input type="checkbox" name="ifprog_season_pin_to_top" value="1" <?php checked($pin_to_top); ?>>
+                <strong>Pin this Season to the top</strong>
+            </label><br>
+            <span class="description">Overrides automatic date sorting in customer-facing Season lists. Other Seasons remain in their normal chronological order.</span></p>
             <p><label><strong>Display Order</strong><br>
                 <input class="widefat" type="number" min="0" max="9999" name="ifprog_season_order" value="<?php echo esc_attr($sort_order); ?>">
                 <span class="description">When Seasons have the same start and end dates, lower numbers appear first. Completed Seasons still remain at the bottom.</span>
@@ -328,8 +354,15 @@ class IFPROG_Meta {
             <p><label><strong>Price</strong><br>
                 <input class="widefat" type="text" name="ifprog_price" value="<?php echo esc_attr(IFPROG_Fields::get($post->ID, 'price')); ?>" placeholder="$175">
             </label></p>
-            <p><label><strong>Session Length (Weeks)</strong><br>
+            <p><label><strong>Session Occurrences</strong><br>
                 <input class="widefat" type="number" min="0" name="ifprog_weeks" value="<?php echo esc_attr(IFPROG_Fields::get($post->ID, 'weeks')); ?>" placeholder="8">
+            </label></p>
+            <p><label><strong>Session Duration Unit</strong><br>
+                <?php $duration_unit = IFPROG_Fields::get($post->ID, 'duration_unit', 'week'); ?>
+                <select class="widefat" name="ifprog_duration_unit">
+                    <option value="week" <?php selected($duration_unit, 'week'); ?>>Weeks</option>
+                    <option value="day" <?php selected($duration_unit, 'day'); ?>>Days</option>
+                </select>
             </label></p>
             <p><label><strong>Registration Button Text</strong><br>
                 <input class="widefat" type="text" name="ifprog_button_label" value="<?php echo esc_attr(IFPROG_Fields::get($post->ID, 'button_label')); ?>" placeholder="Register Now">
@@ -357,7 +390,15 @@ class IFPROG_Meta {
 
         if ($source_id) {
             echo '<p><strong>Dash linked</strong></p>';
-            echo '<p><strong>Source:</strong><br>' . esc_html(ucfirst((string) $source_type)) . ' #' . esc_html($source_id) . '</p>';
+            if ($source_type === 'team') {
+                echo '<p><label for="ifprog-dash-team-id"><strong>Dash Team ID</strong></label><br>';
+                echo '<input id="ifprog-dash-team-id" class="widefat" type="number" min="1" name="ifprog_dash_team_id" value="' . esc_attr(absint($source_id)) . '"></p>';
+                echo '<p class="description">Use this when Dash replaces a recurring Team, such as Adult Development Camp. The Program stays in its current WordPress Season and Level; run the source Season sync afterward to refresh its Dash facts.</p>';
+                $relink_error = get_post_meta($post->ID, '_ifprog_dash_source_relink_error', true);
+                if ($relink_error) echo '<p style="color:#b32d2e"><strong>' . esc_html($relink_error) . '</strong></p>';
+            } else {
+                echo '<p><strong>Source:</strong><br>' . esc_html(ucfirst((string) $source_type)) . ' #' . esc_html($source_id) . '</p>';
+            }
             echo '<p><strong>Last synchronized:</strong><br>' . esc_html($last_sync ?: 'Never') . '</p>';
             echo '<p><strong>Protected local fields:</strong><br>' . esc_html($overrides ? implode(', ', array_map(function($field) {
                 return ucwords(str_replace('_', ' ', $field));
@@ -379,7 +420,11 @@ class IFPROG_Meta {
         IFPROG_Status::set_season_status($post_id, $status);
 
         update_post_meta($post_id, '_ifprog_dash_season_id', absint($_POST['ifprog_dash_season_id'] ?? 0));
+        update_post_meta($post_id, '_ifprog_automatic_sync', isset($_POST['ifprog_automatic_sync']) ? '1' : '0');
+        update_post_meta($post_id, '_ifprog_automatic_sync_names', isset($_POST['ifprog_automatic_sync_names']) ? '1' : '0');
+        update_post_meta($post_id, '_ifprog_automatic_sync_descriptions', isset($_POST['ifprog_automatic_sync_descriptions']) ? '1' : '0');
         update_post_meta($post_id, '_ifprog_is_production', isset($_POST['ifprog_is_production']) ? '1' : '0');
+        update_post_meta($post_id, '_ifprog_season_pin_to_top', isset($_POST['ifprog_season_pin_to_top']) ? '1' : '0');
         $production_id = absint($_POST['ifprog_production_id'] ?? 0);
         if ($production_id && post_type_exists('ifp_production') && get_post_type($production_id) !== 'ifp_production') {
             $production_id = 0;
@@ -437,6 +482,7 @@ class IFPROG_Meta {
             'location' => sanitize_text_field(wp_unslash($_POST['ifprog_location'] ?? '')),
             'price' => sanitize_text_field(wp_unslash($_POST['ifprog_price'] ?? '')),
             'weeks' => absint($_POST['ifprog_weeks'] ?? 0),
+            'duration_unit' => sanitize_key(wp_unslash($_POST['ifprog_duration_unit'] ?? 'week')) === 'day' ? 'day' : 'week',
             'registration_url' => esc_url_raw(wp_unslash($_POST['ifprog_registration_url'] ?? '')),
             'button_label' => sanitize_text_field(wp_unslash($_POST['ifprog_button_label'] ?? '')),
             'availability_note' => sanitize_textarea_field(wp_unslash($_POST['ifprog_availability_note'] ?? '')),
@@ -444,6 +490,51 @@ class IFPROG_Meta {
 
         foreach ($values as $field => $value) {
             IFPROG_Fields::save_local($post_id, $field, $value);
+        }
+
+        $source_type = sanitize_key((string) get_post_meta($post_id, '_ifprog_dash_source_type', true));
+        $old_team_id = absint(get_post_meta($post_id, '_ifprog_dash_source_id', true));
+        $new_team_id = absint($_POST['ifprog_dash_team_id'] ?? 0);
+        if ($source_type === 'team' && $old_team_id && $new_team_id && $new_team_id !== $old_team_id) {
+            $duplicates = get_posts([
+                'post_type' => 'ifprog_program',
+                'post_status' => array_keys(get_post_stati()),
+                'posts_per_page' => 1,
+                'fields' => 'ids',
+                'post__not_in' => [$post_id],
+                'meta_query' => [
+                    'relation' => 'AND',
+                    ['key' => '_ifprog_dash_source_type', 'value' => 'team'],
+                    ['key' => '_ifprog_dash_source_id', 'value' => $new_team_id, 'type' => 'NUMERIC'],
+                ],
+            ]);
+            if ($duplicates) {
+                update_post_meta(
+                    $post_id,
+                    '_ifprog_dash_source_relink_error',
+                    'Team #' . $new_team_id . ' is already linked to “' . get_the_title(absint($duplicates[0])) . '”. The existing Team ID was retained.'
+                );
+            } else {
+                update_post_meta($post_id, '_ifprog_dash_source_id', $new_team_id);
+                update_post_meta($post_id, '_ifprog_dash_last_sync', '');
+                delete_post_meta($post_id, '_ifprog_dash_source_relink_error');
+                IFPROG_Audit::record(
+                    'program_dash_team_relinked',
+                    get_the_title($post_id) . ' was relinked from Dash Team #' . $old_team_id . ' to #' . $new_team_id . '.',
+                    [
+                        'source' => 'program',
+                        'severity' => 'success',
+                        'season_id' => $season_id,
+                        'context' => [
+                            'program_id' => $post_id,
+                            'previous_team_id' => $old_team_id,
+                            'team_id' => $new_team_id,
+                        ],
+                    ]
+                );
+            }
+        } elseif ($source_type === 'team') {
+            delete_post_meta($post_id, '_ifprog_dash_source_relink_error');
         }
 
     }

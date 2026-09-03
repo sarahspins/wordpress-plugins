@@ -64,10 +64,12 @@ class IFPROG_Shortcodes {
             $level_filters,
             $group_filters,
             $category_filters,
+            $format_filters,
             $include_show
         ) {
             $season_id = absint(IFPROG_Fields::get($program->ID, 'season_id'));
             if ($season_ids !== null && !in_array($season_id, $season_ids, true)) return false;
+            if ($format_filters && $season_id && !self::season_matches_tax_filter($season_id, 'ifprog_format', $format_filters)) return false;
             if (!$include_show && self::program_is_show_related($program)) return false;
             if (!self::program_matches_category($program->ID, $category_filters)) return false;
             if (!self::program_matches_level($program->ID, $level_filters)) return false;
@@ -198,10 +200,18 @@ class IFPROG_Shortcodes {
         $hide_finished = self::truthy($atts['hide_finished']);
         $catalog_now = current_datetime()->getTimestamp();
         $all_programs = get_posts($query_args);
-        $programs = array_values(array_filter($all_programs, function($program) use ($allowed_states, $season_ids, $level_filters, $group_filters, $category_filters, $hide_finished, $catalog_now) {
+        $programs = array_values(array_filter($all_programs, function($program) use ($allowed_states, $season_ids, $level_filters, $group_filters, $category_filters, $format_filters, $hide_finished, $catalog_now) {
+            $program_season_id = absint(IFPROG_Fields::get($program->ID, 'season_id'));
             if (
                 $season_ids !== null &&
-                !in_array(absint(IFPROG_Fields::get($program->ID, 'season_id')), $season_ids, true)
+                !in_array($program_season_id, $season_ids, true)
+            ) {
+                return false;
+            }
+            if (
+                $format_filters &&
+                $program_season_id &&
+                !self::season_matches_tax_filter($program_season_id, 'ifprog_format', $format_filters)
             ) {
                 return false;
             }
@@ -452,6 +462,17 @@ class IFPROG_Shortcodes {
         ?>
         <div class="ifprog-levels">
             <?php foreach ($groups as $group):
+                if (!empty($group['direct'])): ?>
+                    <div class="ifprog-classes ifprog-classes--direct">
+                        <?php foreach ($group['programs'] as $program):
+                            self::program($program, [
+                                'show_price' => self::truthy($atts['show_price']),
+                                'settings' => $settings,
+                            ]);
+                        endforeach; ?>
+                    </div>
+                    <?php continue; ?>
+                <?php endif;
                 $level_has_action = $group['registration_url'] !== '';
                 $level_is_coming_soon = !$level_has_action &&
                     !empty($group['is_league']) &&
@@ -524,8 +545,10 @@ class IFPROG_Shortcodes {
         }
         $price = IFPROG_Fields::get($post_id, 'price');
         $weeks = absint(IFPROG_Fields::get($post_id, 'weeks'));
+        $duration_unit = IFPROG_Fields::get($post_id, 'duration_unit', 'week') === 'day' ? 'day' : 'week';
         $is_single_class = $weeks === 1;
         $is_drop_in = self::object_matches_terms($post_id, 'ifprog_format', ['drop-in']);
+        $is_camp = self::object_matches_terms($post_id, 'ifprog_format', ['camp']);
         $numeric_price = preg_replace('/[^0-9.\-]/', '', (string) $price);
         $is_free_one_day = $is_single_class
             && $numeric_price !== ''
@@ -553,7 +576,18 @@ class IFPROG_Shortcodes {
         }
         $show_price = $display['show_price'] && !$is_free_one_day;
         $schedule_label = 'Day & Time';
-        if ($is_free_one_day) {
+        if ($is_camp) {
+            $camp_dates = self::date_range(
+                IFPROG_Fields::get($post_id, 'start_date'),
+                IFPROG_Fields::get($post_id, 'end_date')
+            );
+            $time_range = preg_replace('/^[^,]+,\s*/', '', (string) $schedule);
+            $schedule_label = 'Dates & Time';
+            if ($camp_dates !== '') {
+                $schedule = $camp_dates;
+                if ($time_range !== '') $schedule .= ' at ' . $time_range;
+            }
+        } elseif ($is_free_one_day) {
             $start_timestamp = IFPROG_Status::timestamp(IFPROG_Fields::get($post_id, 'start_date'));
             if ($start_timestamp) {
                 $schedule_label = 'Event Date & Time';
@@ -601,7 +635,7 @@ class IFPROG_Shortcodes {
                                 <span class="ifprog-class__price-option">
                                     <span class="ifprog-class__price-or">or</span>
                                     <strong><?php echo esc_html($drop_in_remaining_price); ?></strong>
-                                    <em class="ifprog-class__price-duration">for remaining <?php echo esc_html($drop_in_remaining_classes); ?> <?php echo $drop_in_remaining_classes === 1 ? 'week' : 'weeks'; ?></em>
+                                    <em class="ifprog-class__price-duration">for remaining <?php echo esc_html($drop_in_remaining_classes); ?> <?php echo esc_html($drop_in_remaining_classes === 1 ? $duration_unit : $duration_unit . 's'); ?></em>
                                 </span>
                             <?php endif; ?>
                         </span>
@@ -610,7 +644,7 @@ class IFPROG_Shortcodes {
                         <span class="ifprog-class__price-value">
                             <strong><?php echo esc_html($price ?: 'TBA'); ?></strong>
                             <?php if ($weeks > 1): ?>
-                                <em class="ifprog-class__price-duration">for <?php echo esc_html($weeks); ?> weeks</em>
+                                <em class="ifprog-class__price-duration">for <?php echo esc_html($weeks); ?> <?php echo esc_html($duration_unit . 's'); ?></em>
                             <?php endif; ?>
                         </span>
                     <?php endif; ?>
@@ -886,6 +920,7 @@ class IFPROG_Shortcodes {
             if (!in_array(self::standalone_level_state($season_id), $allowed_states, true)) return false;
             if (!self::season_matches_tax_filter($season_id, 'ifprog_sport', $sport_filters)) return false;
             if (!self::season_matches_tax_filter($season_id, 'ifprog_format', $format_filters)) return false;
+            if (!self::object_matches_terms($level->ID, 'ifprog_format', $format_filters)) return false;
             if (!self::object_matches_terms($level->ID, 'ifprog_category', $category_filters)) return false;
             if (!self::level_matches_filter($level, $level_filters)) return false;
             if (!self::object_matches_terms($level->ID, 'ifprog_group', $group_filters)) return false;
@@ -986,9 +1021,7 @@ class IFPROG_Shortcodes {
         unset($session);
 
         uasort($sessions, function($a, $b) {
-            if ($a['registration_closed'] !== $b['registration_closed']) {
-                return $a['registration_closed'] <=> $b['registration_closed'];
-            }
+            if ($a['pinned'] !== $b['pinned']) return $a['pinned'] ? -1 : 1;
             if ($a['sort_date'] !== $b['sort_date']) return $a['sort_date'] <=> $b['sort_date'];
             if ($a['sort_end_date'] !== $b['sort_end_date']) return $a['sort_end_date'] <=> $b['sort_end_date'];
             if ($a['order'] !== $b['order']) return $a['order'] <=> $b['order'];
@@ -1015,6 +1048,7 @@ class IFPROG_Shortcodes {
             'registration_opened' => $season ? IFPROG_Status::season_registration_opened($season_id) : false,
             'registration_closed' => $season ? IFPROG_Status::season_registration_closed($season_id) : false,
             'order' => $season ? self::season_order($season_id) : 9999,
+            'pinned' => $season ? get_post_meta($season_id, '_ifprog_season_pin_to_top', true) === '1' : false,
             'sort_date' => IFPROG_Status::timestamp($start_date) ?: PHP_INT_MAX,
             'sort_end_date' => IFPROG_Status::timestamp($end_date) ?: PHP_INT_MAX,
             'is_league' => $season_id
@@ -1144,6 +1178,7 @@ class IFPROG_Shortcodes {
             $level_id = absint(IFPROG_Fields::get($program->ID, 'level_id'));
             $level = $level_id && get_post_type($level_id) === 'ifprog_level' ? get_post($level_id) : null;
             $fallback = trim((string) IFPROG_Fields::get($program->ID, 'level'));
+            $direct = !$level && self::object_matches_terms($program->ID, 'ifprog_format', ['camp']);
 
             if ($level) {
                 $key = 'level-' . $level_id;
@@ -1151,6 +1186,12 @@ class IFPROG_Shortcodes {
                 $description = $level->post_status === 'publish' ? trim((string) $level->post_content) : '';
                 $age_range = IFPROG_Dash::level_age_range($level_id);
                 $order = absint($level->menu_order);
+            } elseif ($direct) {
+                $key = 'direct-camps-' . $season_id;
+                $title = '';
+                $description = '';
+                $age_range = '';
+                $order = 0;
             } else {
                 $key = 'fallback-' . $season_id . '-' . sanitize_title($fallback ?: 'other-programs');
                 $title = $fallback ?: 'Other Programs';
@@ -1170,6 +1211,7 @@ class IFPROG_Shortcodes {
                     'programs' => [],
                     'registration_state' => '',
                     'is_league' => false,
+                    'direct' => $direct,
                 ];
             }
             $groups[$key]['programs'][] = $program;
@@ -1185,6 +1227,7 @@ class IFPROG_Shortcodes {
         $groups = self::sort_level_records($groups, $sort_by_age);
 
         foreach ($groups as &$group) {
+            $group['programs'] = self::sort_programs_by_schedule($group['programs']);
             $group['registration_state'] = self::level_program_state($group['programs']);
             $group['registration_url'] = self::level_registration_url(
                 $group['level_id'],
@@ -1274,6 +1317,9 @@ class IFPROG_Shortcodes {
         }
 
         usort($sortable, function($a, $b) {
+            if ($a['key']['camp'] && $b['key']['camp'] && $a['key']['start'] !== $b['key']['start']) {
+                return $a['key']['start'] <=> $b['key']['start'];
+            }
             foreach (['day','time','order'] as $field) {
                 if ($a['key'][$field] !== $b['key'][$field]) {
                     return $a['key'][$field] <=> $b['key'][$field];
@@ -1316,6 +1362,8 @@ class IFPROG_Shortcodes {
         }
 
         return [
+            'camp' => self::object_matches_terms($program->ID, 'ifprog_format', ['camp']),
+            'start' => IFPROG_Status::timestamp(IFPROG_Fields::get($program->ID, 'start_date')) ?: PHP_INT_MAX,
             'day' => $day,
             'time' => $time,
             'order' => absint($program->menu_order),
@@ -1333,9 +1381,7 @@ class IFPROG_Shortcodes {
         $post_id = absint($program->ID);
         $weeks = absint(IFPROG_Fields::get($post_id, 'weeks'));
         $season_id = absint(IFPROG_Fields::get($post_id, 'season_id'));
-        if (!$season_id || IFPROG_Status::effective_season_status($season_id, $now) !== 'current') {
-            return $weeks ?: null;
-        }
+        if (!$season_id) return $weeks ?: null;
 
         $level_id = absint(IFPROG_Fields::get($post_id, 'level_id'));
         if (

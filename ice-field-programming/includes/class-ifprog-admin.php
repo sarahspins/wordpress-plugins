@@ -204,6 +204,10 @@ class IFPROG_Admin {
 
         wp_enqueue_style('ifprog-admin', IFPROG_URL . 'assets/admin.css', [], IFPROG_VERSION);
         wp_enqueue_script('ifprog-admin', IFPROG_URL . 'assets/admin.js', [], IFPROG_VERSION, true);
+        wp_localize_script('ifprog-admin', 'ifprogPreviewBatch', [
+            'ajaxUrl' => admin_url('admin-ajax.php'),
+            'nonce' => wp_create_nonce('ifprog_preview_batch'),
+        ]);
     }
 
     public static function season_lifecycle_notice() {

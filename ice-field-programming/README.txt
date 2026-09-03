@@ -1,6 +1,6 @@
 === Ice & Field Programming ===
 Contributors: iceandfield
-Stable tag: 1.9.1.14
+Stable tag: 1.9.2.4
 Requires at least: 6.4
 Requires PHP: 7.4
 Requires Plugins: ice-field-dash-connector
@@ -10,6 +10,12 @@ Manage seasons, program groups, levels, classes, leagues, camps, clinics, and pu
 == Description ==
 
 Ice & Field Programming is the public program and registration module for the main Ice & Field website.
+
+Version 1.9.2.4 includes the AJAX batching introduced in 1.9.2.3 and forces browsers to load the corrected progress-bar styling. Protected previews, comparisons, and imports prepare Teams, Leagues, Products, registration availability, and Events in separate requests. A progress overlay identifies the active stage, and the final protected action reuses those prepared caches instead of asking one PHP process to load every Dash collection. Version 1.9.2.2 adds a per-Season “Pin this Season to the top” display override. Pinned Seasons appear before automatically date-sorted Seasons in customer-facing catalogs and offering lists, while all unpinned Seasons retain their existing chronological order.
+
+Version 1.9.2.1 separates lightweight Season discovery from hierarchy comparison work for compatibility with hosts that enforce short gateway timeouts. Opening or refreshing Season Discovery no longer rebuilds every imported Season. Use Check Changes on one imported Season to refresh only that comparison; protected previews request fresh Teams for the selected Season while reusing cached shared Dash indexes.
+
+Version 1.9.2 adds opt-in daily synchronization for Seasons that have already been imported from Dash. Each imported Season has its own Keep up to date automatically checkbox. While its Dash registration window is open, Programming imports newly added eligible class offerings and refreshes protected Dash-controlled facts once daily. Name and description synchronization are separate opt-ins and remain off by default; descriptions retain the existing protection for locally edited WordPress copy. Closed, not-yet-open, and undated registration windows are skipped safely, and every run is recorded in the Programming Activity Log. On the public catalog, a registration-closed Season retains its chronological position while classes are still occurring; an older Season disappears automatically once every dated class occurrence has passed.
 
 It is intentionally separate from:
 
@@ -25,12 +31,12 @@ Dash League #86 is an intentional presentation exception: its Level and linked P
 
 The Season Discovery Inbox loads automatically when its admin screen opens, lists every non-excluded Current and Upcoming Dash Season directly, groups New Seasons first, Needs Re-sync second, and Imported Seasons last, and provides Preview / Import, Sync, or Review Changes actions. A prominent prompt calls attention to newly discovered Seasons and links directly to the New Seasons group. A secondary All Seasons view filters Current, Upcoming, Completed, Imported, New, Needs Re-sync, and Excluded records. Never Import exclusions are reversible and stored by Dash Season ID. Checkboxes, Select All/Deselect All controls, and Exclude Selected make it possible to exclude several visible Seasons together. Automatic loading uses the Connector cache for speed; Refresh Discovery explicitly requests fresh source data. Discovery compares imported Current and Upcoming Seasons with compact snapshots from their last successful sync, including Season facts and structural Level/class changes while ignoring routine enrollment totals. The first 1.8 refresh establishes a baseline for older imports that predate snapshots; later refreshes compare against that baseline or the latest successful sync.
 
-The Monitoring screen prepares guarded 1.9 rules without enabling background activity. Administrators can pause or ready the global configuration, choose a future check frequency, enable registration-close and imported-Season comparison signals, configure Season families and their name-matching phrases, save a future notification address, and choose how long activity is retained. The Activity Log records monitoring-setting changes, manual discovery refreshes, Never Import exclusions/restorations, protected sync results, warnings, and failures. It stores no raw Dash payloads or credentials and is capped at 500 entries. The 1.9.1 maintenance line does not schedule Dash requests, send email, or import automatically.
+The Monitoring screen stores broader Season-family discovery rules. Daily synchronization is enabled independently on each imported Season and runs at approximately 4:15 a.m. in the WordPress site timezone. It checks Dash only for opted-in Seasons, synchronizes only during an open Dash registration window, and uses an overlap lock. The Activity Log records monitoring-setting changes, automatic and manual sync results, manual discovery refreshes, Never Import exclusions/restorations, warnings, and failures. It stores no raw Dash payloads or credentials and is capped at 500 entries.
 
 == Installation ==
 
 1. Install and configure Ice & Field Dash Connector v1.3.0 or newer.
-2. Upload the complete ice-field-programming-v1.9.1.10 ZIP in Plugins > Add Plugin > Upload Plugin.
+2. Upload the complete Ice & Field Programming ZIP in Plugins > Add Plugin > Upload Plugin.
 3. Activate Ice & Field Programming.
 4. Open Programming in the WordPress admin menu.
 5. Open Dash Sync, choose a Dash Season, and preview its Team classes and standalone registrable Leagues.

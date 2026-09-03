@@ -479,6 +479,13 @@ jQuery(function($){
         return String($('#ifdc-assignment-event-name').val() || '').trim();
     }
 
+    function assignmentNewEventTypeValue() {
+        const raw = String($('#ifdc-assignment-new-event-type').val() || '').trim();
+        if (raw === '') return null;
+        const value = parseInt(raw, 10);
+        return Number.isNaN(value) || value < 1 ? null : value;
+    }
+
     function suggestedAssignmentCapacity() {
         const context = ($('#ifdc-assignment-name').val() || '') + ' ' + (assignmentTeam ? assignmentTeam.label : '');
         if (parseInt($('#ifdc-assignment-type').val(), 10) === 10) return 250;
@@ -580,29 +587,33 @@ jQuery(function($){
     function updateAssignmentControls() {
         const count = selectedAssignmentIds().length;
         const eventName = assignmentEventNameValue();
+        const eventType = assignmentNewEventTypeValue();
         $('#ifdc-assignment-selected-count').text(count + ' event' + (count === 1 ? '' : 's') + ' selected');
         let summary = assignmentTeam ?
             'Destination: ' + assignmentTeam.label + (assignmentCapacityValue() === null ? '' : ' • Capacity: ' + assignmentCapacityValue()) :
             (assignmentCapacityValue() === null ? 'Existing class assignments and capacities preserved' : 'Capacity only: ' + assignmentCapacityValue() + ' • Existing class assignments preserved');
         if (eventName) summary += ' • Event name: ' + eventName;
+        if (eventType !== null) summary += ' • Event type: ' + eventType;
         $('#ifdc-assignment-target-summary').text(summary);
-        $('#ifdc-apply-event-assignment').prop('disabled', assignmentRunning || !count || (!assignmentTeam && assignmentCapacityValue() === null && !eventName));
+        $('#ifdc-apply-event-assignment').prop('disabled', assignmentRunning || !count || (!assignmentTeam && assignmentCapacityValue() === null && !eventName && eventType === null));
     }
 
     function renderAssignmentEvents(events) {
         assignmentEvents = Array.isArray(events) ? events : [];
         const desiredCapacity = assignmentCapacityValue();
         const desiredName = assignmentEventNameValue();
+        const desiredEventType = assignmentNewEventTypeValue();
         const visibleEvents = assignmentEvents.filter(function(event){
             const teamNeedsChange = assignmentTeam && parseInt(event.team_id || 0, 10) !== assignmentTeam.id;
             const capacityNeedsChange = desiredCapacity !== null && parseInt(event.capacity || 0, 10) !== desiredCapacity;
             const nameNeedsChange = desiredName && String(event.name || '') !== desiredName;
-            return !!teamNeedsChange || capacityNeedsChange || !!nameNeedsChange;
+            const eventTypeNeedsChange = desiredEventType !== null && parseInt(event.event_type_id || 0, 10) !== desiredEventType;
+            return !!teamNeedsChange || capacityNeedsChange || !!nameNeedsChange || eventTypeNeedsChange;
         });
         const $wrap = $('#ifdc-assignment-events');
         if (!visibleEvents.length) {
-            const text = assignmentEvents.length && (assignmentTeam || desiredCapacity !== null || desiredName) ?
-                'Every matching event already has the requested destination, capacity, and event name.' :
+            const text = assignmentEvents.length && (assignmentTeam || desiredCapacity !== null || desiredName || desiredEventType !== null) ?
+                'Every matching event already has the requested destination, capacity, event name, and event type.' :
                 'Try a different date range, name, or event type.';
             $wrap.html('<div class="ifdc-empty-state"><span class="dashicons dashicons-search"></span><h3>No events need attention</h3><p>' + escapeHtml(text) + '</p></div>');
             $('#ifdc-select-all-events, #ifdc-deselect-all-events').prop('disabled', true);
@@ -617,7 +628,8 @@ jQuery(function($){
             const sameDestination = assignmentTeam && assignedElsewhere && parseInt(event.team_id, 10) === assignmentTeam.id;
             const capacityNeedsChange = desiredCapacity !== null && parseInt(event.capacity || 0, 10) !== desiredCapacity;
             const nameNeedsChange = desiredName && String(event.name || '') !== desiredName;
-            const selectable = !!assignmentTeam || capacityNeedsChange || !!nameNeedsChange;
+            const eventTypeNeedsChange = desiredEventType !== null && parseInt(event.event_type_id || 0, 10) !== desiredEventType;
+            const selectable = !!assignmentTeam || capacityNeedsChange || !!nameNeedsChange || eventTypeNeedsChange;
             let assignmentStatus = '<span class="ifdc-status is-ready">Unassigned</span>';
             if (sameDestination) {
                 assignmentStatus = '<span class="ifdc-status is-ready">Destination already assigned</span>';
@@ -635,7 +647,7 @@ jQuery(function($){
             html += '<tr data-event-id="' + escapeHtml(event.id) + '">' +
                 '<th class="check-column"><input type="checkbox" class="ifdc-assignment-event" value="' + escapeHtml(event.id) + '" ' + (selectable ? '' : 'disabled') + '></th>' +
                 '<td>' + escapeHtml(formatAssignmentDate(event.start)) + '</td>' +
-                '<td><strong>' + escapeHtml(nameNeedsChange ? event.name + ' → ' + desiredName : event.name) + '</strong><br><code>#' + escapeHtml(event.id) + '</code> <span class="description">Type ' + escapeHtml(event.event_type_id || '—') + '</span></td>' +
+                '<td><strong>' + escapeHtml(nameNeedsChange ? event.name + ' → ' + desiredName : event.name) + '</strong><br><code>#' + escapeHtml(event.id) + '</code> <span class="description">Type ' + escapeHtml(eventTypeNeedsChange ? (event.event_type_id || '—') + ' → ' + desiredEventType : (event.event_type_id || '—')) + '</span></td>' +
                 '<td>' + (event.resource_id ? 'Resource #' + escapeHtml(event.resource_id) : '—') + '</td>' +
                 '<td>' + capacityStatus + '</td>' +
                 '<td>' + assignmentStatus + '</td>' +
@@ -788,7 +800,7 @@ jQuery(function($){
                 '<input type="checkbox" class="ifdc-standard-group" value="' + escapeHtml(group.key) + '" ' + (canSelect ? (group.manual_only ? '' : 'checked') : 'disabled') + '> ' +
                 '<strong>' + escapeHtml(group.name) + '</strong></label>' +
                 '<span class="ifdc-status ' + (group.target ? 'is-ready' : 'is-warning') + '">' + (group.target ? 'Destination matched' : 'Needs review') + '</span></div>';
-            html += '<p class="ifdc-standard-target"><strong>Destination:</strong> ' + escapeHtml(targetLabel) + '<br><strong>Capacity:</strong> ' + (group.capacity === null ? 'Preserve existing' : escapeHtml(group.capacity)) + (group.manual_only ? '<br><strong>Mode:</strong> Manual preview and confirmation only' : '') + '</p>';
+            html += '<p class="ifdc-standard-target"><strong>Destination:</strong> ' + escapeHtml(targetLabel) + '<br><strong>Capacity:</strong> ' + (group.capacity === null ? 'Preserve existing' : (group.capacity_only_if_empty ? 'Set to ' + escapeHtml(group.capacity) + ' only when currently 0 or missing; preserve other values' : escapeHtml(group.capacity))) + (group.manual_only ? '<br><strong>Mode:</strong> Manual preview and confirmation only' : '') + '</p>';
             html += '<div class="ifdc-standard-rename"><label><input type="checkbox" class="ifdc-standard-rename-toggle" data-group="' + escapeHtml(group.key) + '" ' + (group.rename_enabled ? 'checked' : '') + '> <strong>Standardize event name</strong>' + (group.automate_name ? ' <span class="description">(automatic for this group)</span>' : '') + '</label> <input type="text" class="regular-text ifdc-standard-rename-value" data-group="' + escapeHtml(group.key) + '" value="' + escapeHtml(group.new_event_name) + '" ' + (group.rename_enabled ? '' : 'disabled') + '></div>';
             html += '<div class="ifdc-standard-counts"><span><strong>' + escapeHtml(group.found_count) + '</strong> found</span><span><strong>' + escapeHtml(group.ready_count) + '</strong> assignment/capacity ready</span><span><strong>' + escapeHtml(group.update_count) + '</strong> assignment/capacity updates</span><span><strong>' + escapeHtml(group.replacement_count) + '</strong> reassignments</span><span><strong>' + escapeHtml(group.capacity_count) + '</strong> capacity fixes</span><span><strong>' + escapeHtml(group.rename_count) + '</strong> names differ</span></div>';
             if (!group.target) html += '<p class="ifdc-result is-error">A unique destination could not be selected automatically. Use the single-event workflow below for this group.</p>';
@@ -796,7 +808,7 @@ jQuery(function($){
                 html += '<details><summary>Review ' + escapeHtml(group.events.length) + ' event' + (group.events.length === 1 ? '' : 's') + '</summary><div class="ifdc-standard-event-list"><table class="widefat striped"><thead><tr><th>Date &amp; time</th><th>Event</th><th>Assignment</th><th>Capacity</th></tr></thead><tbody>';
                 group.events.forEach(function(event){
                     const assignment = group.target && parseInt(event.team_id || 0, 10) === parseInt(group.target.id, 10) ? 'Already correct' : ((event.team_id ? '#' + event.team_id : 'Unassigned') + ' → #' + (group.target ? group.target.id : '—'));
-                    const capacity = group.capacity === null ? String(event.capacity || 0) + ' (preserved)' : (parseInt(event.capacity || 0, 10) === parseInt(group.capacity, 10) ? String(group.capacity) : String(event.capacity || 0) + ' → ' + group.capacity);
+                    const capacity = event.capacity_update ? String(event.capacity || 0) + ' → ' + group.capacity : String(event.capacity || 0) + (group.capacity_only_if_empty && parseInt(event.capacity || 0, 10) !== parseInt(group.capacity, 10) ? ' (manual value preserved)' : '');
                     const eventName = group.rename_enabled && String(event.name) !== String(group.new_event_name) ? event.name + ' → ' + group.new_event_name : event.name;
                     html += '<tr data-standard-event-id="' + escapeHtml(event.id) + '" data-standard-group-key="' + escapeHtml(group.key) + '"><td>' + escapeHtml(formatAssignmentDate(event.start)) + '</td><td><strong class="ifdc-standard-event-name">' + escapeHtml(eventName) + '</strong><br><code>#' + escapeHtml(event.id) + '</code></td><td>' + escapeHtml(assignment) + '</td><td>' + escapeHtml(capacity) + '</td></tr>';
                 });
@@ -986,7 +998,8 @@ jQuery(function($){
 
         const lines = groups.map(function(group){
             const rename = group.rename_enabled ? ', names → “' + group.new_event_name + '”' : '';
-            return group.name + ': ' + actionableStandardEvents(group).length + ' updates → ' + group.target.name + (group.capacity === null ? ' (preserve capacity' + rename + ')' : ' (capacity ' + group.capacity + rename + ')');
+            const capacityText = group.capacity === null ? 'preserve capacity' : (group.capacity_only_if_empty ? 'capacity ' + group.capacity + ' only when currently 0 or missing' : 'capacity ' + group.capacity);
+            return group.name + ': ' + actionableStandardEvents(group).length + ' updates → ' + group.target.name + ' (' + capacityText + rename + ')';
         });
         if (!window.confirm('Update the standard monthly sessions?\n\n' + lines.join('\n') + '\n\nTotal: ' + total + ' events. This changes Dash. Continue?')) return;
 
@@ -1001,9 +1014,10 @@ jQuery(function($){
         const tasks = [];
         groups.forEach(function(group){
             const actionable = actionableStandardEvents(group);
-            for (let i = 0; i < actionable.length; i += 10) {
-                tasks.push({group:group, events:actionable.slice(i, i + 10)});
-            }
+            const capacityUpdates = actionable.filter(function(event){ return !!event.capacity_update; });
+            const capacityPreserved = actionable.filter(function(event){ return !event.capacity_update; });
+            for (let i = 0; i < capacityUpdates.length; i += 10) tasks.push({group:group, events:capacityUpdates.slice(i, i + 10), capacity:group.capacity});
+            for (let i = 0; i < capacityPreserved.length; i += 10) tasks.push({group:group, events:capacityPreserved.slice(i, i + 10), capacity:null});
         });
         let processedCount = 0;
 
@@ -1031,7 +1045,7 @@ jQuery(function($){
                         action: 'ifdc_assign_event_batch',
                         nonce: IFDC.nonce,
                         team_id: task.group.target.id,
-                        capacity: task.group.capacity === null ? '' : task.group.capacity,
+                        capacity: task.capacity === null ? '' : task.capacity,
                         event_name: task.group.rename_enabled ? task.group.new_event_name : '',
                         allow_reassign: hasReplacement ? 1 : 0,
                         expected_team_ids: expectedTeamIds,
@@ -1048,12 +1062,12 @@ jQuery(function($){
                     const event = task.group.events.find(function(item){ return parseInt(item.id, 10) === parseInt(id, 10); });
                     if (event) {
                         event.team_id = parseInt(task.group.target.id, 10);
-                        if (task.group.capacity !== null) event.capacity = parseInt(task.group.capacity, 10);
+                        if (task.capacity !== null) event.capacity = parseInt(task.capacity, 10);
                         if (task.group.rename_enabled) event.name = task.group.new_event_name;
                     }
                     const $row = $('.ifdc-standard-event-list tr[data-standard-event-id="' + id + '"]').addClass('ifdc-row-updated');
                     $row.find('td').eq(2).html('<span class="ifdc-status is-ready">Assigned to #' + escapeHtml(task.group.target.id) + '</span>');
-                    $row.find('td:last').html('<span class="ifdc-status is-ready">' + (task.group.capacity === null ? escapeHtml(event ? event.capacity : '') + ' (preserved)' : escapeHtml(task.group.capacity)) + '</span>');
+                    $row.find('td:last').html('<span class="ifdc-status is-ready">' + (task.capacity === null ? escapeHtml(event ? event.capacity : '') + ' (preserved)' : escapeHtml(task.capacity)) + '</span>');
                     if (event) $row.find('.ifdc-standard-event-name').text(event.name);
                 });
             } catch (error) {
@@ -1182,6 +1196,10 @@ jQuery(function($){
         renderAssignmentEvents(assignmentEvents);
     });
 
+    $('#ifdc-assignment-new-event-type').on('input', function(){
+        renderAssignmentEvents(assignmentEvents);
+    });
+
     $('#ifdc-assignment-type').on('change', function(){
         if (parseInt($(this).val(), 10) === 10 && !assignmentEventNameValue()) {
             $('#ifdc-assignment-event-name').val('Public Skating');
@@ -1204,7 +1222,8 @@ jQuery(function($){
         const ids = selectedAssignmentIds();
         const capacity = assignmentCapacityValue();
         const eventName = assignmentEventNameValue();
-        if (!ids.length || (!assignmentTeam && capacity === null && !eventName) || assignmentRunning) return;
+        const eventType = assignmentNewEventTypeValue();
+        if (!ids.length || (!assignmentTeam && capacity === null && !eventName && eventType === null) || assignmentRunning) return;
         const replacementCount = ids.filter(function(id){
             const event = assignmentEvents.find(function(item){ return parseInt(item.id, 10) === id; });
             return assignmentTeam && event && event.team_id && parseInt(event.team_id, 10) !== assignmentTeam.id;
@@ -1217,19 +1236,24 @@ jQuery(function($){
             const event = assignmentEvents.find(function(item){ return parseInt(item.id, 10) === id; });
             return event && String(event.name || '') !== eventName;
         }).length;
+        const eventTypeChangeCount = eventType === null ? 0 : ids.filter(function(id){
+            const event = assignmentEvents.find(function(item){ return parseInt(item.id, 10) === id; });
+            return event && parseInt(event.event_type_id || 0, 10) !== eventType;
+        }).length;
         let message = assignmentTeam ?
             'Assign ' + ids.length + ' event' + (ids.length === 1 ? '' : 's') + ' to:\n\n' + assignmentTeam.label :
             'Update ' + ids.length + ' event' + (ids.length === 1 ? '' : 's') + ' without changing their class assignments.';
         if (replacementCount) message += '\n\n' + replacementCount + ' existing class assignment' + (replacementCount === 1 ? ' will be replaced.' : 's will be replaced.');
         if (capacity !== null) message += '\n\n' + capacityChangeCount + ' event capacit' + (capacityChangeCount === 1 ? 'y' : 'ies') + ' will be set to ' + capacity + '.';
         if (eventName) message += '\n\n' + nameChangeCount + ' event name' + (nameChangeCount === 1 ? '' : 's') + ' will be set to “' + eventName + '”.';
+        if (eventType !== null) message += '\n\n' + eventTypeChangeCount + ' event type' + (eventTypeChangeCount === 1 ? '' : 's') + ' will be set to #' + eventType + '.';
         message += '\n\nThis changes Dash. Continue?';
         if (!window.confirm(message)) return;
 
         assignmentRunning = true;
         showAssignmentOverlay(ids.length, assignmentTeam ?
-            'Destination: ' + assignmentTeam.label + (capacity === null ? '' : ' • Capacity: ' + capacity) + (eventName ? ' • Name: ' + eventName : '') :
-            (capacity === null ? 'Name only: ' + eventName : 'Capacity: ' + capacity + (eventName ? ' • Name: ' + eventName : '')) + ' • Existing class assignments preserved');
+            'Destination: ' + assignmentTeam.label + (capacity === null ? '' : ' • Capacity: ' + capacity) + (eventName ? ' • Name: ' + eventName : '') + (eventType === null ? '' : ' • Type: ' + eventType) :
+            (capacity === null ? (eventName ? 'Name: ' + eventName : 'Event type: ' + eventType) : 'Capacity: ' + capacity + (eventName ? ' • Name: ' + eventName : '') + (eventType === null ? '' : ' • Type: ' + eventType)) + ' • Existing class assignments preserved');
         updateAssignmentControls();
         const $button = $(this).text('Updating…');
         const $status = $('#ifdc-assignment-apply-status');
@@ -1246,6 +1270,7 @@ jQuery(function($){
                 const expectedTeamIds = {};
                 const expectedCapacities = {};
                 const expectedEventNames = {};
+                const expectedEventTypes = {};
                 let chunkHasReplacement = false;
                 chunks[i].forEach(function(id){
                     const event = assignmentEvents.find(function(item){ return parseInt(item.id, 10) === id; });
@@ -1253,6 +1278,7 @@ jQuery(function($){
                     expectedTeamIds[id] = currentTeamId;
                     expectedCapacities[id] = event && event.capacity !== null ? parseInt(event.capacity, 10) : 0;
                     expectedEventNames[id] = event ? String(event.name || '') : '';
+                    expectedEventTypes[id] = event ? parseInt(event.event_type_id || 0, 10) : 0;
                     if (assignmentTeam && currentTeamId && currentTeamId !== assignmentTeam.id) chunkHasReplacement = true;
                 });
                 const response = await $.ajax({
@@ -1264,10 +1290,12 @@ jQuery(function($){
                         team_id: assignmentTeam ? assignmentTeam.id : 0,
                         capacity: capacity === null ? '' : capacity,
                         event_name: eventName,
+                        new_event_type: eventType === null ? '' : eventType,
                         allow_reassign: chunkHasReplacement ? 1 : 0,
                         expected_team_ids: expectedTeamIds,
                         expected_capacities: expectedCapacities,
                         expected_event_names: expectedEventNames,
+                        expected_event_types: expectedEventTypes,
                         event_ids: chunks[i]
                     }
                 });
@@ -1280,11 +1308,12 @@ jQuery(function($){
                     if (event && assignmentTeam) event.team_id = assignmentTeam.id;
                     if (event && capacity !== null) event.capacity = capacity;
                     if (event && eventName) event.name = eventName;
+                    if (event && eventType !== null) event.event_type_id = eventType;
                     const $row = $('.ifdc-assignment-table tr[data-event-id="' + id + '"]');
                     $row.addClass('ifdc-row-updated').find('.ifdc-assignment-event').prop('checked', false).prop('disabled', true);
                     if (capacity !== null) $row.find('td').eq(3).html('<span class="ifdc-status is-ready">' + escapeHtml(capacity) + '</span>');
                     if (assignmentTeam) $row.find('td:last').html('<span class="ifdc-status is-ready">Assigned to #' + escapeHtml(assignmentTeam.id) + '</span>');
-                    if (event && eventName) $row.find('td').eq(1).html('<strong>' + escapeHtml(eventName) + '</strong><br><code>#' + escapeHtml(event.id) + '</code> <span class="description">Type ' + escapeHtml(event.event_type_id || '—') + '</span>');
+                    if (event && (eventName || eventType !== null)) $row.find('td').eq(1).html('<strong>' + escapeHtml(event.name) + '</strong><br><code>#' + escapeHtml(event.id) + '</code> <span class="description">Type ' + escapeHtml(event.event_type_id || '—') + '</span>');
                 });
             } catch (error) {
                 const response = error && error.responseJSON;
@@ -1318,4 +1347,66 @@ jQuery(function($){
     populateAssignmentMonthSearch(true);
     populateAssignmentCapacity(true);
     updateAssignmentControls();
+});
+
+jQuery(function($){
+    if (!$('#ifdc-find-schedule-gaps').length) return;
+    function esc(value) { return $('<div>').text(value == null ? '' : String(value)).html(); }
+    function ymd(date) { return date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0') + '-' + String(date.getDate()).padStart(2, '0'); }
+    function ranges() {
+        if ($('#ifdc-gap-range').val() === 'month') {
+            const parts = String($('#ifdc-gap-month').val()).split('-').map(Number);
+            if (parts.length !== 2 || !parts[0] || !parts[1]) return null;
+            return {start: ymd(new Date(parts[0], parts[1] - 1, 1)), end: ymd(new Date(parts[0], parts[1], 0))};
+        }
+        const selected = new Date(String($('#ifdc-gap-date').val()) + 'T12:00:00');
+        if (Number.isNaN(selected.getTime())) return null;
+        const monday = new Date(selected); monday.setDate(selected.getDate() - ((selected.getDay() + 6) % 7));
+        const sunday = new Date(monday); sunday.setDate(monday.getDate() + 6);
+        return {start: ymd(monday), end: ymd(sunday)};
+    }
+    function tableRows(items, includeDate, includeCutStatus) {
+        let html = '<div class="ifdc-table-wrap"><table class="widefat striped ifdc-gap-table"><thead><tr>' + (includeDate ? '<th>Date</th>' : '') + '<th>Resource</th><th>Open time</th><th>Length</th>' + (includeCutStatus ? '<th>Resurfacing</th>' : '') + '</tr></thead><tbody>';
+        items.forEach(function(item){
+            const rowClasses = {staffing: 'ifdc-cut-staffing', first: 'ifdc-cut-first', second: 'ifdc-cut-second'};
+            html += '<tr class="' + (rowClasses[item.cut_status_class] || '') + '">' + (includeDate ? '<td>' + esc(item.date_label) + '</td>' : '') + '<td><strong>' + esc(item.resource_name) + '</strong></td><td>' + esc(item.start_label + '–' + item.end_label) + '</td><td>' + esc(item.minutes) + ' minutes</td>' + (includeCutStatus ? '<td><span class="ifdc-cut-status is-' + esc(item.cut_status_class || 'none') + '">' + esc(item.cut_status || 'No overlap') + '</span></td>' : '') + '</tr>';
+        });
+        return html + '</tbody></table></div>';
+    }
+    function table(title, items, empty, groupByDay) {
+        let html = '<div class="ifdc-gap-section"><h3>' + esc(title) + ' <span class="ifdc-gap-count">' + items.length + '</span></h3>';
+        if (!items.length) return html + '<p class="description">' + esc(empty) + '</p></div>';
+        if (!groupByDay) return html + tableRows(items, true, false) + '</div>';
+        const groups = {};
+        items.forEach(function(item){ const key = String(item.start || '').slice(0, 10); (groups[key] = groups[key] || []).push(item); });
+        Object.keys(groups).sort().forEach(function(key){
+            const group = groups[key];
+            html += '<div class="ifdc-gap-day"><div class="ifdc-gap-day-heading"><strong>' + esc(group[0].date_label) + '</strong><span>' + group.length + ' ice cut' + (group.length === 1 ? '' : 's') + '</span></div>' + tableRows(group, false, true) + '</div>';
+        });
+        return html + '</div>';
+    }
+    $('#ifdc-gap-range').on('change', function(){
+        const month = $(this).val() === 'month';
+        $('#ifdc-gap-week-label').prop('hidden', month);
+        $('#ifdc-gap-month-label').prop('hidden', !month);
+    });
+    $('#ifdc-find-schedule-gaps').on('click', function(){
+        const range = ranges(), $button = $(this), $status = $('#ifdc-gap-status');
+        if (!range) { $status.removeClass('is-success').addClass('is-error').prop('hidden', false).text('Choose a valid week or month.'); return; }
+        $button.prop('disabled', true).text('Scanning Schedule…');
+        $status.removeClass('is-error').addClass('is-success').prop('hidden', false).text('Reading events and calculating both kinds of gaps…');
+        $.post(IFDC.ajax, {action:'ifdc_find_schedule_gaps', nonce:IFDC.nonce, start:range.start, end:range.end, day_start:$('#ifdc-gap-day-start').val(), day_end:$('#ifdc-gap-day-end').val(), minimum:$('#ifdc-gap-minutes').val()})
+            .done(function(response){
+                if (!response.success) { $status.removeClass('is-success').addClass('is-error').text(response.data && response.data.message ? response.data.message : 'Search failed.'); return; }
+                const data = response.data || {}, gaps = data.gaps || [], cuts = data.ice_cuts || [];
+                $('#ifdc-gap-results').removeClass('ifdc-empty-state').html(table('Schedule gaps (45+ minutes)', gaps, 'No schedule gaps met the selected minimum.', false) + table('Likely ice cuts (15 or 30 minutes)', cuts, 'No likely ice cuts were found between events.', true));
+                $('#ifdc-gap-summary').text(range.start + ' through ' + range.end + ' • ' + data.resource_count + ' resources • ' + data.event_count + ' events scanned');
+                $('#ifdc-gap-print').prop('hidden', false);
+                let message = gaps.length + ' schedule gap' + (gaps.length === 1 ? '' : 's') + ' and ' + cuts.length + ' likely ice cut' + (cuts.length === 1 ? '' : 's') + ' found.';
+                if (data.limited) message += ' The display limit was reached.';
+                $status.removeClass('is-error').addClass('is-success').text(message);
+            }).fail(function(xhr){ const response = xhr.responseJSON; $status.removeClass('is-success').addClass('is-error').text(response && response.data && response.data.message ? response.data.message : 'Schedule search failed (' + xhr.status + ').'); })
+            .always(function(){ $button.prop('disabled', false).text('Find Schedule Gaps'); });
+    });
+    $('#ifdc-gap-print').on('click', function(){ window.print(); });
 });

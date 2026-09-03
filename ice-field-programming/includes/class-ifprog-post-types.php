@@ -72,19 +72,19 @@ class IFPROG_Post_Types {
             'ifprog_sport',
             'Sports',
             'Sport',
-            ['ifprog_season','ifprog_program']
+            ['ifprog_season','ifprog_level','ifprog_program']
         );
         self::register_taxonomy(
             'ifprog_format',
             'Formats',
             'Format',
-            ['ifprog_season','ifprog_program']
+            ['ifprog_season','ifprog_level','ifprog_program']
         );
         self::register_taxonomy(
             'ifprog_category',
             'Program Categories',
             'Program Category',
-            ['ifprog_level','ifprog_program']
+            ['ifprog_season','ifprog_level','ifprog_program']
         );
         self::register_taxonomy(
             'ifprog_group',

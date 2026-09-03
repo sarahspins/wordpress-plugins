@@ -1,5 +1,71 @@
 # Ice & Field Programming Changelog
 
+## 1.9.2.4
+
+- Corrects the AJAX preparation progress fill when the overlay is rendered outside the Programming admin wrapper.
+- Keeps the Close button hidden unless a preparation stage fails.
+- Increments the plugin asset version so browsers do not reuse the original 1.9.2.3 admin stylesheet.
+
+## 1.9.2.3
+
+- Splits protected Season previews, comparisons, and imports into sequential AJAX preparation requests for Teams, Leagues, Products, registration availability, and Events.
+- Reuses the freshly prepared Dash caches when building the final review instead of repeating every collection request in one PHP process.
+- Shows a blocking progress overlay with the current preparation stage and identifies the exact failed Dash collection without making import changes.
+- Includes the manually supplied Learn to Play drop-in Team as its own isolated preparation step.
+
+## 1.9.2.2
+
+- Adds a per-Season **Pin this Season to the top** presentation override.
+- Places pinned Seasons first in public catalogs and offering lists while retaining chronological sorting for everything else.
+- Keeps the override local to WordPress so protected Dash synchronization does not replace it.
+
+## 1.9.2.1
+
+- Separates lightweight Dash Season discovery from resource-intensive hierarchy comparisons.
+- Stops automatically rebuilding every imported Current and Upcoming Season when the Discovery page opens or its Season list is refreshed.
+- Adds a per-imported-Season Check Changes action so only one hierarchy is compared at a time.
+- Reuses cached shared League, Product, registration, and event indexes while requesting fresh Teams for the selected Season.
+- Records elapsed time and peak memory for individual comparison checks in the Activity Log.
+- Enforces Format filters consistently across the Season, Level, and Program hierarchy so League offerings cannot leak into a Class-only catalog.
+- Adds a guarded editable Dash Team ID to linked Programs for recurring Teams that Dash replaces between sessions.
+- Prevents two Programs from being linked to the same Dash Team ID and records successful relinking in the Activity Log.
+- Prompts Learn to Play previews for the current Adult Development Camp drop-in Team ID and loads that Team directly even when Dash stores it under another Season.
+- Reuses the single existing League #86 routed Program when the supplied recurring Team ID changes, preventing duplicate drop-in Programs.
+
+## 1.9.2
+
+- Adds a per-imported-Season **Keep up to date automatically** option.
+- Runs one guarded synchronization daily at approximately 4:15 a.m. in the WordPress site timezone.
+- Contacts Dash and synchronizes an opted-in Season only while its Dash registration window is open.
+- Imports newly added eligible class offerings and refreshes the same protected Dash-controlled fields used by manual synchronization.
+- Preserves publication state, local classifications, groups, ordering, registration links, and other website presentation by default.
+- Adds independent opt-ins for automatic Season, Level, and class name updates and description updates.
+- Keeps description synchronization protected by the existing three-way comparison so locally edited WordPress copy is not overwritten.
+- Records daily completion and warning details in the Programming Activity Log and shows the last check on the Season editor.
+- Uses a 30-minute overlap lock and skips unknown registration windows rather than guessing that registration is open.
+- Keeps a registration-closed Season in its chronological position while it still has upcoming class occurrences.
+- Automatically removes an older Season from the public catalog after every dated class occurrence in it has passed.
+
+## 1.9.1.16
+
+- Allows active Dash rows with an unmapped source Sport to be selected when importing.
+- Uses the confirmed Bulk classification Sport to resolve those rows.
+- Shows a clear validation message if an unmapped row is submitted without a Sport selection.
+- Imports Camp Programs directly under their Season without creating or assigning a duplicate WordPress Level.
+- Renders existing unlevelled Camp Programs directly in public shortcodes without a fallback Level heading.
+- Sorts Camp offerings chronologically by start date, earliest first.
+- Shows each Camp's date range and time directly on its public offering card.
+- Uses the final assigned Dash event as a Camp's end date instead of the Season or registration-close boundary.
+- Treats Friday-to-Monday Camp occurrences as consecutive workdays rather than separate weeks.
+
+## 1.9.1.15
+
+- Adds editable Sport, Format, and Category guesses to the protected Season import preview.
+- Applies the confirmed classification in bulk to the Season and every selected Level and Program.
+- Makes all three classification taxonomies available on Seasons, Levels, and Programs.
+- Uses existing Season classifications as the preferred defaults when refreshing an imported Season.
+- Detects daily versus weekly sessions from the spacing of their Dash events and uses the correct unit in import previews and public pricing.
+
 ## 1.9.1.14
 
 - Adds the monorepo Update URI and participates in the Dash Connector-managed private release updater.

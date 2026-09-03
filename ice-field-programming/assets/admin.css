@@ -81,6 +81,7 @@
 .ifprog-sync-choice span{display:grid;gap:2px}
 .ifprog-sync-choice small{color:#60717d;line-height:1.35}
 .ifprog-sync-options>.description{margin-top:8px}
+.ifprog-classification-options{border:1px solid #c8d6df;border-radius:8px;margin:16px 0;padding:14px}.ifprog-classification-options legend{color:var(--ifprog-navy);font-weight:700;padding:0 6px}.ifprog-classification-options__grid{display:grid;gap:12px;grid-template-columns:repeat(3,minmax(0,1fr));margin-top:12px}.ifprog-classification-group{background:#fff;border:1px solid #d8e0e6;border-radius:6px;display:grid;gap:7px;padding:12px}.ifprog-classification-group>strong{color:var(--ifprog-navy);margin-bottom:2px}.ifprog-classification-group label{display:block}
 .ifprog-sync-errors{list-style:disc;margin-left:22px}
 .ifprog-discovery-card{padding:0;overflow:hidden}
 .ifprog-discovery-header{align-items:flex-start;display:flex;gap:24px;justify-content:space-between;padding:24px 24px 18px}
@@ -165,6 +166,12 @@ body.post-type-ifprog_program .column-ifprog_state,body.post-type-ifprog_season 
 body.post-type-ifprog_program .column-ifprog_dates,body.post-type-ifprog_season .column-ifprog_dates{width:180px}
 body.post-type-ifprog_program .column-ifprog_category{width:160px}
 body.post-type-ifprog_level .column-ifprog_programs,body.post-type-ifprog_level .column-ifprog_dash{width:90px}
+.ifprog-batch-overlay{align-items:center;background:rgba(11,41,66,.72);display:flex;inset:0;justify-content:center;padding:24px;position:fixed;z-index:100000}
+.ifprog-batch-dialog{background:#fff;border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.3);box-sizing:border-box;max-width:520px;padding:28px;width:100%}
+.ifprog-batch-dialog h2{color:#0b2942;margin:0 0 8px}.ifprog-batch-dialog p{margin:0 0 14px}
+.ifprog-batch-track{background:#dce6ec;border-radius:999px;height:10px;overflow:hidden}.ifprog-batch-track span{background:#1473a8;display:block;height:100%;transition:width .2s ease;width:0}
+.ifprog-batch-detail{color:#60717d;font-size:12px;margin-top:10px!important}.ifprog-batch-overlay--error .ifprog-batch-track span{background:#b32d2e}
+.ifprog-batch-dialog [hidden]{display:none!important}
 @media(max-width:900px){
   .ifprog-stat-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
   .ifprog-card-grid{grid-template-columns:1fr}
@@ -188,5 +195,5 @@ body.post-type-ifprog_level .column-ifprog_programs,body.post-type-ifprog_level 
   .ifprog-discovery-title{align-items:flex-start;display:grid}
   .ifprog-discovery-filter{align-items:stretch;display:grid}
   .ifprog-discovery-bulk{align-items:stretch;display:grid}
-  .ifprog-sync-options__grid{grid-template-columns:1fr}
+  .ifprog-sync-options__grid,.ifprog-classification-options__grid{grid-template-columns:1fr}
 }

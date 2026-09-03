@@ -502,6 +502,23 @@
             var key = mondayFor(date);
             if (!bypassMemory && state.weekCache.has(key)) return state.weekCache.get(key);
 
+            if (config.staticBaseUrl) {
+                try {
+                    var staticUrl = String(config.staticBaseUrl).replace(/\/?$/, '/') + 'week-' + encodeURIComponent(key) + '.json';
+                    var staticResponse = await fetch(staticUrl, {
+                        headers: { 'Accept': 'application/json' },
+                        cache: 'no-store'
+                    });
+                    if (staticResponse.ok) {
+                        var staticPayload = await staticResponse.json();
+                        if (staticPayload && staticPayload.weekStart === key && Array.isArray(staticPayload.days)) {
+                            state.weekCache.set(staticPayload.weekStart, staticPayload);
+                            return staticPayload;
+                        }
+                    }
+                } catch (ignore) {}
+            }
+
             var body = new URLSearchParams();
             body.set('action', config.action);
             body.set('nonce', config.nonce);

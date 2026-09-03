@@ -1,4 +1,14 @@
-Ice & Field Rink Displays v2.7.8
+Ice & Field Rink Displays v2.7.13
+
+Version 2.7.13 hides expired rows whenever a rink snapshot still contains current or upcoming events. The most recently ended event appears with PAST only when every event in that rink's available snapshot has expired, making it a true stale-data fallback rather than a normal schedule row.
+
+Version 2.7.12 makes the TV schedule continuously re-evaluate shared static data against the screen's local clock. It retains only the most recently ended event on each rink with a clear PAST badge, removes older expired rows, and updates ON ICE NOW, UP NEXT, LATER, and resurfacing states without waiting for the next server snapshot.
+
+Version 2.7.11 publishes atomically replaced daily and weekly schedule snapshots under the WordPress uploads directory. Display browsers request those shared static JSON files first, bypassing WordPress, PHP, the database, and Dash during normal operation; the existing AJAX route remains as a self-healing fallback when a file does not yet exist. A five-minute server-side refresh maintains today's file, staggered fifteen-minute current/next-week warming maintains calendar files, and failed refreshes leave the last successful files untouched.
+
+Version 2.7.10 bounds Dash event requests to the requested day or week instead of paging through the complete historical schedule. It also prevents duplicate cache rebuilds, retains stale schedule data during refresh failures, staggers current/next-week warming, and reduces screen-refresh polling from every 30 seconds to every 60 seconds to lower production PHP-worker pressure.
+
+Version 2.7.9 changes scheduled-video date/time pickers to 15-minute increments while preserving existing scheduled entries.
 
 Version 2.7.7 adds the monorepo Update URI and participates in the Dash Connector-managed private release updater.
 
@@ -96,11 +106,11 @@ Video for Screens:
 - Adds Displays -> Video for Screens with a WordPress Media Library video picker.
 - Adds [video_for_screens] for a full-browser, muted, continuously looping video.
 - Saving a different video signals open screen pages to refresh.
-- Adds a Refresh Screens Now button for remotely reloading open video displays within about 30 seconds.
+- Adds a Refresh Screens Now button for remotely reloading open video displays within about 60 seconds.
 - Adds LG webOS browser-specific video positioning and explicit viewport sizing to prevent one-sided black bars and offset fullscreen playback.
 - Automatically sends a one-time remote refresh signal after a plugin version update, while retaining the manual Refresh Screens Now control.
 - Supports multiple scheduled video changes, each with a date and time in the Schedule Display timezone.
-- Open video screens detect scheduled changes within about 30 seconds and reload automatically.
+- Open video screens detect scheduled changes within about 60 seconds and reload automatically.
 
 Additional video pages:
 - Adds Displays -> Pricing Page with its own independently selected full-screen video and [pricing_page] shortcode.
@@ -110,8 +120,8 @@ Additional video pages:
 
 Schedule banner remote update:
 - Adds an Update Video Now button under Displays -> Schedule Display.
-- Open [rink_schedule_display] pages check for remote-update requests every 30 seconds and reload automatically.
+- Open [rink_schedule_display] pages check for remote-update requests every 60 seconds and reload automatically.
 - Saving different schedule banner media also signals open schedule screens to reload.
 - The page reload preserves the existing last-successful schedule behavior while the fresh schedule request completes.
 - Supports multiple scheduled banner-video changes with date and time controls available to Administrators and Editors.
-- Each scheduled banner video remains active until the next entry, and open schedule displays detect due changes within about 30 seconds.
+- Each scheduled banner video remains active until the next entry, and open schedule displays detect due changes within about 60 seconds.

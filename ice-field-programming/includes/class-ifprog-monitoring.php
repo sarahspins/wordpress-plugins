@@ -2,22 +2,25 @@
 if (!defined('ABSPATH')) exit;
 
 /**
- * Version 1.9.1 monitoring configuration and activity-log screens.
- *
- * This release deliberately does not register a cron event, contact Dash in
- * the background, send email, or import anything automatically.
+ * Monitoring configuration, activity logs, and guarded daily synchronization
+ * for individually opted-in imported Seasons.
  */
 class IFPROG_Monitoring {
     const OPTION = 'ifprog_monitoring_settings';
     const SETTINGS_GROUP = 'ifprog_monitoring_group';
     const FOUNDATION_VERSION_OPTION = 'ifprog_monitoring_foundation_version';
-    const FOUNDATION_VERSION = '1.9.1';
+    const FOUNDATION_VERSION = '1.9.2';
     const MAX_FAMILIES = 10;
+    const AUTOMATIC_SYNC_HOOK = 'ifprog_daily_imported_season_sync';
+    const AUTOMATIC_SYNC_LOCK = 'ifprog_daily_imported_season_sync_lock';
+    const AUTOMATIC_SYNC_RESULT = 'ifprog_daily_imported_season_sync_result';
 
     public static function init() {
         add_action('admin_init', [__CLASS__, 'register_settings']);
         add_action('admin_init', [__CLASS__, 'maybe_install']);
         add_action('update_option_' . self::OPTION, [__CLASS__, 'settings_updated'], 10, 3);
+        add_action('init', [__CLASS__, 'ensure_automatic_sync_schedule']);
+        add_action(self::AUTOMATIC_SYNC_HOOK, [__CLASS__, 'run_automatic_season_sync']);
     }
 
     public static function install() {
@@ -28,7 +31,7 @@ class IFPROG_Monitoring {
         if (version_compare($installed ?: '0', self::FOUNDATION_VERSION, '<')) {
             IFPROG_Audit::record(
                 'foundation_ready',
-                'Monitoring foundation installed. Scheduled checks, emails, and automatic imports remain off.',
+                'Guarded daily synchronization is available for individually opted-in imported Seasons.',
                 ['source' => 'monitoring', 'severity' => 'success']
             );
             update_option(self::FOUNDATION_VERSION_OPTION, self::FOUNDATION_VERSION, false);
@@ -37,6 +40,186 @@ class IFPROG_Monitoring {
 
     public static function maybe_install() {
         self::install();
+    }
+
+    public static function ensure_automatic_sync_schedule() {
+        if (wp_next_scheduled(self::AUTOMATIC_SYNC_HOOK)) return;
+
+        $timezone = wp_timezone();
+        $next = new DateTimeImmutable('tomorrow 04:15:00', $timezone);
+        wp_schedule_event($next->getTimestamp(), 'daily', self::AUTOMATIC_SYNC_HOOK);
+    }
+
+    public static function clear_automatic_sync_schedule() {
+        wp_clear_scheduled_hook(self::AUTOMATIC_SYNC_HOOK);
+        delete_transient(self::AUTOMATIC_SYNC_LOCK);
+    }
+
+    public static function run_automatic_season_sync() {
+        if (get_transient(self::AUTOMATIC_SYNC_LOCK)) return;
+        set_transient(self::AUTOMATIC_SYNC_LOCK, 1, 30 * MINUTE_IN_SECONDS);
+
+        $summary = [
+            'started_at' => time(),
+            'finished_at' => 0,
+            'eligible_seasons' => 0,
+            'checked' => 0,
+            'synced' => 0,
+            'skipped_closed' => 0,
+            'errors' => [],
+        ];
+
+        try {
+            if (!IFPROG_Dash::ready()) {
+                throw new Exception('The shared Dash Connector is not configured.');
+            }
+
+            $season_posts = get_posts([
+                'post_type' => 'ifprog_season',
+                'post_status' => array_keys(get_post_stati()),
+                'posts_per_page' => -1,
+                'fields' => 'ids',
+                'meta_query' => [
+                    'relation' => 'AND',
+                    [
+                        'key' => '_ifprog_automatic_sync',
+                        'value' => '1',
+                    ],
+                    [
+                        'key' => '_ifprog_dash_season_id',
+                        'value' => 0,
+                        'compare' => '>',
+                        'type' => 'NUMERIC',
+                    ],
+                ],
+            ]);
+            $summary['eligible_seasons'] = count($season_posts);
+            if (!$season_posts) return self::finish_automatic_sync($summary);
+
+            $season_result = IFPROG_Dash::seasons([
+                'cache_ttl' => 300,
+                'force' => true,
+            ]);
+            if (is_wp_error($season_result)) throw new Exception($season_result->get_error_message());
+
+            $dash_seasons = [];
+            foreach (self::collection_data($season_result) as $record) {
+                $dash_id = absint($record['id'] ?? 0);
+                if ($dash_id) $dash_seasons[$dash_id] = $record;
+            }
+
+            $shared_data_forced = false;
+            foreach ($season_posts as $season_post_id) {
+                $season_post_id = absint($season_post_id);
+                $dash_id = absint(get_post_meta($season_post_id, '_ifprog_dash_season_id', true));
+                $record = $dash_seasons[$dash_id] ?? null;
+                update_post_meta($season_post_id, '_ifprog_automatic_sync_last_checked', current_time('mysql'));
+                $summary['checked']++;
+
+                if (!$record) {
+                    $summary['errors'][] = 'Dash Season #' . $dash_id . ' was not found.';
+                    continue;
+                }
+                if (!self::registration_is_open($record)) {
+                    $summary['skipped_closed']++;
+                    continue;
+                }
+
+                $preview = IFPROG_Preview::build($record, true, !$shared_data_forced);
+                $shared_data_forced = true;
+                if (is_wp_error($preview)) {
+                    $summary['errors'][] = get_the_title($season_post_id) . ': ' . $preview->get_error_message();
+                    continue;
+                }
+
+                $team_ids = [];
+                $level_ids = [];
+                foreach ((array) ($preview['rows'] ?? []) as $row) {
+                    if (empty($row['eligible'])) continue;
+                    if (($row['row_type'] ?? 'team') === 'level') {
+                        $level_ids[] = absint($row['league_id'] ?? 0);
+                    } else {
+                        $team_ids[] = absint($row['team_id'] ?? 0);
+                    }
+                }
+                $team_ids = array_values(array_filter(array_unique($team_ids)));
+                $level_ids = array_values(array_filter(array_unique($level_ids)));
+                if (!$team_ids && !$level_ids) {
+                    $summary['errors'][] = get_the_title($season_post_id) . ': no eligible Dash offerings were found.';
+                    continue;
+                }
+
+                $update_names = get_post_meta($season_post_id, '_ifprog_automatic_sync_names', true) === '1';
+                $update_descriptions = get_post_meta($season_post_id, '_ifprog_automatic_sync_descriptions', true) === '1';
+                $presentation_updates = [
+                    'season_title' => $update_names,
+                    'season_description' => $update_descriptions,
+                    'level_titles' => $update_names,
+                    'level_descriptions' => $update_descriptions,
+                    'program_titles' => $update_names,
+                    'program_descriptions' => $update_descriptions,
+                ];
+
+                $result = IFPROG_Sync::run(
+                    $preview,
+                    $team_ids,
+                    get_post_status($season_post_id) === 'publish',
+                    false,
+                    $level_ids,
+                    $presentation_updates,
+                    [],
+                    [],
+                    true
+                );
+                if (is_wp_error($result)) {
+                    $summary['errors'][] = get_the_title($season_post_id) . ': ' . $result->get_error_message();
+                    continue;
+                }
+                $summary['synced']++;
+            }
+        } catch (Throwable $error) {
+            $summary['errors'][] = $error->getMessage();
+        }
+
+        return self::finish_automatic_sync($summary);
+    }
+
+    private static function finish_automatic_sync($summary) {
+        $summary['finished_at'] = time();
+        update_option(self::AUTOMATIC_SYNC_RESULT, $summary, false);
+        delete_transient(self::AUTOMATIC_SYNC_LOCK);
+        IFPROG_Audit::record(
+            $summary['errors'] ? 'automatic_sync_completed_with_warnings' : 'automatic_sync_completed',
+            sprintf(
+                'Daily automatic Season sync checked %d and synchronized %d opted-in Season%s.',
+                absint($summary['checked']),
+                absint($summary['synced']),
+                absint($summary['checked']) === 1 ? '' : 's'
+            ),
+            [
+                'source' => 'monitoring',
+                'severity' => $summary['errors'] ? 'warning' : 'success',
+                'context' => $summary,
+            ]
+        );
+        return $summary;
+    }
+
+    private static function registration_is_open($record) {
+        $attributes = is_array($record['attributes'] ?? null) ? $record['attributes'] : [];
+        $now = current_datetime()->getTimestamp();
+        $opens = IFPROG_Status::timestamp($attributes['signup_start'] ?? '');
+        $closes = IFPROG_Status::timestamp($attributes['signup_end'] ?? '');
+        if (!$opens && !$closes) return false;
+        if ($opens && $now < $opens) return false;
+        if ($closes && $now > $closes) return false;
+        return true;
+    }
+
+    private static function collection_data($result) {
+        if (!is_array($result)) return [];
+        if (isset($result['data']) && is_array($result['data'])) return array_values($result['data']);
+        return array_values(array_filter($result, 'is_array'));
     }
 
     public static function defaults() {
@@ -198,7 +381,7 @@ class IFPROG_Monitoring {
                 <div>
                     <p class="ifprog-kicker">Ice &amp; Field Programming</p>
                     <h1>Monitoring</h1>
-                    <p class="ifprog-lead">Prepare the rules that guarded Dash monitoring will use in the next 1.9 releases.</p>
+                    <p class="ifprog-lead">Configure discovery monitoring and review the guarded daily synchronization used by opted-in imported Seasons.</p>
                 </div>
                 <div class="ifprog-actions">
                     <a class="button" href="<?php echo esc_url(admin_url('admin.php?page=ifprog-audit')); ?>">View Activity Log</a>
@@ -211,7 +394,7 @@ class IFPROG_Monitoring {
                 <span class="dashicons <?php echo $settings['status'] === 'ready' ? 'dashicons-yes-alt' : 'dashicons-controls-pause'; ?>"></span>
                 <div>
                     <h2><?php echo $settings['status'] === 'ready' ? 'Configuration ready' : 'Monitoring paused'; ?></h2>
-                    <p>The 1.9.1 maintenance line stores these preferences and records activity only. It does not schedule Dash checks, send emails, or import anything automatically.</p>
+                    <p>General Season-family discovery monitoring remains controlled here. Daily synchronization is enabled separately on each imported Season and runs only while that Season's Dash registration window is open.</p>
                 </div>
             </section>
 
@@ -228,7 +411,7 @@ class IFPROG_Monitoring {
                                     <option value="paused" <?php selected($settings['status'], 'paused'); ?>>Paused</option>
                                     <option value="ready" <?php selected($settings['status'], 'ready'); ?>>Ready for scheduled monitoring</option>
                                 </select>
-                                <p class="description">Ready saves your preference for 1.9.2; it does not start background activity in this release.</p>
+                                <p class="description">This controls broader Season-family discovery monitoring. It does not override the per-Season automatic-sync checkbox.</p>
                             </td>
                         </tr>
                         <tr>
@@ -252,7 +435,7 @@ class IFPROG_Monitoring {
                             <th scope="row"><label for="ifprog-monitoring-email">Notification email</label></th>
                             <td>
                                 <input id="ifprog-monitoring-email" class="regular-text" type="email" name="<?php echo esc_attr(self::OPTION); ?>[notification_email]" value="<?php echo esc_attr($settings['notification_email']); ?>">
-                                <p class="description">Saved now for 1.9.3. The 1.9.1 maintenance line does not send email.</p>
+                                <p class="description">Saved for future discovery notifications. Daily Season synchronization does not currently send email.</p>
                             </td>
                         </tr>
                         <tr>

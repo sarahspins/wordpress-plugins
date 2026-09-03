@@ -1,6 +1,6 @@
 # Ice & Field Productions Roadmap
 
-## 3.1 — Communication Center
+## Historical 3.1 — Communication Center Foundation
 
 ### 3.1.24 — Logo-Left Production Heroes (Shipped)
 
@@ -165,14 +165,14 @@
 - Keep local per-message and per-Person communication history.
 - Record WordPress mail-service handoff successes and failures without claiming final delivery.
 
-### Later 3.1 Milestones
+## 3.7.1 — Communication Center Completion (Shipped)
 
-- Add controlled file attachments with size and file-type guardrails.
-- Add sender-name, reply-to, and reusable email-appearance controls if needed.
-- Integrate delivery, bounce, and open tracking only through a compatible mail provider that exposes trustworthy event data.
-- Add retry tools for failed handoffs without duplicating messages that were already accepted.
+- Add controlled Media Library attachments with count, size, combined-size, permission, readability, and file-type guardrails.
+- Add reusable sender-name, reply-to, accent-color, and footer controls, with per-message sender and reply-to overrides.
+- Accept and display delivery, bounce, and open events only through a compatible provider integration that authenticates and validates those events.
+- Retry only failed handoffs without duplicating messages that WordPress already handed to the mail service.
 
-## 3.2 — Controlled Two-Way Dash Updates (Planned)
+## 3.8 — Controlled Two-Way Dash Updates (Planned)
 
 - Keep the normal Connector configuration read-only; enable outbound updates only after installing a separately approved key with the narrowest practical permissions.
 - Start with `Program → Update` for supported Production/Season, Division/League, and Group/Team titles and descriptions. Evaluate `Schedule → Update` separately before allowing any date or time changes.

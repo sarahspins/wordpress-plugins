@@ -50,12 +50,14 @@ Goal: detect the next registration cycle and routine class changes automatically
 - Added a bounded local audit log for monitoring configuration, manual discovery refreshes, exclusions/restorations, protected syncs, warnings, and failures.
 - Deliberately left scheduled Dash requests, email, and automatic importing disabled.
 
-### 1.9.2 — Scheduled Detection (Next)
+### 1.9.2 — Imported Season Daily Sync (Shipped)
 
-- Run bounded low-frequency discovery only when the global configuration and a matching Season family are ready.
-- Use registration closing dates as an additional successor-discovery signal.
-- Compare imported Current and Upcoming Seasons for meaningful hierarchy and class changes.
-- Add safe locking, retries, backoff, and last/next-run visibility.
+- Added explicit opt-in automation to each already-imported Season.
+- Run its protected import once daily only while the Dash registration window is open.
+- Import newly added eligible class offerings and refresh Dash-controlled facts without replacing protected local presentation.
+- Keep automatic names and descriptions behind separate, default-off per-Season choices.
+- Add overlap locking, activity logging, and last-check visibility.
+- Leave automatic discovery and importing of entirely new Seasons for a later stage.
 
 ### 1.9.3 — Review Notifications
 

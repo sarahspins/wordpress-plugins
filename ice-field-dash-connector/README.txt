@@ -1,7 +1,95 @@
 Ice & Field Dash Connector
-Version 1.6.10
+Version 1.7.17
 
 Shared Dash/DaySmart connection for Ice & Field WordPress plugins.
+
+1.7.17 updates:
+- Automatic event-update emails display Team 0 as “Unassigned” and identify assigned Teams as “Name (ID)”
+
+1.7.16 fixes:
+- Event searches use smaller Dash API pages and release each weekly response after filtering, preventing memory-limit HTTP 500 errors on 128 MB hosts.
+
+1.7.15 fixes:
+- Event Assignment searches no longer use object-valued min(), which could cause an HTTP 500 on some PHP versions.
+
+1.7.14 protects:
+- Public Skating capacities are automatically set to 250 only when the existing value is 0 or missing
+- Existing nonzero Public Skating capacities are treated as intentional manual adjustments and preserved during Team assignment and name repairs
+- The explicit single-event capacity editor remains available for deliberate manual changes
+
+1.7.13 adds:
+- A guarded optional Event Type ID update in the single-event assignment workflow
+- Event-type preview, stale-data protection, post-write verification, history display, and Undo support
+- Reliable name searching performed locally across seven-day Dash event batches so matching events are not omitted by Dash's incomplete description filter
+
+1.7.12 updates:
+- Simplifies both schedule-gap email section descriptions to “Openings of 45 minutes or longer:”
+- Displays an event-history Team ID of 0 as “Unassigned”
+
+1.7.11 updates:
+- Highlights the entire First cut and Second cut rows on-screen and in the ice-cut email
+- Shortens staffing-conflict text to “Overlaps Gold Rink” or “Overlaps Silver Rink”
+
+1.7.10 updates:
+- Uses the supplied official white Ice & Field at The Crossover logo in both email headers
+- Adds subtle 6px rounded corners to the email card, tables, day headings, and empty states
+- Includes every schedule gap of 45 minutes or longer in both the urgent two-week and following eight-week sections
+
+1.7.9 adds:
+- Separate weekly Ice Cut Schedule and Schedule Gaps emails, each with independent recipients, Monday send time, and send-now action
+- Ice & Field branded HTML email design using the public Ice & Field logo and brand colors rather than the host site's configured logo
+- Ice-cut email columns ordered as Time, Length, Resource, and Resurfacing, with daily sections and prominent staffing-conflict warnings
+- Separate delivery-history labels for ice-cut and schedule-gap reports
+
+1.7.8 fixes:
+- Weekly email generation processes Dash events in seven-day chunks instead of retaining the raw ten-week collection in memory
+- Prevents the 128 MB PHP memory exhaustion observed on DreamHost when sending the report manually
+
+1.7.7 adds:
+- An administrator-only Email History screen covering automatic event-update and weekly ice-schedule messages
+- The newest 25 attempts with timestamp, subject, recipients, accepted/failed transport status, errors, and expandable message content
+
+1.7.6 fixes:
+- Overlapping resurfacing rows always list First cut before Second cut, including matching start times
+
+1.7.5 adds:
+- Shared mail-delivery diagnostics for automatic event updates and the weekly ice schedule
+- Per-recipient delivery attempts to avoid mail-provider issues with recipient arrays
+- Last-attempt timestamps, accepted-recipient counts, and captured WordPress mail errors on both admin screens
+
+1.7.4 adds:
+- An administrator-only Send Weekly Ice Cut Schedule Now button using the saved recipients
+- Clear success or failure feedback after an immediate report attempt
+
+1.7.3 adds:
+- Scheduled events named “Ice maintenance” to the ice-cut list regardless of their duration
+- A distinct Scheduled ice maintenance label on-screen and in the Monday email
+
+1.7.2 adds:
+- First/second resurfacing sequencing when Gold and Silver ice-cut windows overlap
+- Red “Two operators required” staffing alerts when overlapping 15-minute-only cuts require both resurfacing machines at once
+- Flexible-order labels when two 30-minute windows can be serviced sequentially
+
+1.7.1 fixes:
+- Forces the day-grouped ice-cut interface to load after sites cached the original 1.7.0 admin assets
+- Limits schedule gaps to same-day openings bounded by events on Gold and Silver
+- Uses the Rink Display timezone for calculations, screen output, and weekly email output
+
+1.7.0 adds:
+- A read-only Schedule Gaps utility for week and month scans limited to Gold and Silver (Dash resource IDs 1 and 2)
+- Separate results for true schedule openings (45+ minutes by default) and likely ice cuts (exactly 15 or 30 minutes between events)
+- Same-day, between-event gap detection that ignores time before the first event and after the last event
+- Correct interval merging for overlapping events plus configurable daily search hours
+- Rink Display timezone handling with a Central Time safety fallback, independent of the testing site's WordPress timezone
+- Printable results grouped by date and resource
+- One optional Monday-morning email to multiple recipients with an urgent section for 45+ minute gaps and likely ice cuts in the next two weeks
+- A planning section in the same email for 45+ minute gaps in the following eight weeks
+
+1.6.11 adds:
+- Manual Event Assignment changes to the persistent Event Update History
+- Verified before-and-after Team, capacity, and event-name values for every successful manual event write
+- Manual history attribution to the WordPress user who applied the update
+- The same guarded per-event Undo and automation-pause protection used by scheduled changes
 
 1.6.10 fixes:
 - Completed Team cleanup now turns off Dash Online Registration (`online_signup`) as well as making the Team inactive

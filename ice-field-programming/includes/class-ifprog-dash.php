@@ -62,6 +62,16 @@ class IFPROG_Dash {
         return self::collection('teams', [], $args);
     }
 
+    public static function team($team_id, $args = []) {
+        $team_id = absint($team_id);
+        if (!$team_id) return new WP_Error('ifprog_team_required', 'A valid Dash Team ID is required.');
+        if (!self::ready()) return self::collection('teams/' . $team_id, [], $args);
+        if (method_exists('IFDC_Client', 'get_team')) {
+            return IFDC_Client::get_team($team_id, [], wp_parse_args($args, ['cache_ttl' => 300]));
+        }
+        return IFDC_Client::get_data('teams/' . $team_id, [], $args);
+    }
+
     public static function leagues($args = []) {
         return self::collection('leagues', [], $args);
     }
@@ -72,6 +82,14 @@ class IFPROG_Dash {
 
     public static function registration_infos($args = []) {
         return self::collection('team-registration-infos', [], $args);
+    }
+
+    public static function events($query = [], $args = []) {
+        if (!self::ready()) return self::collection('events', $query, $args);
+        if (method_exists('IFDC_Client', 'get_events')) {
+            return IFDC_Client::get_events($query, wp_parse_args($args, ['cache_ttl' => 300]));
+        }
+        return self::collection('events', $query, $args);
     }
 
     public static function company_slug() {

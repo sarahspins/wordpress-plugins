@@ -11,7 +11,88 @@ if (!defined('ABSPATH')) exit;
 class IFPROG_Preview {
     const SEASONS_TRANSIENT = 'ifprog_preview_seasons';
 
-    public static function init() {}
+    public static function init() {
+        add_action('wp_ajax_ifprog_warm_preview_stage', [__CLASS__, 'ajax_warm_preview_stage']);
+    }
+
+    public static function ajax_warm_preview_stage() {
+        check_ajax_referer('ifprog_preview_batch', 'nonce');
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(['message' => 'You do not have permission to prepare a protected import.'], 403);
+        }
+        if (!IFPROG_Dash::ready()) {
+            wp_send_json_error(['message' => 'The shared Dash Connector is not connected.'], 400);
+        }
+
+        $stage = sanitize_key(wp_unslash($_POST['stage'] ?? ''));
+        $season_id = absint($_POST['season_id'] ?? 0);
+        $dropin_team_id = absint($_POST['dropin_team_id'] ?? 0);
+        if (!$season_id) {
+            wp_send_json_error(['message' => 'A Dash Season ID is required.'], 400);
+        }
+
+        $seasons = get_transient(self::SEASONS_TRANSIENT);
+        $season_record = is_array($seasons) ? self::find_record($seasons, $season_id) : null;
+        if (!$season_record) {
+            $season_result = IFPROG_Dash::seasons(['cache_ttl' => 900, 'force' => false]);
+            if (is_wp_error($season_result)) {
+                wp_send_json_error(['message' => $season_result->get_error_message()], 502);
+            }
+            $seasons = self::collection_data($season_result);
+            set_transient(self::SEASONS_TRANSIENT, $seasons, 15 * MINUTE_IN_SECONDS);
+            $season_record = self::find_record($seasons, $season_id);
+        }
+        if (!$season_record) {
+            wp_send_json_error(['message' => 'The selected Dash Season was not found.'], 404);
+        }
+
+        $args = ['cache_ttl' => 900, 'force' => true];
+        switch ($stage) {
+            case 'teams':
+                $result = IFPROG_Dash::teams($season_id, $args);
+                break;
+            case 'leagues':
+                $result = IFPROG_Dash::leagues($args);
+                break;
+            case 'products':
+                $result = IFPROG_Dash::products($args);
+                break;
+            case 'availability':
+                $result = IFPROG_Dash::registration_infos($args);
+                break;
+            case 'events':
+                $season = self::attributes($season_record);
+                $start = self::date_only($season['start_date'] ?? '');
+                $end = self::date_only($season['end_date'] ?? '');
+                if ($start === '' || $end === '') {
+                    $result = [];
+                    break;
+                }
+                $result = IFPROG_Dash::events([
+                    'filter[start__gte]' => $start . 'T00:00:00',
+                    'filter[start__lte]' => $end . 'T23:59:59',
+                    'sort' => 'start',
+                    'page[size]' => 500,
+                ], wp_parse_args($args, ['max_pages' => 25]));
+                break;
+            case 'dropin':
+                if (!$dropin_team_id) {
+                    wp_send_json_error(['message' => 'A drop-in Team ID is required for this stage.'], 400);
+                }
+                $result = IFPROG_Dash::team($dropin_team_id, $args);
+                break;
+            default:
+                wp_send_json_error(['message' => 'Unknown preparation stage.'], 400);
+        }
+
+        if (is_wp_error($result)) {
+            wp_send_json_error(['message' => $result->get_error_message()], 502);
+        }
+        wp_send_json_success([
+            'stage' => $stage,
+            'peak_memory_bytes' => memory_get_peak_usage(true),
+        ]);
+    }
 
     public static function page() {
         if (!current_user_can('manage_options')) return;
@@ -21,6 +102,8 @@ class IFPROG_Preview {
         $sync_result = null;
         $action_notice = '';
         $selected_season_id = absint($_POST['ifprog_dash_season_id'] ?? ($_GET['ifprog_dash_season_id'] ?? 0));
+        $dropin_team_id = absint($_POST['ifprog_dropin_team_id'] ?? 0);
+        $batched_preview = !empty($_POST['ifprog_batched_preview']);
         $view = sanitize_key(wp_unslash($_POST['ifprog_discovery_view'] ?? ($_GET['ifprog_view'] ?? 'inbox')));
         $view = $view === 'all' ? 'all' : 'inbox';
         $filter = sanitize_key(wp_unslash($_POST['ifprog_discovery_filter'] ?? ($_GET['ifprog_filter'] ?? 'all')));
@@ -67,8 +150,8 @@ class IFPROG_Preview {
                     $error = new WP_Error('ifprog_dash_not_ready', 'The shared Dash Connector must be connected before discovery or preview can be loaded.');
                 } else {
                     $season_result = IFPROG_Dash::seasons([
-                        'cache_ttl' => 300,
-                        'force' => true,
+                        'cache_ttl' => $batched_preview ? 900 : 300,
+                        'force' => !$batched_preview,
                     ]);
                     if (is_wp_error($season_result)) {
                         $error = $season_result;
@@ -81,21 +164,17 @@ class IFPROG_Preview {
                         $seasons = self::collection_data($season_result);
                         set_transient(self::SEASONS_TRANSIENT, $seasons, 15 * MINUTE_IN_SECONDS);
                         if ($action === 'load_seasons') {
-                            $checks = IFPROG_Discovery::refresh($seasons);
-                            $action_notice = 'Discovery refresh finished. Imported Current and Upcoming Seasons were compared where Dash data was available.';
-                            $failed_checks = count(array_filter($checks, function($check) {
-                                return !empty($check['error']);
-                            }));
+                            $checks = IFPROG_Discovery::cached_checks();
+                            $action_notice = 'Season discovery refreshed. Use Check Changes on an imported Season to refresh its hierarchy comparison without overloading the server.';
                             IFPROG_Audit::record(
                                 'discovery_refreshed',
-                                'Dash Season discovery was refreshed manually.',
+                                'The Dash Season list was refreshed manually.',
                                 [
                                     'source' => 'discovery',
-                                    'severity' => $failed_checks ? 'warning' : 'success',
+                                    'severity' => 'success',
                                     'context' => [
                                         'seasons_found' => count($seasons),
-                                        'imported_seasons_compared' => count($checks),
-                                        'comparison_failures' => $failed_checks,
+                                        'hierarchy_comparisons' => 0,
                                     ],
                                 ]
                             );
@@ -103,7 +182,7 @@ class IFPROG_Preview {
                     }
                 }
 
-                if (!$error && in_array($action, ['preview', 'import'], true)) {
+                if (!$error && in_array($action, ['preview', 'import', 'check_season'], true)) {
                     if (!$selected_season_id) {
                         $error = new WP_Error('ifprog_season_required', 'Choose a Dash Season to preview.');
                     } else {
@@ -111,10 +190,33 @@ class IFPROG_Preview {
                         if (!$selected_season) {
                             $error = new WP_Error('ifprog_invalid_dash_season', 'The selected Dash Season was not found.');
                         } else {
-                            $preview = self::build($selected_season, true);
+                            $started = microtime(true);
+                            $memory_before = memory_get_usage(true);
+                            $preview = self::build($selected_season, !$batched_preview, false, $dropin_team_id ? [$dropin_team_id] : []);
                             if (is_wp_error($preview)) {
                                 $error = $preview;
                                 $preview = null;
+                            } elseif ($action === 'check_season') {
+                                $checks = IFPROG_Discovery::record_comparison(
+                                    absint($preview['existing_season_id'] ?? 0),
+                                    $preview
+                                );
+                                $preview = null;
+                                $action_notice = 'The selected Season comparison was refreshed.';
+                                IFPROG_Audit::record(
+                                    'season_comparison_refreshed',
+                                    'One imported Season hierarchy comparison was refreshed.',
+                                    [
+                                        'source' => 'discovery',
+                                        'severity' => 'success',
+                                        'dash_season_id' => $selected_season_id,
+                                        'context' => [
+                                            'elapsed_ms' => round((microtime(true) - $started) * 1000),
+                                            'memory_growth_bytes' => max(0, memory_get_usage(true) - $memory_before),
+                                            'peak_memory_bytes' => memory_get_peak_usage(true),
+                                        ],
+                                    ]
+                                );
                             } elseif ($action === 'import') {
                                 $team_ids = array_map(
                                     'absint',
@@ -137,6 +239,7 @@ class IFPROG_Preview {
                                 $companion_options = [
                                     'sync_participants' => !empty($_POST['ifprog_sync_production_participants']),
                                 ];
+                                $classification = (array) wp_unslash($_POST['ifprog_classification'] ?? []);
                                 $sync_result = IFPROG_Sync::run(
                                     $preview,
                                     $team_ids,
@@ -144,7 +247,8 @@ class IFPROG_Preview {
                                     $season_only,
                                     $level_ids,
                                     $presentation_updates,
-                                    $companion_options
+                                    $companion_options,
+                                    $classification
                                 );
                                 if (is_wp_error($sync_result)) {
                                     $error = $sync_result;
@@ -163,7 +267,7 @@ class IFPROG_Preview {
                                 } else {
                                     $checks = IFPROG_Discovery::cached_checks();
                                     // Refresh WordPress linkage shown in the preview.
-                                    $preview = self::build($selected_season);
+                                    $preview = self::build($selected_season, false, false, $dropin_team_id ? [$dropin_team_id] : []);
                                     if (is_wp_error($preview)) {
                                         $error = $preview;
                                         $preview = null;
@@ -177,7 +281,6 @@ class IFPROG_Preview {
         }
 
         if ($action === '' && IFPROG_Dash::ready()) {
-            $automatic_seasons_loaded = false;
             if (!$seasons) {
                 $season_result = IFPROG_Dash::seasons([
                     'cache_ttl' => 300,
@@ -188,22 +291,15 @@ class IFPROG_Preview {
                 } else {
                     $seasons = self::collection_data($season_result);
                     set_transient(self::SEASONS_TRANSIENT, $seasons, 15 * MINUTE_IN_SECONDS);
-                    $automatic_seasons_loaded = true;
                 }
             }
-            if (
-                !$error &&
-                $seasons &&
-                ($automatic_seasons_loaded || !IFPROG_Discovery::has_cached_checks())
-            ) {
-                $checks = IFPROG_Discovery::refresh($seasons, false);
-            }
+            $checks = IFPROG_Discovery::cached_checks();
         }
 
         self::render_page($seasons, $selected_season_id, $preview, $error, $sync_result, $action_notice, $view, $filter, $checks);
     }
 
-    public static function build($season_record, $force = false, $force_shared = null) {
+    public static function build($season_record, $force = false, $force_shared = null, $additional_team_ids = []) {
         $season_id = absint($season_record['id'] ?? 0);
         $force_shared = $force_shared === null ? (bool) $force : (bool) $force_shared;
         $team_args = [
@@ -231,11 +327,35 @@ class IFPROG_Preview {
         }
 
         $teams = self::collection_data($requests['teams']);
+        $loaded_team_ids = [];
+        foreach ($teams as $loaded_team) {
+            $loaded_team_id = absint($loaded_team['id'] ?? 0);
+            if ($loaded_team_id) $loaded_team_ids[$loaded_team_id] = true;
+        }
+        $additional_team_ids = array_values(array_unique(array_filter(array_map('absint', (array) $additional_team_ids))));
+        $additional_team_lookup = array_fill_keys($additional_team_ids, true);
+        foreach ($additional_team_ids as $additional_team_id) {
+            if (!empty($loaded_team_ids[$additional_team_id])) continue;
+            $additional = IFPROG_Dash::team($additional_team_id, $team_args);
+            if (is_wp_error($additional)) {
+                return new WP_Error('ifprog_preview_additional_team', 'The requested Adult Development Camp Team could not be loaded: ' . $additional->get_error_message());
+            }
+            $record = is_array($additional['data'] ?? null) ? $additional['data'] : $additional;
+            if (!is_array($record) || absint($record['id'] ?? 0) !== $additional_team_id) {
+                return new WP_Error('ifprog_preview_additional_team_invalid', 'Dash Team #' . $additional_team_id . ' could not be verified.');
+            }
+            $record_attributes = self::attributes($record);
+            if (absint($record_attributes['league_id'] ?? 0) !== IFPROG_Sync::CURRENT_LEARN_TO_PLAY_LEAGUE_ID) {
+                return new WP_Error('ifprog_preview_additional_team_league', 'Dash Team #' . $additional_team_id . ' is not assigned to Adult Development Camp League #86.');
+            }
+            $teams[] = $record;
+        }
         $leagues = self::index_records(self::collection_data($requests['leagues']));
         $products = self::index_records(self::collection_data($requests['products']));
         $availability_by_team = self::index_records(self::collection_data($requests['availability']));
-        $existing = self::existing_team_programs();
         $season_attrs = self::attributes($season_record);
+        $events_by_team = self::season_events_by_team($season_attrs, $shared_args);
+        $existing = self::existing_team_programs();
         $existing_season_id = self::existing_season($season_id);
         $existing_levels = self::existing_levels($existing_season_id);
         $rows = [];
@@ -244,7 +364,8 @@ class IFPROG_Preview {
         foreach ($teams as $team_record) {
             $team_id = absint($team_record['id'] ?? 0);
             $team = self::attributes($team_record);
-            if (absint($team['season_id'] ?? 0) !== $season_id) continue;
+            $is_additional_team = !empty($additional_team_lookup[$team_id]);
+            if (absint($team['season_id'] ?? 0) !== $season_id && !$is_additional_team) continue;
 
             $league_id = absint($team['league_id'] ?? 0);
             if ($league_id) $represented_league_ids[$league_id] = true;
@@ -259,11 +380,15 @@ class IFPROG_Preview {
             $format = self::format($season_attrs, $league, $team);
             $schedule = self::schedule($team);
             $start_date = self::date_only($team['start_date'] ?? '');
-            $end_date = self::date_only($season_attrs['end_date'] ?? '');
+            $event_starts = $events_by_team[$team_id] ?? [];
+            if (!$event_starts && sanitize_title($format) === 'camp') {
+                $event_starts = self::team_event_starts($team_id, $season_attrs, $shared_args);
+            }
+            $end_date = self::program_end_date($team, $format, $event_starts);
             $registration_open = self::datetime_local($season_attrs['signup_start'] ?? '');
             $registration_close = self::datetime_local($season_attrs['signup_end'] ?? '');
             $age_range = IFPROG_Dash::age_range_label($league);
-            $session_price = self::session_price($product, $team, $league);
+            $session_price = self::session_price($product, $team, $league, $event_starts);
             $availability_label = self::availability($registration);
             $availability_note = self::availability_note($registration);
             $registration_status = sanitize_key((string) ($registration['registration_status'] ?? ''));
@@ -285,6 +410,7 @@ class IFPROG_Preview {
             if ($league_id === IFPROG_Sync::CURRENT_LEARN_TO_PLAY_LEAGUE_ID) {
                 $warnings[] = 'Season routing: Current Learn to Play';
             }
+            if ($is_additional_team) $warnings[] = 'Manually included recurring drop-in Team';
 
             $rows[] = [
                 'row_type' => 'team',
@@ -310,7 +436,8 @@ class IFPROG_Preview {
                 'level_registration_url' => $level_registration_url,
                 'existing_id' => absint($existing[$team_id] ?? 0),
                 'existing_level_id' => absint($existing_levels[$league_id] ?? 0),
-                'eligible' => $is_active && $sport['slug'] !== '' && !empty($league),
+                'eligible' => $is_active && !empty($league),
+                'sport_mapping_required' => $sport['slug'] === '',
                 'warnings' => $warnings,
                 'source_values' => [
                     'start_date' => $start_date,
@@ -322,6 +449,7 @@ class IFPROG_Preview {
                     'level' => $level,
                     'price' => $session_price['total'],
                     'weeks' => $session_price['weeks'],
+                    'duration_unit' => $session_price['unit'],
                     'registration_url' => $registration_url,
                     'availability_note' => $availability_note,
                 ],
@@ -397,7 +525,8 @@ class IFPROG_Preview {
                 'level_registration_url' => $level_registration_url,
                 'existing_id' => 0,
                 'existing_level_id' => absint($existing_levels[$league_id] ?? 0),
-                'eligible' => !$explicitly_inactive && $sport['slug'] !== '',
+                'eligible' => !$explicitly_inactive,
+                'sport_mapping_required' => $sport['slug'] === '',
                 'warnings' => $warnings,
                 'source_values' => [],
                 'source_payload' => [
@@ -423,6 +552,7 @@ class IFPROG_Preview {
             'season' => $season_attrs,
             'existing_season_id' => $existing_season_id,
             'rows' => $rows,
+            'dropin_team_id' => $additional_team_ids ? absint($additional_team_ids[0]) : 0,
         ];
     }
 
@@ -808,6 +938,15 @@ class IFPROG_Preview {
                     </form>
                     <?php if ($row['excluded_at']): ?><small>Excluded <?php echo esc_html(self::admin_datetime_label($row['excluded_at'])); ?></small><?php endif; ?>
                 <?php else: ?>
+                    <?php if ($row['wp_id']): ?>
+                        <form method="post">
+                            <?php wp_nonce_field('ifprog_dash_preview', 'ifprog_preview_nonce'); ?>
+                            <input type="hidden" name="ifprog_dash_season_id" value="<?php echo esc_attr($row['dash_id']); ?>">
+                            <input type="hidden" name="ifprog_discovery_view" value="<?php echo esc_attr($view); ?>">
+                            <input type="hidden" name="ifprog_discovery_filter" value="<?php echo esc_attr($filter); ?>">
+                            <button class="button" type="submit" name="ifprog_preview_action" value="check_season">Check Changes</button>
+                        </form>
+                    <?php endif; ?>
                     <form method="post" action="<?php echo esc_url(admin_url('admin.php?page=ifprog-preview#ifprog-protected-preview')); ?>">
                         <?php wp_nonce_field('ifprog_dash_preview', 'ifprog_preview_nonce'); ?>
                         <input type="hidden" name="ifprog_dash_season_id" value="<?php echo esc_attr($row['dash_id']); ?>">
@@ -894,6 +1033,21 @@ class IFPROG_Preview {
             <?php endif; ?>
         </section>
 
+        <?php if (stripos((string) ($season['name'] ?? ''), 'Learn to Play') !== false): ?>
+            <section class="ifprog-card">
+                <h2>Adult Development Camp drop-in</h2>
+                <p>This recurring Team lives outside the Learn to Play Dash Season. Enter its current Dash Team ID to include it in this preview and keep its Program routed to the current Learn to Play Season.</p>
+                <form method="post">
+                    <?php wp_nonce_field('ifprog_dash_preview', 'ifprog_preview_nonce'); ?>
+                    <input type="hidden" name="ifprog_dash_season_id" value="<?php echo esc_attr($preview['season_id']); ?>">
+                    <label><strong>Current drop-in Dash Team ID</strong><br>
+                        <input class="regular-text" type="number" min="1" name="ifprog_dropin_team_id" value="<?php echo esc_attr(absint($preview['dropin_team_id'] ?? 0)); ?>" placeholder="Team ID">
+                    </label>
+                    <button class="button" type="submit" name="ifprog_preview_action" value="preview">Load Team in Preview</button>
+                </form>
+            </section>
+        <?php endif; ?>
+
         <section class="ifprog-card ifprog-preview-table-card">
             <h2>2. <?php echo $rows ? 'Review Proposed Imports' : 'Review Season'; ?></h2>
             <?php if (!$rows): ?>
@@ -901,11 +1055,13 @@ class IFPROG_Preview {
                 <form method="post">
                     <?php wp_nonce_field('ifprog_dash_preview', 'ifprog_preview_nonce'); ?>
                     <input type="hidden" name="ifprog_dash_season_id" value="<?php echo esc_attr($preview['season_id']); ?>">
+                    <?php if (!empty($preview['dropin_team_id'])): ?><input type="hidden" name="ifprog_dropin_team_id" value="<?php echo esc_attr(absint($preview['dropin_team_id'])); ?>"><?php endif; ?>
                     <input type="hidden" name="ifprog_season_only" value="1">
                     <div class="ifprog-sync-box">
                         <div>
                             <h3>3. Import Season safely</h3>
                             <p>The Season will be created as a draft or its linked Dash facts will be refreshed. No placeholder Levels or Programs will be created.</p>
+                            <?php self::render_classification_choices($preview); ?>
                             <fieldset class="ifprog-sync-options">
                                 <legend>Optional Dash presentation updates</legend>
                                 <div class="ifprog-sync-options__grid">
@@ -941,6 +1097,7 @@ class IFPROG_Preview {
                 <form method="post">
                     <?php wp_nonce_field('ifprog_dash_preview', 'ifprog_preview_nonce'); ?>
                     <input type="hidden" name="ifprog_dash_season_id" value="<?php echo esc_attr($preview['season_id']); ?>">
+                    <?php if (!empty($preview['dropin_team_id'])): ?><input type="hidden" name="ifprog_dropin_team_id" value="<?php echo esc_attr(absint($preview['dropin_team_id'])); ?>"><?php endif; ?>
                     <div class="ifprog-selection-tools">
                         <span data-ifprog-selection-count><?php echo esc_html($eligible); ?> of <?php echo esc_html($eligible); ?> selected</span>
                         <div>
@@ -1040,6 +1197,7 @@ class IFPROG_Preview {
                         <div>
                             <h3>3. Import selected safely</h3>
                             <p>Linked records receive refreshed Dash facts while your local presentation remains protected. Optional replacements are unchecked by default and apply only to existing records included in this sync.</p>
+                            <?php self::render_classification_choices($preview); ?>
                             <fieldset class="ifprog-sync-options">
                                 <legend>Optional Dash presentation updates</legend>
                                 <div class="ifprog-sync-options__grid">
@@ -1090,6 +1248,73 @@ class IFPROG_Preview {
             <?php endif; ?>
         </section>
         <?php
+    }
+
+    private static function render_classification_choices($preview) {
+        $guesses = self::classification_guesses($preview);
+        $taxonomies = [
+            'sport' => ['taxonomy' => 'ifprog_sport', 'label' => 'Sport'],
+            'format' => ['taxonomy' => 'ifprog_format', 'label' => 'Format'],
+            'category' => ['taxonomy' => 'ifprog_category', 'label' => 'Category'],
+        ];
+        ?>
+        <fieldset class="ifprog-classification-options">
+            <legend>Bulk classification</legend>
+            <p class="description">Programming has preselected its best guess. Adjust it once here; the selected values will replace Sport, Format, and Category on the Season and every Level and Program selected in this import.</p>
+            <div class="ifprog-classification-options__grid">
+                <?php foreach ($taxonomies as $key => $config): ?>
+                    <?php $terms = get_terms(['taxonomy' => $config['taxonomy'], 'hide_empty' => false]); ?>
+                    <div class="ifprog-classification-group">
+                        <strong><?php echo esc_html($config['label']); ?></strong>
+                        <?php if (is_wp_error($terms) || !$terms): ?>
+                            <span class="description">No choices available.</span>
+                        <?php else: ?>
+                            <?php foreach ($terms as $term): ?>
+                                <label><input type="checkbox" name="ifprog_classification[<?php echo esc_attr($key); ?>][]" value="<?php echo esc_attr($term->term_id); ?>" <?php checked(in_array($term->term_id, $guesses[$key], true)); ?>> <?php echo esc_html($term->name); ?></label>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+        </fieldset>
+        <?php
+    }
+
+    private static function classification_guesses($preview) {
+        $season = (array) ($preview['season'] ?? []);
+        $rows = (array) ($preview['rows'] ?? []);
+        $classification = self::season_classification($season, $rows);
+        $category_slugs = self::category_guesses($season, $rows, $classification['formats']);
+        $guesses = [
+            'sport' => IFPROG_Post_Types::assignment_term_ids('ifprog_sport', $classification['sports']),
+            'format' => IFPROG_Post_Types::assignment_term_ids('ifprog_format', $classification['formats']),
+            'category' => IFPROG_Post_Types::assignment_term_ids('ifprog_category', $category_slugs),
+        ];
+        $existing_season_id = absint($preview['existing_season_id'] ?? 0);
+        if ($existing_season_id) {
+            foreach (['sport' => 'ifprog_sport', 'format' => 'ifprog_format', 'category' => 'ifprog_category'] as $key => $taxonomy) {
+                $existing = wp_get_object_terms($existing_season_id, $taxonomy, ['fields' => 'ids']);
+                if (!is_wp_error($existing) && $existing) $guesses[$key] = array_map('absint', $existing);
+            }
+        }
+        return $guesses;
+    }
+
+    private static function category_guesses($season, $rows, $formats) {
+        $parts = [(string) ($season['name'] ?? ''), (string) ($season['description'] ?? '')];
+        foreach ((array) $rows as $row) {
+            $parts[] = (string) ($row['title'] ?? '');
+            $parts[] = (string) ($row['level'] ?? '');
+        }
+        $haystack = strtolower(implode(' ', $parts));
+        $slugs = [];
+        if (strpos($haystack, 'learn to skate') !== false || strpos($haystack, 'snowplow') !== false || preg_match('/\bbasic\s*[1-8]?\b/i', $haystack)) $slugs[] = 'learn-to-skate';
+        if (strpos($haystack, 'learn to play') !== false) $slugs[] = 'learn-to-play';
+        if (strpos($haystack, 'specialty') !== false) $slugs[] = 'specialty-classes';
+        if (in_array('camp', (array) $formats, true) || in_array('clinic', (array) $formats, true)) $slugs[] = 'camps-clinics';
+        if (strpos($haystack, 'homeschool') !== false || preg_match('/(^|\s)hs\b/i', $haystack)) $slugs[] = 'homeschool';
+        if (strpos($haystack, 'adaptive') !== false) $slugs[] = 'adaptive';
+        return array_values(array_unique($slugs));
     }
 
     private static function collection_data($result) {
@@ -1296,14 +1521,16 @@ class IFPROG_Preview {
         return $label;
     }
 
-    private static function session_price($product, $team, $league) {
+    private static function session_price($product, $team, $league, $event_starts = []) {
         $price = $product['price'] ?? '';
         $class_count = absint($team['num_games'] ?? ($league['num_games'] ?? 0));
+        $unit = self::duration_unit($event_starts, $team, $league, $class_count);
         if ($price === '' || !is_numeric($price)) {
             return [
                 'total' => '',
                 'detail' => 'No Product price supplied',
                 'weeks' => $class_count,
+                'unit' => $unit,
             ];
         }
 
@@ -1315,6 +1542,7 @@ class IFPROG_Preview {
                 'total' => self::currency($unit_price),
                 'detail' => 'Flat session price',
                 'weeks' => $class_count,
+                'unit' => $unit,
             ];
         }
 
@@ -1323,6 +1551,7 @@ class IFPROG_Preview {
                 'total' => '',
                 'detail' => self::currency($unit_price) . ' per class; class count unavailable',
                 'weeks' => 0,
+                'unit' => $unit,
             ];
         }
 
@@ -1331,11 +1560,121 @@ class IFPROG_Preview {
             'detail' => sprintf(
                 '%d %s × %s',
                 $class_count,
-                $class_count === 1 ? 'week' : 'weeks',
+                $class_count === 1 ? $unit : $unit . 's',
                 self::currency($unit_price)
             ),
             'weeks' => $class_count,
+            'unit' => $unit,
         ];
+    }
+
+    private static function season_events_by_team($season, $args = []) {
+        $start = self::date_only($season['start_date'] ?? '');
+        $end = self::date_only($season['end_date'] ?? '');
+        if ($start === '' || $end === '') return [];
+
+        $result = IFPROG_Dash::events([
+            'filter[start__gte]' => $start . 'T00:00:00',
+            'filter[start__lte]' => $end . 'T23:59:59',
+            'sort' => 'start',
+            'page[size]' => 500,
+        ], wp_parse_args($args, ['max_pages' => 25]));
+        if (is_wp_error($result)) return [];
+
+        $indexed = [];
+        foreach (self::collection_data($result) as $record) {
+            $event = self::attributes($record);
+            $team_id = absint($event['hteam_id'] ?? 0);
+            $timestamp = IFPROG_Status::timestamp($event['start'] ?? '');
+            if ($team_id && $timestamp) $indexed[$team_id][] = $timestamp;
+        }
+        foreach ($indexed as &$starts) {
+            $starts = array_values(array_unique(array_map('intval', $starts)));
+            sort($starts, SORT_NUMERIC);
+        }
+        unset($starts);
+        return $indexed;
+    }
+
+    private static function duration_unit($event_starts, $team = [], $league = [], $class_count = 0) {
+        $starts = array_values(array_unique(array_map('intval', (array) $event_starts)));
+        sort($starts, SORT_NUMERIC);
+        if (count($starts) >= 2) {
+            $gaps = [];
+            for ($index = 1; $index < count($starts); $index++) {
+                $days = (int) round(($starts[$index] - $starts[$index - 1]) / DAY_IN_SECONDS);
+                if ($days > 0) $gaps[] = $days;
+            }
+            if ($gaps) {
+                sort($gaps, SORT_NUMERIC);
+                $typical_gap = $gaps[(int) floor((count($gaps) - 1) / 2)];
+                return $typical_gap <= 3 ? 'day' : 'week';
+            }
+        }
+
+        $identity = strtolower(implode(' ', [
+            (string) ($team['name'] ?? ''),
+            (string) ($team['description'] ?? ''),
+            (string) ($league['name'] ?? ''),
+            (string) ($league['description'] ?? ''),
+        ]));
+        if (preg_match('/\b(camp|clinic)\b/', $identity)) return 'day';
+
+        $start = IFPROG_Status::timestamp($team['start_date'] ?? '');
+        $end = IFPROG_Status::timestamp($team['end_date'] ?? '');
+        if ($start && $end && $end >= $start && $class_count > 1) {
+            $span_days = (int) floor(($end - $start) / DAY_IN_SECONDS) + 1;
+            if ($span_days <= $class_count + 1) return 'day';
+            if ($span_days >= (($class_count - 1) * 5) + 1) return 'week';
+        }
+
+        preg_match_all('/su|mo|tu|we|th|fr|sa/', strtolower((string) ($team['days_of_week'] ?? '')), $matches);
+        $scheduled_days = array_values(array_unique($matches[0] ?? []));
+        if (count($scheduled_days) > 1) return 'day';
+
+        return 'week';
+    }
+
+    private static function team_event_starts($team_id, $season, $args = []) {
+        $team_id = absint($team_id);
+        $start = self::date_only($season['start_date'] ?? '');
+        $end = self::date_only($season['end_date'] ?? '');
+        if (!$team_id || $start === '' || $end === '') return [];
+
+        $result = IFPROG_Dash::events([
+            'filter[hteam_id]' => $team_id,
+            'filter[start__gte]' => $start . 'T00:00:00',
+            'filter[start__lte]' => $end . 'T23:59:59',
+            'sort' => 'start',
+            'page[size]' => 100,
+        ], wp_parse_args($args, ['max_pages' => 5]));
+        if (is_wp_error($result)) return [];
+
+        $starts = [];
+        foreach (self::collection_data($result) as $record) {
+            $event = self::attributes($record);
+            if (absint($event['hteam_id'] ?? 0) !== $team_id) continue;
+            $timestamp = IFPROG_Status::timestamp($event['start'] ?? '');
+            if ($timestamp) $starts[] = $timestamp;
+        }
+        $starts = array_values(array_unique(array_map('intval', $starts)));
+        sort($starts, SORT_NUMERIC);
+        return $starts;
+    }
+
+    private static function program_end_date($team, $format, $event_starts = []) {
+        $starts = array_values(array_unique(array_filter(array_map('intval', (array) $event_starts))));
+        sort($starts, SORT_NUMERIC);
+        if ($starts) return wp_date('Y-m-d', end($starts));
+
+        $team_end = self::date_only($team['end_date'] ?? '');
+        if ($team_end !== '') return $team_end;
+        if (sanitize_title((string) $format) !== 'camp') return '';
+
+        $start = IFPROG_Status::timestamp($team['start_date'] ?? '');
+        $count = absint($team['num_games'] ?? 0);
+        if (!$start || !$count) return '';
+        return wp_date('Y-m-d', $start + (($count - 1) * DAY_IN_SECONDS));
     }
 
     private static function availability($registration) {
