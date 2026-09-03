@@ -27,6 +27,7 @@ class IFPROG_Preview {
         $stage = sanitize_key(wp_unslash($_POST['stage'] ?? ''));
         $season_id = absint($_POST['season_id'] ?? 0);
         $dropin_team_id = absint($_POST['dropin_team_id'] ?? 0);
+        $event_week = min(60, absint($_POST['event_week'] ?? 0));
         if (!$season_id) {
             wp_send_json_error(['message' => 'A Dash Season ID is required.'], 400);
         }
@@ -68,12 +69,20 @@ class IFPROG_Preview {
                     $result = [];
                     break;
                 }
+                $window_start = (new DateTimeImmutable($start))->modify('+' . ($event_week * 7) . ' days');
+                $season_end = new DateTimeImmutable($end);
+                if ($window_start > $season_end) {
+                    $result = [];
+                    break;
+                }
+                $window_end = $window_start->modify('+6 days');
+                if ($window_end > $season_end) $window_end = $season_end;
                 $result = IFPROG_Dash::events([
-                    'filter[start__gte]' => $start . 'T00:00:00',
-                    'filter[start__lte]' => $end . 'T23:59:59',
+                    'filter[start__gte]' => $window_start->format('Y-m-d') . 'T00:00:00',
+                    'filter[start__lte]' => $window_end->format('Y-m-d') . 'T23:59:59',
                     'sort' => 'start',
-                    'page[size]' => 500,
-                ], wp_parse_args($args, ['max_pages' => 25]));
+                    'page[size]' => 100,
+                ], wp_parse_args($args, ['max_pages' => 10]));
                 break;
             case 'dropin':
                 if (!$dropin_team_id) {
@@ -88,10 +97,15 @@ class IFPROG_Preview {
         if (is_wp_error($result)) {
             wp_send_json_error(['message' => $result->get_error_message()], 502);
         }
-        wp_send_json_success([
+        $response = [
             'stage' => $stage,
             'peak_memory_bytes' => memory_get_peak_usage(true),
-        ]);
+        ];
+        if ($stage === 'events' && isset($window_end, $season_end)) {
+            $response['event_week'] = $event_week + 1;
+            $response['more_event_weeks'] = $window_end < $season_end;
+        }
+        wp_send_json_success($response);
     }
 
     public static function page() {
@@ -1573,20 +1587,26 @@ class IFPROG_Preview {
         $end = self::date_only($season['end_date'] ?? '');
         if ($start === '' || $end === '') return [];
 
-        $result = IFPROG_Dash::events([
-            'filter[start__gte]' => $start . 'T00:00:00',
-            'filter[start__lte]' => $end . 'T23:59:59',
-            'sort' => 'start',
-            'page[size]' => 500,
-        ], wp_parse_args($args, ['max_pages' => 25]));
-        if (is_wp_error($result)) return [];
-
         $indexed = [];
-        foreach (self::collection_data($result) as $record) {
-            $event = self::attributes($record);
-            $team_id = absint($event['hteam_id'] ?? 0);
-            $timestamp = IFPROG_Status::timestamp($event['start'] ?? '');
-            if ($team_id && $timestamp) $indexed[$team_id][] = $timestamp;
+        $cursor = new DateTimeImmutable($start);
+        $season_end = new DateTimeImmutable($end);
+        while ($cursor <= $season_end) {
+            $window_end = $cursor->modify('+6 days');
+            if ($window_end > $season_end) $window_end = $season_end;
+            $result = IFPROG_Dash::events([
+                'filter[start__gte]' => $cursor->format('Y-m-d') . 'T00:00:00',
+                'filter[start__lte]' => $window_end->format('Y-m-d') . 'T23:59:59',
+                'sort' => 'start',
+                'page[size]' => 100,
+            ], wp_parse_args($args, ['max_pages' => 10]));
+            if (is_wp_error($result)) return [];
+            foreach (self::collection_data($result) as $record) {
+                $event = self::attributes($record);
+                $team_id = absint($event['hteam_id'] ?? 0);
+                $timestamp = IFPROG_Status::timestamp($event['start'] ?? '');
+                if ($team_id && $timestamp) $indexed[$team_id][] = $timestamp;
+            }
+            $cursor = $cursor->modify('+7 days');
         }
         foreach ($indexed as &$starts) {
             $starts = array_values(array_unique(array_map('intval', $starts)));

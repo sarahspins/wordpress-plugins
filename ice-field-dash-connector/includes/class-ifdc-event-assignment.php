@@ -328,7 +328,7 @@ class IFDC_Event_Assignment {
             <h2 class="ifdc-single-workflow-heading">Bulk Event Type, Assignment, or Capacity Repair</h2>
 
             <div class="notice notice-info inline">
-                <p><strong>Wrong event type on many events?</strong> Use correction mode to search the selected month by its current Event Type ID, select all matches, and set the correct Event Type ID without changing Team assignments, capacities, or names.</p>
+                <p><strong>Wrong event type on many events?</strong> Use correction mode to search a month or custom date range by its current Event Type ID, select all matches, and set the correct Event Type ID without changing Team assignments, capacities, or names.</p>
                 <p><button type="button" class="button" id="ifdc-event-type-correction-mode">Start Bulk Event Type Correction</button></p>
             </div>
 
@@ -337,9 +337,16 @@ class IFDC_Event_Assignment {
                     <p class="ifdc-eyebrow">Step 1</p>
                     <h2>Find schedule events</h2>
                     <div class="ifdc-assignment-fields">
-                        <label>Month
+                        <label>Date selection
+                            <select id="ifdc-assignment-date-mode"><option value="month">Whole month</option><option value="custom">Custom date range</option></select>
+                        </label>
+                        <label id="ifdc-assignment-month-field">Month
                             <input type="month" id="ifdc-assignment-month" value="<?php echo esc_attr($month); ?>">
                         </label>
+                        <span id="ifdc-assignment-custom-range" hidden>
+                            <label>Start date <input type="date" id="ifdc-assignment-start" value="<?php echo esc_attr(wp_date('Y-m-d', $now)); ?>"></label>
+                            <label>End date <input type="date" id="ifdc-assignment-end" value="<?php echo esc_attr(wp_date('Y-m-d', $now)); ?>"></label>
+                        </span>
                         <label>Event name contains
                             <input type="text" id="ifdc-assignment-name" value="" placeholder="Optional — leave blank for all events of the selected type">
                         </label>

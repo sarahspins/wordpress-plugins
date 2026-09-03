@@ -1,5 +1,17 @@
 # Ice & Field Programming Changelog
 
+## 1.9.2.6
+
+- Prepares scheduled Events in individual seven-day AJAX requests instead of one complete Season-range request.
+- Reuses the same weekly Event caches during the final protected review.
+- Prevents the reproduced HTTP 500 in the fifth Loading scheduled Events stage for multi-month Seasons.
+
+## 1.9.2.5
+
+- Filters the Teams API request by the selected Dash Season before pagination, avoiding the host timeout caused by loading the complete Team history.
+- Retains a defensive local Season filter in case Dash returns unrelated records.
+- Includes the HTTP status in the staged preparation error when the server returns non-JSON output.
+
 ## 1.9.2.4
 
 - Corrects the AJAX preparation progress fill when the overlay is rendered outside the Programming admin wrapper.

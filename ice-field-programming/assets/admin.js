@@ -154,6 +154,7 @@
         var close = overlay.querySelector('[data-ifprog-batch-close]');
         bar.style.backgroundColor = '#1473a8';
         var index = 0;
+        var eventWeek = 0;
 
         function runNext() {
             if (index >= stages.length) {
@@ -174,24 +175,36 @@
             }
 
             status.textContent = stages[index][1] + '…';
-            detail.textContent = 'Step ' + (index + 1) + ' of ' + stages.length;
+            detail.textContent = stages[index][0] === 'events' && eventWeek ? 'Scheduled Events week ' + (eventWeek + 1) : 'Step ' + (index + 1) + ' of ' + stages.length;
             bar.style.width = Math.round((index / stages.length) * 100) + '%';
             var payload = new FormData();
             payload.append('action', 'ifprog_warm_preview_stage');
             payload.append('nonce', window.ifprogPreviewBatch.nonce);
             payload.append('stage', stages[index][0]);
             payload.append('season_id', season.value);
+            if (stages[index][0] === 'events') payload.append('event_week', eventWeek);
             if (dropin && dropin.value) payload.append('dropin_team_id', dropin.value);
 
             fetch(window.ifprogPreviewBatch.ajaxUrl, {method: 'POST', credentials: 'same-origin', body: payload})
                 .then(function (response) {
-                    return response.json().catch(function () { throw new Error('The server returned an unreadable response.'); });
+                    var status = response.status;
+                    return response.text().then(function (body) {
+                        try {
+                            return JSON.parse(body);
+                        } catch (ignore) {
+                            throw new Error('The server returned an unreadable response' + (status ? ' (HTTP ' + status + ')' : '') + '.');
+                        }
+                    });
                 })
                 .then(function (response) {
                     if (!response.success) {
                         throw new Error(response.data && response.data.message ? response.data.message : 'This Dash request failed.');
                     }
-                    index += 1;
+                    if (stages[index][0] === 'events' && response.data && response.data.more_event_weeks) {
+                        eventWeek = parseInt(response.data.event_week || eventWeek + 1, 10);
+                    } else {
+                        index += 1;
+                    }
                     runNext();
                 })
                 .catch(function (error) {

@@ -1,6 +1,6 @@
 === Ice & Field Programming ===
 Contributors: iceandfield
-Stable tag: 1.9.2.4
+Stable tag: 1.9.2.6
 Requires at least: 6.4
 Requires PHP: 7.4
 Requires Plugins: ice-field-dash-connector
@@ -10,6 +10,10 @@ Manage seasons, program groups, levels, classes, leagues, camps, clinics, and pu
 == Description ==
 
 Ice & Field Programming is the public program and registration module for the main Ice & Field website.
+
+Version 1.9.2.6 prepares scheduled Events in separate seven-day requests and reuses those weekly caches when building the protected review. Long Seasons no longer ask one WordPress request to retrieve the facility's complete multi-month event range.
+
+Version 1.9.2.5 limits Preview, Check Changes, and Import Team preparation to the selected Dash Season at the API request instead of downloading every Team before filtering in WordPress. A defensive local Season check remains in place, and unreadable AJAX failures now include the HTTP status when one is available.
 
 Version 1.9.2.4 includes the AJAX batching introduced in 1.9.2.3 and forces browsers to load the corrected progress-bar styling. Protected previews, comparisons, and imports prepare Teams, Leagues, Products, registration availability, and Events in separate requests. A progress overlay identifies the active stage, and the final protected action reuses those prepared caches instead of asking one PHP process to load every Dash collection. Version 1.9.2.2 adds a per-Season “Pin this Season to the top” display override. Pinned Seasons appear before automatically date-sorted Seasons in customer-facing catalogs and offering lists, while all unpinned Seasons retain their existing chronological order.
 

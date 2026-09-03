@@ -2,7 +2,7 @@
 /*
 Plugin Name: Ice & Field Rink Displays
 Description: Combined Dash/DaySmart schedule display and rink participants/check-in display for Ice & Field.
-Version: 2.8.10
+Version: 2.8.13
 Author: Ice & Field
 Requires Plugins: ice-field-dash-connector
 Update URI: https://github.com/sarahspins/wordpress-plugins/tree/main/ice-field-rink-displays
@@ -412,6 +412,96 @@ class IFRD_Scheduled_Media {
     }
 }
 
+/** Image slideshow rows shared by the full-screen and schedule-banner displays. */
+class IFRD_Expiring_Slideshow {
+    public static function sanitize($rows, $timezone_name = '') {
+        $timezone_name = $timezone_name ?: IFRD_Scheduled_Media::timezone_name();
+        $timezone = new DateTimeZone($timezone_name);
+        $clean = array();
+        foreach ((array) $rows as $row) {
+            if (!is_array($row)) continue;
+            $url = esc_url_raw((string) ($row['url'] ?? ''));
+            $expires_at = sanitize_text_field((string) ($row['expires_at'] ?? ''));
+            if ($url === '') continue;
+            if ($expires_at !== '') {
+                $date = DateTimeImmutable::createFromFormat('!Y-m-d\TH:i', $expires_at, $timezone);
+                $errors = DateTimeImmutable::getLastErrors();
+                if (!$date || (is_array($errors) && ($errors['warning_count'] || $errors['error_count'])) || $date->format('Y-m-d\TH:i') !== $expires_at) continue;
+            }
+            $clean[] = array('url' => $url, 'expires_at' => $expires_at);
+        }
+        return $clean;
+    }
+
+    public static function active($rows, $timezone_name = '') {
+        $timezone_name = $timezone_name ?: IFRD_Scheduled_Media::timezone_name();
+        $timezone = new DateTimeZone($timezone_name);
+        $now = new DateTimeImmutable('now', $timezone);
+        $active = array();
+        foreach (self::sanitize($rows, $timezone_name) as $row) {
+            $expires = $row['expires_at'] === '' ? null : DateTimeImmutable::createFromFormat('!Y-m-d\TH:i', $row['expires_at'], $timezone);
+            if ($expires && $expires <= $now) continue;
+            $row['expires_timestamp'] = $expires ? $expires->getTimestamp() * 1000 : 0;
+            $active[] = $row;
+        }
+        return $active;
+    }
+
+    public static function render_editor($option_name, $field_name, $rows, $timezone_name, $title = 'Image Slideshow') {
+        $rows = array_values((array) $rows);
+        if (!$rows) $rows[] = array('url' => '', 'expires_at' => '');
+        ?>
+        <section class="ifrd-slideshow-editor" data-next-index="<?php echo esc_attr(count($rows)); ?>">
+            <h2><?php echo esc_html($title); ?></h2>
+            <p>Add Media Library images and an optional expiration date and time. Expired images disappear automatically. Times use <strong><?php echo esc_html($timezone_name); ?></strong>.</p>
+            <div class="ifrd-slideshow-rows">
+                <?php foreach ($rows as $index => $row) self::render_row($option_name, $field_name, $index, $row); ?>
+            </div>
+            <p><button type="button" class="button ifrd-slideshow-add">Add Image</button></p>
+            <template class="ifrd-slideshow-template"><?php self::render_row($option_name, $field_name, '__INDEX__', array()); ?></template>
+        </section>
+        <?php
+    }
+
+    private static function render_row($option_name, $field_name, $index, $row) {
+        $prefix = $option_name . '[' . $field_name . '][' . $index . ']';
+        ?>
+        <div class="ifrd-slideshow-row">
+            <div class="ifrd-media-picker" data-media-types="image" data-media-title="Choose slideshow image" data-media-button="Use this image">
+                <input class="large-text ifrd-media-url" name="<?php echo esc_attr($prefix); ?>[url]" value="<?php echo esc_attr((string) ($row['url'] ?? '')); ?>" placeholder="Select an image or paste its URL">
+                <button type="button" class="button ifrd-media-select">Choose Image</button>
+            </div>
+            <label><strong>Expires</strong><br><input type="datetime-local" step="900" name="<?php echo esc_attr($prefix); ?>[expires_at]" value="<?php echo esc_attr((string) ($row['expires_at'] ?? '')); ?>"></label>
+            <button type="button" class="button-link-delete ifrd-slideshow-remove">Remove</button>
+        </div>
+        <?php
+    }
+
+    public static function print_editor_script() { ?>
+        <style>.ifrd-slideshow-editor{margin-top:24px;padding-top:8px;border-top:1px solid #dcdcde}.ifrd-slideshow-row{display:grid;grid-template-columns:minmax(340px,1fr) 220px auto;gap:14px;align-items:end;margin:10px 0;padding:14px;border:1px solid #dcdcde;border-radius:8px;background:#fff}@media(max-width:782px){.ifrd-slideshow-row{grid-template-columns:1fr}}</style>
+        <script>(function(){document.addEventListener('click',function(e){const add=e.target.closest('.ifrd-slideshow-add'),remove=e.target.closest('.ifrd-slideshow-remove');if(add){e.preventDefault();const editor=add.closest('.ifrd-slideshow-editor'),rows=editor.querySelector('.ifrd-slideshow-rows'),i=Number(editor.dataset.nextIndex||0);rows.insertAdjacentHTML('beforeend',editor.querySelector('.ifrd-slideshow-template').innerHTML.replace(/__INDEX__/g,String(i)));editor.dataset.nextIndex=String(i+1)}if(remove){e.preventDefault();remove.closest('.ifrd-slideshow-row').remove()}})})();</script>
+    <?php }
+
+    public static function render($rows, $seconds, $class_name, $link = '', $transition = 'fade', $transition_seconds = 1) {
+        $rows = array_values((array) $rows);
+        if (!$rows) return '';
+        $transition = in_array($transition, array('fade', 'slide', 'none'), true) ? $transition : 'fade';
+        $transition_seconds = min(5, max(0.1, floatval($transition_seconds)));
+        $id = 'ifrd_slides_' . wp_generate_password(8, false, false);
+        ob_start(); ?>
+        <div id="<?php echo esc_attr($id); ?>" class="<?php echo esc_attr($class_name); ?> ifrd-expiring-slideshow ifrd-transition-<?php echo esc_attr($transition); ?>" style="--ifrd-slide-transition:<?php echo esc_attr($transition_seconds); ?>s">
+            <?php foreach ($rows as $index => $row): ?>
+                <?php if ($link): ?><a href="<?php echo esc_url($link); ?>" class="ifrd-slide<?php echo $index ? '' : ' is-active'; ?>" data-expires="<?php echo esc_attr($row['expires_timestamp']); ?>"><?php else: ?><span class="ifrd-slide<?php echo $index ? '' : ' is-active'; ?>" data-expires="<?php echo esc_attr($row['expires_timestamp']); ?>"><?php endif; ?>
+                <img src="<?php echo esc_url($row['url']); ?>" alt="">
+                <?php echo $link ? '</a>' : '</span>'; ?>
+            <?php endforeach; ?>
+        </div>
+        <style>#<?php echo esc_attr($id); ?> .ifrd-slide{opacity:0;visibility:hidden;transition:opacity var(--ifrd-slide-transition) ease,transform var(--ifrd-slide-transition) ease}#<?php echo esc_attr($id); ?> .ifrd-slide.is-active{opacity:1;visibility:visible}#<?php echo esc_attr($id); ?>.ifrd-transition-slide .ifrd-slide{transform:translateX(4%)}#<?php echo esc_attr($id); ?>.ifrd-transition-slide .ifrd-slide.is-active{transform:translateX(0)}#<?php echo esc_attr($id); ?>.ifrd-transition-none .ifrd-slide{transition:none}</style>
+        <script>(function(){const root=document.getElementById(<?php echo wp_json_encode($id); ?>);if(!root)return;let current=0;function show(){const slides=Array.from(root.querySelectorAll('.ifrd-slide')).filter(function(s){const x=Number(s.dataset.expires||0);if(x&&x<=Date.now()){s.remove();return false}return true});if(!slides.length){root.style.display='none';return}current=current%slides.length;slides.forEach(function(s,i){s.classList.toggle('is-active',i===current)});current++}show();setInterval(show,<?php echo absint(max(2, intval($seconds))) * 1000; ?>)})();</script>
+        <?php return ob_get_clean();
+    }
+}
+
 /**
  * Full-screen looping video display for lobby and rink screens.
  */
@@ -419,7 +509,7 @@ class IFRD_Video_For_Screens {
     const OPTION = 'ifrd_video_screen_settings';
     const REFRESH_OPTION = 'ifrd_video_screen_refresh_version';
     const PLUGIN_VERSION_OPTION = 'ifrd_plugin_version';
-    const PLUGIN_VERSION = '2.8.10';
+    const PLUGIN_VERSION = '2.8.13';
     const AJAX_ACTION = 'ifrd_video_screen_refresh_status';
     const CAPABILITY = 'edit_pages';
 
@@ -439,6 +529,11 @@ class IFRD_Video_For_Screens {
         return array(
             'video_url' => '',
             'video_schedule' => array(),
+            'display_mode' => 'video',
+            'slideshow_images' => array(),
+            'slideshow_seconds' => '10',
+            'slideshow_transition' => 'fade',
+            'slideshow_transition_seconds' => '1',
         );
     }
 
@@ -497,6 +592,11 @@ class IFRD_Video_For_Screens {
             'banner_url' => '',
             'banner_media_type' => 'auto',
             'banner_schedule' => array(),
+            'banner_mode' => 'single',
+            'banner_slideshow_images' => array(),
+            'banner_slideshow_seconds' => '10',
+            'banner_slideshow_transition' => 'fade',
+            'banner_slideshow_transition_seconds' => '1',
         ));
         $timezone_name = IFRD_Scheduled_Media::timezone_name($schedule_settings);
         $video = IFRD_Scheduled_Media::effective($video_settings['video_url'], 'video', $video_settings['video_schedule'], $timezone_name);
@@ -521,10 +621,20 @@ class IFRD_Video_For_Screens {
         $old = $this->opts();
         $timezone_name = IFRD_Scheduled_Media::timezone_name();
         $video_schedule = IFRD_Scheduled_Media::sanitize($input['video_schedule'] ?? array(), $timezone_name);
+        $display_mode = (($input['display_mode'] ?? 'video') === 'slideshow') ? 'slideshow' : 'video';
+        $slideshow_images = IFRD_Expiring_Slideshow::sanitize($input['slideshow_images'] ?? array(), $timezone_name);
+        $slideshow_seconds = (string) min(300, max(2, intval($input['slideshow_seconds'] ?? 10)));
+        $slideshow_transition = in_array(($input['slideshow_transition'] ?? 'fade'), array('fade', 'slide', 'none'), true) ? $input['slideshow_transition'] : 'fade';
+        $slideshow_transition_seconds = (string) min(5, max(0.1, floatval($input['slideshow_transition_seconds'] ?? 1)));
 
         if (
             $video_url !== (string) ($old['video_url'] ?? '') ||
-            wp_json_encode($video_schedule) !== wp_json_encode($old['video_schedule'] ?? array())
+            wp_json_encode($video_schedule) !== wp_json_encode($old['video_schedule'] ?? array()) ||
+            $display_mode !== ($old['display_mode'] ?? 'video') ||
+            wp_json_encode($slideshow_images) !== wp_json_encode($old['slideshow_images'] ?? array()) ||
+            $slideshow_seconds !== (string) ($old['slideshow_seconds'] ?? '10')
+            || $slideshow_transition !== ($old['slideshow_transition'] ?? 'fade')
+            || $slideshow_transition_seconds !== (string) ($old['slideshow_transition_seconds'] ?? '1')
         ) {
             self::bump_refresh_version();
         }
@@ -532,6 +642,11 @@ class IFRD_Video_For_Screens {
         return array(
             'video_url' => $video_url,
             'video_schedule' => $video_schedule,
+            'display_mode' => $display_mode,
+            'slideshow_images' => $slideshow_images,
+            'slideshow_seconds' => $slideshow_seconds,
+            'slideshow_transition' => $slideshow_transition,
+            'slideshow_transition_seconds' => $slideshow_transition_seconds,
         );
     }
 
@@ -559,12 +674,6 @@ class IFRD_Video_For_Screens {
 
     public function page() {
         $o = $this->opts();
-        $effective_banner = IFRD_Scheduled_Media::effective($o['banner_url'], $o['banner_media_type'], $o['banner_schedule'] ?? array(), IFRD_Scheduled_Media::timezone_name($o));
-        $next_banner_at = '';
-        $now_key = (new DateTimeImmutable('now', new DateTimeZone(IFRD_Scheduled_Media::timezone_name($o))))->format('Y-m-d\TH:i');
-        foreach (IFRD_Scheduled_Media::sanitize($o['banner_schedule'] ?? array(), IFRD_Scheduled_Media::timezone_name($o)) as $scheduled_banner) {
-            if ($scheduled_banner['starts_at'] > $now_key) { $next_banner_at = $scheduled_banner['starts_at']; break; }
-        }
         ?>
         <div class="wrap">
             <h1>Video for Screens</h1>
@@ -575,6 +684,7 @@ class IFRD_Video_For_Screens {
             <form method="post" action="options.php">
                 <?php settings_fields('ifrd_video_screen_group'); ?>
                 <table class="form-table">
+                    <tr><th>Display Mode</th><td><select name="<?php echo esc_attr(self::OPTION); ?>[display_mode]"><option value="video" <?php selected($o['display_mode'], 'video'); ?>>Video</option><option value="slideshow" <?php selected($o['display_mode'], 'slideshow'); ?>>Image slideshow</option></select></td></tr>
                     <tr>
                         <th>Full-Screen Video</th>
                         <td><?php IFRD_Banner_Media::render_picker(self::OPTION, $o, 'video_url', 'ifrd-video-screen-file', array('video'), array(
@@ -585,6 +695,9 @@ class IFRD_Video_For_Screens {
                         )); ?></td>
                     </tr>
                 </table>
+                <?php IFRD_Expiring_Slideshow::render_editor(self::OPTION, 'slideshow_images', $o['slideshow_images'], IFRD_Scheduled_Media::timezone_name(), 'Screen Image Slideshow'); ?>
+                <p><label><strong>Seconds per image</strong> <input type="number" min="2" max="300" class="small-text" name="<?php echo esc_attr(self::OPTION); ?>[slideshow_seconds]" value="<?php echo esc_attr($o['slideshow_seconds']); ?>"></label></p>
+                <p><label><strong>Transition</strong> <select name="<?php echo esc_attr(self::OPTION); ?>[slideshow_transition]"><option value="fade" <?php selected($o['slideshow_transition'], 'fade'); ?>>Fade</option><option value="slide" <?php selected($o['slideshow_transition'], 'slide'); ?>>Slide</option><option value="none" <?php selected($o['slideshow_transition'], 'none'); ?>>None</option></select></label> &nbsp; <label><strong>Duration</strong> <input type="number" min="0.1" max="5" step="0.1" class="small-text" name="<?php echo esc_attr(self::OPTION); ?>[slideshow_transition_seconds]" value="<?php echo esc_attr($o['slideshow_transition_seconds']); ?>"> seconds</label></p>
                 <?php IFRD_Scheduled_Media::render_editor(
                     self::OPTION,
                     'video_schedule',
@@ -608,11 +721,16 @@ class IFRD_Video_For_Screens {
         </div>
         <?php IFRD_Banner_Media::print_picker_script(); ?>
         <?php IFRD_Scheduled_Media::print_editor_script(); ?>
+        <?php IFRD_Expiring_Slideshow::print_editor_script(); ?>
         <?php
     }
 
     public function shortcode($atts) {
         $o = $this->opts();
+        if (($o['display_mode'] ?? 'video') === 'slideshow') {
+            $slides = IFRD_Expiring_Slideshow::active($o['slideshow_images'] ?? array(), IFRD_Scheduled_Media::timezone_name());
+            return self::render_player('', self::current_display_version(), self::AJAX_ACTION, 'ifrd-screen-video-', $slides, $o['slideshow_seconds'] ?? 10, $o['slideshow_transition'] ?? 'fade', $o['slideshow_transition_seconds'] ?? 1);
+        }
         $effective = IFRD_Scheduled_Media::effective(
             $o['video_url'] ?? '',
             'video',
@@ -625,13 +743,15 @@ class IFRD_Video_For_Screens {
         return self::render_player($video_url, $refresh_version, self::AJAX_ACTION, 'ifrd-screen-video-');
     }
 
-    public static function render_player($video_url, $refresh_version, $ajax_action, $id_prefix = 'ifrd-screen-video-') {
+    public static function render_player($video_url, $refresh_version, $ajax_action, $id_prefix = 'ifrd-screen-video-', $slides = array(), $slide_seconds = 10, $transition = 'fade', $transition_seconds = 1) {
         $id = sanitize_html_class($id_prefix) . wp_generate_password(8, false, false);
 
         ob_start();
         ?>
         <div id="<?php echo esc_attr($id); ?>" class="ifrd-screen-video">
-            <?php if ($video_url !== ''): ?>
+            <?php if ($slides): ?>
+                <?php echo IFRD_Expiring_Slideshow::render($slides, $slide_seconds, 'ifrd-fullscreen-slideshow', '', $transition, $transition_seconds); ?>
+            <?php elseif ($video_url !== ''): ?>
                 <video autoplay muted loop playsinline preload="auto">
                     <source src="<?php echo esc_url($video_url); ?>">
                 </video>
@@ -643,6 +763,7 @@ class IFRD_Video_For_Screens {
             html.ifrd-screen-video-active,body.ifrd-screen-video-active{margin:0!important;padding:0!important;overflow:hidden!important;background:#000!important}
             #<?php echo esc_attr($id); ?>{position:fixed;inset:0;z-index:2147483000;display:grid;width:100vw;height:100vh;place-items:center;overflow:hidden;background:#000}
             #<?php echo esc_attr($id); ?> video{display:block;width:100%;height:100%;object-fit:cover;background:#000}
+            #<?php echo esc_attr($id); ?> .ifrd-fullscreen-slideshow,#<?php echo esc_attr($id); ?> .ifrd-slide,#<?php echo esc_attr($id); ?> .ifrd-slide img{position:absolute;inset:0;width:100%;height:100%}#<?php echo esc_attr($id); ?> .ifrd-slide img{object-fit:contain;background:#000}
             html.ifrd-screen-video-webos #<?php echo esc_attr($id); ?>{inset:auto;top:0;left:0;display:block}
             html.ifrd-screen-video-webos #<?php echo esc_attr($id); ?> video{position:absolute;top:0;left:0;max-width:none;max-height:none;object-fit:fill}
             #<?php echo esc_attr($id); ?> .ifrd-screen-video-empty{padding:32px;color:#fff;font:700 clamp(20px,3vw,42px)/1.2 system-ui,sans-serif;text-align:center}
@@ -659,6 +780,7 @@ class IFRD_Video_For_Screens {
             const embeddedVersion=<?php echo wp_json_encode($refresh_version); ?>;
             const initialUrl=new URL(window.location.href);
             let currentVersion=initialUrl.searchParams.get('screen_refresh')||embeddedVersion;
+            if(initialUrl.searchParams.has('screen_refresh')&&window.history&&history.replaceState){setTimeout(function(){initialUrl.searchParams.delete('screen_refresh');history.replaceState(history.state,'',initialUrl.toString());},0);}
 
             async function checkForRefresh(){
                 try{
@@ -1011,6 +1133,8 @@ class IFRD_Schedule_Display {
     const CRON_HOOK = 'ifrd_refresh_static_today_schedule';
     const BACKGROUND_REFRESH_HOOK = 'ifrd_background_refresh_today_schedule';
     const BACKGROUND_REQUEST_LOCK = 'ifrd_background_schedule_refresh_requested';
+    const MANUAL_REFRESH_HOOK = 'ifrd_manual_refresh_schedule_data';
+    const MANUAL_REFRESH_STATUS_OPTION = 'ifrd_manual_schedule_refresh_status';
     const CAPABILITY = 'edit_pages';
     const REFRESH_HEALTH_OPTION = 'ifrd_schedule_refresh_health';
 
@@ -1020,6 +1144,7 @@ class IFRD_Schedule_Display {
         add_filter('option_page_capability_ifrd_schedule_group', array($this, 'settings_capability'));
         add_action('admin_enqueue_scripts', array($this, 'admin_assets'));
         add_action('admin_post_ifrd_refresh_schedule_screens', array($this, 'refresh_screens'));
+        add_action('admin_post_ifrd_force_schedule_data_refresh', array($this, 'queue_manual_data_refresh'));
         add_shortcode('rink_schedule_display', array($this, 'shortcode'));
         add_action('wp_ajax_ifrd_schedule_data', array($this, 'ajax'));
         add_action('wp_ajax_nopriv_ifrd_schedule_data', array($this, 'ajax'));
@@ -1028,7 +1153,8 @@ class IFRD_Schedule_Display {
         add_filter('cron_schedules', array($this, 'cron_schedules'));
         add_action('init', array($this, 'ensure_cron'));
         add_action(self::CRON_HOOK, array($this, 'warm_static_cache'));
-        add_action(self::BACKGROUND_REFRESH_HOOK, array($this, 'warm_static_cache'));
+        add_action(self::BACKGROUND_REFRESH_HOOK, array($this, 'refresh_registration_counts'));
+        add_action(self::MANUAL_REFRESH_HOOK, array($this, 'run_manual_data_refresh'));
     }
 
     public function cron_schedules($schedules) {
@@ -1045,10 +1171,72 @@ class IFRD_Schedule_Display {
     public static function deactivate() {
         wp_clear_scheduled_hook(self::CRON_HOOK);
         wp_clear_scheduled_hook(self::BACKGROUND_REFRESH_HOOK);
+        wp_clear_scheduled_hook(self::MANUAL_REFRESH_HOOK);
     }
 
     public function warm_static_cache() {
         $this->payload(true);
+    }
+
+    public function queue_manual_data_refresh() {
+        if (!current_user_can(self::CAPABILITY)) {
+            wp_die(esc_html__('You are not allowed to refresh schedule data.', 'ice-field-rink-displays'));
+        }
+        check_admin_referer('ifrd_force_schedule_data_refresh');
+
+        update_option(self::MANUAL_REFRESH_STATUS_OPTION, array('status' => 'queued', 'requested_at' => time()), false);
+        if (!wp_next_scheduled(self::MANUAL_REFRESH_HOOK)) {
+            wp_schedule_single_event(time(), self::MANUAL_REFRESH_HOOK);
+        }
+        if (function_exists('spawn_cron')) spawn_cron(time());
+
+        wp_safe_redirect(add_query_arg(array('page' => 'ifrd-schedule-display', 'schedule-data-refresh' => 'queued'), admin_url('admin.php')));
+        exit;
+    }
+
+    public function run_manual_data_refresh() {
+        if (get_transient(self::CACHE_LOCK)) {
+            if (!wp_next_scheduled(self::MANUAL_REFRESH_HOOK)) wp_schedule_single_event(time() + 30, self::MANUAL_REFRESH_HOOK);
+            return;
+        }
+        delete_transient(self::CACHE);
+        $result = $this->payload(true);
+        if (is_wp_error($result)) {
+            update_option(self::MANUAL_REFRESH_STATUS_OPTION, array('status' => 'failed', 'completed_at' => time(), 'message' => $result->get_error_message()), false);
+            return;
+        }
+        IFRD_Video_For_Screens::bump_refresh_version();
+        update_option(self::MANUAL_REFRESH_STATUS_OPTION, array('status' => 'complete', 'completed_at' => time()), false);
+    }
+
+    public function refresh_registration_counts() {
+        try {
+            $payload = get_transient(self::CACHE);
+            if (!is_array($payload)) {
+                $this->payload(true);
+                return;
+            }
+
+            foreach (array('goldAll', 'silverAll') as $key) {
+                $payload[$key] = $this->refresh_event_registration_counts((array) ($payload[$key] ?? array()));
+            }
+            $page_size = max(1, intval($payload['pageSize'] ?? 1));
+            $payload['gold'] = array_slice((array) ($payload['goldAll'] ?? array()), 0, $page_size);
+            $payload['silver'] = array_slice((array) ($payload['silverAll'] ?? array()), 0, $page_size);
+            $payload['updatedAt'] = current_time('mysql');
+            $payload['generatedAt'] = gmdate('c');
+
+            $today = (new DateTimeImmutable('now', new DateTimeZone($this->schedule_timezone_name())))->format('Y-m-d');
+            set_transient(self::CACHE, $payload, 240);
+            set_transient(self::STALE_CACHE . '_' . $today, $payload, 2 * DAY_IN_SECONDS);
+            if (IFRD_Static_Schedule_Cache::write('today-' . $today, $payload)) {
+                $this->note_refresh_success();
+            } else {
+                $this->note_refresh_failure('The registration refresh could not update the static schedule file.');
+            }
+        } finally {
+            delete_transient(self::BACKGROUND_REQUEST_LOCK);
+        }
     }
 
     public function request_background_refresh() {
@@ -1087,6 +1275,11 @@ class IFRD_Schedule_Display {
             'banner_url' => '',
             'banner_media_type' => 'auto',
             'banner_schedule' => array(),
+            'banner_mode' => 'single',
+            'banner_slideshow_images' => array(),
+            'banner_slideshow_seconds' => '10',
+            'banner_slideshow_transition' => 'fade',
+            'banner_slideshow_transition_seconds' => '1',
             'banner_link' => '',
             'locker_name_map' => "4=Warm Room\n5=Party Room 1\n6=Party Room 2\n7=Locker Room B\n8=Locker Room D\n9=Party Room 3\n10=Locker Room C\n11=Locker Room E\n12=Locker Room H\n13=Locker Room I\n14=Locker Room J\n15=Locker Room K",
             'bg_color' => '#06131f',
@@ -1157,12 +1350,21 @@ class IFRD_Schedule_Display {
                 $input['banner_schedule'] ?? array(),
                 IFRD_Scheduled_Media::timezone_name($old)
             );
+            $clean['banner_mode'] = (($input['banner_mode'] ?? 'single') === 'slideshow') ? 'slideshow' : 'single';
+            $clean['banner_slideshow_images'] = IFRD_Expiring_Slideshow::sanitize($input['banner_slideshow_images'] ?? array(), IFRD_Scheduled_Media::timezone_name($old));
+            $clean['banner_slideshow_seconds'] = (string) min(300, max(2, intval($input['banner_slideshow_seconds'] ?? 10)));
+            $clean['banner_slideshow_transition'] = in_array(($input['banner_slideshow_transition'] ?? 'fade'), array('fade', 'slide', 'none'), true) ? $input['banner_slideshow_transition'] : 'fade';
+            $clean['banner_slideshow_transition_seconds'] = (string) min(5, max(0.1, floatval($input['banner_slideshow_transition_seconds'] ?? 1)));
         } else {
 
             foreach ($defaults as $key => $default) {
                 if ($key === 'banner_schedule') {
                     $submitted_timezone = sanitize_text_field((string) ($input['display_timezone'] ?? $old['display_timezone'] ?? 'America/Chicago'));
                     $clean[$key] = IFRD_Scheduled_Media::sanitize($input[$key] ?? array(), $submitted_timezone);
+                    continue;
+                }
+                if ($key === 'banner_slideshow_images') {
+                    $clean[$key] = IFRD_Expiring_Slideshow::sanitize($input[$key] ?? array(), sanitize_text_field((string) ($input['display_timezone'] ?? $old['display_timezone'])));
                     continue;
                 }
 
@@ -1185,6 +1387,14 @@ class IFRD_Schedule_Display {
                     $clean[$key] = sanitize_textarea_field($value);
                 } elseif ($key === 'banner_media_type') {
                     $clean[$key] = in_array($value, array('auto', 'image', 'video'), true) ? $value : 'auto';
+                } elseif ($key === 'banner_mode') {
+                    $clean[$key] = $value === 'slideshow' ? 'slideshow' : 'single';
+                } elseif ($key === 'banner_slideshow_seconds') {
+                    $clean[$key] = (string) min(300, max(2, intval($value)));
+                } elseif ($key === 'banner_slideshow_transition') {
+                    $clean[$key] = in_array($value, array('fade', 'slide', 'none'), true) ? $value : 'fade';
+                } elseif ($key === 'banner_slideshow_transition_seconds') {
+                    $clean[$key] = (string) min(5, max(0.1, floatval($value)));
                 } elseif (substr($key, -4) === '_url' || $key === 'banner_link') {
                     $clean[$key] = esc_url_raw($value);
                 } elseif (substr($key, -6) === '_color') {
@@ -1202,6 +1412,11 @@ class IFRD_Schedule_Display {
             (string) ($clean['banner_url'] ?? '') !== (string) ($old['banner_url'] ?? '') ||
             (string) ($clean['banner_media_type'] ?? 'auto') !== (string) ($old['banner_media_type'] ?? 'auto') ||
             wp_json_encode($clean['banner_schedule'] ?? array()) !== wp_json_encode($old['banner_schedule'] ?? array())
+            || ($clean['banner_mode'] ?? 'single') !== ($old['banner_mode'] ?? 'single')
+            || wp_json_encode($clean['banner_slideshow_images'] ?? array()) !== wp_json_encode($old['banner_slideshow_images'] ?? array())
+            || ($clean['banner_slideshow_seconds'] ?? '10') !== ($old['banner_slideshow_seconds'] ?? '10')
+            || ($clean['banner_slideshow_transition'] ?? 'fade') !== ($old['banner_slideshow_transition'] ?? 'fade')
+            || ($clean['banner_slideshow_transition_seconds'] ?? '1') !== ($old['banner_slideshow_transition_seconds'] ?? '1')
         ) {
             IFRD_Video_For_Screens::bump_refresh_version();
         }
@@ -1226,11 +1441,26 @@ class IFRD_Schedule_Display {
 
     public function page() {
         $o = $this->opts();
+        $effective_banner = IFRD_Scheduled_Media::effective($o['banner_url'], $o['banner_media_type'], $o['banner_schedule'] ?? array(), IFRD_Scheduled_Media::timezone_name($o));
+        $next_banner_at = '';
+        $now_key = (new DateTimeImmutable('now', new DateTimeZone(IFRD_Scheduled_Media::timezone_name($o))))->format('Y-m-d\TH:i');
+        foreach (IFRD_Scheduled_Media::sanitize($o['banner_schedule'] ?? array(), IFRD_Scheduled_Media::timezone_name($o)) as $scheduled_banner) {
+            if ($scheduled_banner['starts_at'] > $now_key) { $next_banner_at = $scheduled_banner['starts_at']; break; }
+        }
+        $manual_refresh = (array) get_option(self::MANUAL_REFRESH_STATUS_OPTION, array());
         ?>
         <div class="wrap">
             <h1>Schedule Display</h1>
             <?php if (!empty($_GET['schedule-screens-refreshed'])): ?>
                 <div class="notice notice-success is-dismissible"><p>Schedule screen refresh requested. Open schedule displays should reload within about 60 seconds.</p></div>
+            <?php endif; ?>
+            <?php if (!empty($_GET['schedule-data-refresh'])): ?>
+                <div class="notice notice-info is-dismissible"><p>Fresh schedule data has been queued. The schedule, registration totals, and locker assignments will rebuild in the background, then open TVs will be asked to reload.</p></div>
+            <?php endif; ?>
+            <?php if (($manual_refresh['status'] ?? '') === 'complete'): ?>
+                <div class="notice notice-success is-dismissible"><p>Manual schedule data refresh completed <?php echo esc_html(wp_date('F j, Y g:i a', absint($manual_refresh['completed_at'] ?? time()))); ?>.</p></div>
+            <?php elseif (($manual_refresh['status'] ?? '') === 'failed'): ?>
+                <div class="notice notice-error is-dismissible"><p>Manual schedule data refresh failed: <?php echo esc_html($manual_refresh['message'] ?? 'Unknown error'); ?></p></div>
             <?php endif; ?>
             <section class="ifrd-admin-schedule-preview">
                 <div class="ifrd-admin-preview-head"><strong>Live display preview</strong><span><?php echo $next_banner_at ? 'Next banner: ' . esc_html(str_replace('T', ' at ', $next_banner_at)) : 'No upcoming banner change'; ?></span></div>
@@ -1303,6 +1533,11 @@ class IFRD_Schedule_Display {
                     )); ?></td></tr>
                 </table>
                 <?php endif; ?>
+                <h2>Banner Display Mode</h2>
+                <p><select name="<?php echo esc_attr(self::OPTION); ?>[banner_mode]"><option value="single" <?php selected($o['banner_mode'], 'single'); ?>>Single image/video (including scheduled videos)</option><option value="slideshow" <?php selected($o['banner_mode'], 'slideshow'); ?>>Image slideshow</option></select></p>
+                <?php IFRD_Expiring_Slideshow::render_editor(self::OPTION, 'banner_slideshow_images', $o['banner_slideshow_images'], IFRD_Scheduled_Media::timezone_name($o), 'Banner Image Slideshow'); ?>
+                <p><label><strong>Seconds per image</strong> <input type="number" min="2" max="300" class="small-text" name="<?php echo esc_attr(self::OPTION); ?>[banner_slideshow_seconds]" value="<?php echo esc_attr($o['banner_slideshow_seconds']); ?>"></label></p>
+                <p><label><strong>Transition</strong> <select name="<?php echo esc_attr(self::OPTION); ?>[banner_slideshow_transition]"><option value="fade" <?php selected($o['banner_slideshow_transition'], 'fade'); ?>>Fade</option><option value="slide" <?php selected($o['banner_slideshow_transition'], 'slide'); ?>>Slide</option><option value="none" <?php selected($o['banner_slideshow_transition'], 'none'); ?>>None</option></select></label> &nbsp; <label><strong>Duration</strong> <input type="number" min="0.1" max="5" step="0.1" class="small-text" name="<?php echo esc_attr(self::OPTION); ?>[banner_slideshow_transition_seconds]" value="<?php echo esc_attr($o['banner_slideshow_transition_seconds']); ?>"> seconds</label></p>
                 <?php IFRD_Scheduled_Media::render_editor(
                     self::OPTION,
                     'banner_schedule',
@@ -1311,6 +1546,14 @@ class IFRD_Schedule_Display {
                     'Scheduled Banner Video Changes'
                 ); ?>
                 <?php submit_button(); ?>
+            </form>
+            <hr>
+            <h2>Refresh Schedule Data</h2>
+            <p>Bypass the saved schedule cache and rebuild today’s events, registration totals, and locker assignments. The refresh runs in the background and asks open TVs to reload after it completes.</p>
+            <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+                <input type="hidden" name="action" value="ifrd_force_schedule_data_refresh">
+                <?php wp_nonce_field('ifrd_force_schedule_data_refresh'); ?>
+                <?php submit_button('Refresh Schedule Data Now', 'secondary', 'submit', false); ?>
             </form>
             <hr>
             <h2>Update Schedule Video</h2>
@@ -1325,6 +1568,7 @@ class IFRD_Schedule_Display {
         </div>
         <?php IFRD_Banner_Media::print_picker_script(); ?>
         <?php IFRD_Scheduled_Media::print_editor_script(); ?>
+        <?php IFRD_Expiring_Slideshow::print_editor_script(); ?>
         <script>(function(){const field=document.getElementById('ifrd-schedule-banner');const preview=document.querySelector('[data-admin-banner-preview]');if(!field||!preview)return;field.addEventListener('input',function(){const url=field.value.trim();const type=field.closest('.ifrd-media-picker').querySelector('.ifrd-media-type');const video=(type&&type.value==='video')||/\.(mp4|m4v|webm|ogv|ogg|mov)(?:[?#]|$)/i.test(url);preview.innerHTML=url?(video?'<video muted loop autoplay playsinline src="'+url.replace(/"/g,'&quot;')+'"></video>':'<img src="'+url.replace(/"/g,'&quot;')+'" alt="">'):'<span>No banner selected</span>';});})();</script>
         <?php
     }
@@ -1751,6 +1995,30 @@ class IFRD_Schedule_Display {
         }
 
         return !empty($payload['data']) && is_array($payload['data']) ? count($payload['data']) : 0;
+    }
+
+    private function refresh_event_registration_counts($events) {
+        $participant_settings = $this->participant_display_metadata_settings();
+        $schedule_settings = $this->opts();
+
+        foreach ($events as &$event) {
+            if (!$this->event_qualifies_for_participant_display($event, $participant_settings['qualifying_keywords'])) continue;
+            $registrant_count = $this->get_event_registrant_count($event['id'] ?? '', $participant_settings);
+            if (is_wp_error($registrant_count)) continue;
+
+            $event['registrantCount'] = $registrant_count;
+            $event['registrantText'] = $registrant_count === 1 ? '1 registered skater' : $registrant_count . ' registered skaters';
+            $event['isFull'] = false;
+            $event['fullLabel'] = '';
+            $capacity = isset($event['capacity']) ? max(0, intval($event['capacity'])) : 0;
+            $full_label = trim((string) ($schedule_settings['full_session_label'] ?? 'FULL'));
+            if ($capacity > 0 && $registrant_count >= $capacity && $full_label !== '') {
+                $event['isFull'] = true;
+                $event['fullLabel'] = $full_label;
+            }
+        }
+        unset($event);
+        return $events;
     }
 
     private function add_locker_data_to_events($events, $locker_name_map = '') {
@@ -2249,6 +2517,9 @@ class IFRD_Schedule_Display {
         );
         $o['banner_url'] = $effective_banner['url'];
         $o['banner_media_type'] = $effective_banner['type'];
+        $banner_slides = (($o['banner_mode'] ?? 'single') === 'slideshow')
+            ? IFRD_Expiring_Slideshow::active($o['banner_slideshow_images'] ?? array(), IFRD_Scheduled_Media::timezone_name($o))
+            : array();
         $id = 'ifrd_sched_' . wp_generate_password(8, false);
         $screen_refresh_version = IFRD_Video_For_Screens::current_display_version();
         $today = new DateTimeImmutable('now', new DateTimeZone($this->schedule_timezone_name()));
@@ -2282,11 +2553,13 @@ class IFRD_Schedule_Display {
                 <section class="ifrd-schedule-panel"><h2><?php echo esc_html($o['silver_title']); ?></h2><div class="ifrd-schedule-list" data-list="silver"></div></section>
             </div>
             <div class="ifrd-schedule-footer">
-                <span class="ifrd-schedule-health" data-status>Display 2.8.10 • API status: connecting… 0s</span>
+                <span class="ifrd-schedule-health" data-status>Display 2.8.13 • API status: connecting… 0s</span>
 				<span data-updated>Last updated: --</span>
 			</div>
 			<div class="ifrd-schedule-footer ifrd-schedule-banner-footer">
-                <?php if (!empty($o['banner_url'])): ?>
+                <?php if ($banner_slides): ?>
+                    <?php echo IFRD_Expiring_Slideshow::render($banner_slides, $o['banner_slideshow_seconds'] ?? 10, 'ifrd-schedule-banner-slideshow', $o['banner_link'] ?? '', $o['banner_slideshow_transition'] ?? 'fade', $o['banner_slideshow_transition_seconds'] ?? 1); ?>
+                <?php elseif (!empty($o['banner_url'])): ?>
                     <?php if (!empty($o['banner_link'])): ?><a href="<?php echo esc_url($o['banner_link']); ?>"><?php endif; ?>
                     <?php if (IFRD_Banner_Media::is_video($o['banner_url'], $o['banner_media_type'] ?? 'auto')): ?>
                         <video class="ifrd-schedule-banner" autoplay muted loop playsinline preload="metadata"><source src="<?php echo esc_url($o['banner_url']); ?>"></video>
@@ -2312,6 +2585,7 @@ class IFRD_Schedule_Display {
         .ifrd-schedule-badges{display:flex;flex-direction:column;align-items:flex-end;gap:5px}.ifrd-schedule-badge{font-size:clamp(10px,.85vw,15px);font-weight:850;white-space:nowrap;background:rgba(255,255,255,.08);border-radius:999px;padding:6px 9px}.ifrd-schedule-badge.now{color:var(--ifr-now);background:rgba(255,255,255,.12)}.ifrd-schedule-badge.next{color:var(--ifr-next)}.ifrd-schedule-badge.later{color:var(--ifr-later)}.ifrd-schedule-badge.past{color:var(--ifr-muted)}.ifrd-registration-meta{display:flex;align-items:center;gap:6px}.ifrd-full-inline{display:inline-block;color:var(--ifr-full-text);background:var(--ifr-full-bg);border-radius:999px;padding:2px 6px;font-size:.72em;font-weight:850;line-height:1.15;white-space:nowrap}
         .ifrd-schedule-additional,.ifrd-schedule-empty,.ifrd-schedule-error{color:var(--ifr-muted);font-size:clamp(13px,1vw,18px);font-weight:700;padding-top:8px}.ifrd-schedule-error{color:#ffd4d4}.ifrd-schedule-group-label{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:6px 0 0;padding:6px 8px 2px;border-top:1px solid rgba(255,255,255,.14);color:var(--ifr-later);font-size:clamp(11px,.9vw,16px);font-weight:850;text-transform:uppercase;letter-spacing:.08em}.ifrd-schedule-rotation{color:var(--ifr-muted);font-size:clamp(10px,.8vw,14px);font-weight:800;text-transform:none;letter-spacing:0}.ifrd-schedule-later-page.is-rotating{animation:ifrd-page-slide .45s ease-out}@keyframes ifrd-page-slide{from{opacity:.25;transform:translateY(10px)}to{opacity:1;transform:none}}
         .ifrd-schedule-footer{display:flex;align-items:stretch;justify-content:space-between;gap:12px;color:var(--ifr-muted);font-size:8px;margin-top: -8px;margin-bottom: 0px;}.ifrd-schedule-health:empty{display:none}.ifrd-schedule-banner-footer{width:100%;justify-content:center;min-width:0}.ifrd-schedule-banner-footer>a{display:flex;width:100%;justify-content:center;min-width:0}.ifrd-schedule-banner{display:block;width:100%;min-height:90px;max-height:140px;object-fit:contain;object-position:center center;border-radius:8px}.ifrd-schedule-locker{display:block}
+        .ifrd-schedule-banner-slideshow{position:relative;width:100%;height:140px}.ifrd-schedule-banner-slideshow .ifrd-slide{position:absolute;inset:0;width:100%;height:100%}.ifrd-schedule-banner-slideshow img{display:block;width:100%;height:100%;object-fit:contain;object-position:center center;border-radius:8px}
         @media(max-width:99999px){.ifrd-schedule-grid{grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important}}
         </style>
         <script type="text/plain" data-ifrd-legacy-script>
@@ -2333,12 +2607,13 @@ class IFRD_Schedule_Display {
             const embeddedRefreshVersion=<?php echo wp_json_encode($screen_refresh_version); ?>;
             const initialPageUrl=new URL(window.location.href);
             let currentRefreshVersion=initialPageUrl.searchParams.get('screen_refresh')||embeddedRefreshVersion;
+            if(initialPageUrl.searchParams.has('screen_refresh')&&window.history&&history.replaceState){setTimeout(function(){initialPageUrl.searchParams.delete('screen_refresh');history.replaceState(history.state,'',initialPageUrl.toString());},0);}
             async function checkForScreenRefresh(){try{const body=new URLSearchParams();body.set('action',<?php echo wp_json_encode(IFRD_Video_For_Screens::AJAX_ACTION); ?>);const response=await fetch(<?php echo wp_json_encode(admin_url('admin-ajax.php')); ?>,{method:'POST',headers:{'Accept':'application/json','Content-Type':'application/x-www-form-urlencoded; charset=UTF-8'},body:body.toString(),credentials:'same-origin',cache:'no-store'});const payload=await response.json();const latest=String(payload&&payload.success&&payload.data&&payload.data.version||'');if(!latest||latest===currentRefreshVersion)return;currentRefreshVersion=latest;const target=new URL(window.location.href);target.searchParams.set('screen_refresh',latest);window.location.replace(target.toString());}catch(ignore){}}
             setInterval(checkForScreenRefresh,60000);setTimeout(checkForScreenRefresh,5000);document.addEventListener('visibilitychange',function(){if(!document.hidden)checkForScreenRefresh();});
             clock();setInterval(clock,1000);showCachedSchedule();load();setInterval(load,<?php echo max(30,intval($o['refresh_seconds']))*1000; ?>);setInterval(function(){if(currentScheduleData)displaySchedule(currentScheduleData);},30000);
         })();
         </script>
-        <script src="<?php echo esc_url(plugin_dir_url(__FILE__) . 'assets/schedule-display.js?ver=2.8.10'); ?>"></script>
+        <script src="<?php echo esc_url(plugin_dir_url(__FILE__) . 'assets/schedule-display.js?ver=2.8.13'); ?>"></script>
         <?php
         return ob_get_clean();
     }

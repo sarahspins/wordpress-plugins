@@ -457,6 +457,22 @@ jQuery(function($){
         };
     }
 
+    function assignmentDateDetails() {
+        if ($('#ifdc-assignment-date-mode').val() !== 'custom') {
+            return assignmentMonthDetails($('#ifdc-assignment-month').val());
+        }
+        const start = String($('#ifdc-assignment-start').val() || '');
+        const end = String($('#ifdc-assignment-end').val() || '');
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end)) return null;
+        return {start:start, end:end, label:start === end ? start : start + ' through ' + end};
+    }
+
+    function updateAssignmentDateMode() {
+        const custom = $('#ifdc-assignment-date-mode').val() === 'custom';
+        $('#ifdc-assignment-month-field').prop('hidden', custom);
+        $('#ifdc-assignment-custom-range').prop('hidden', !custom);
+    }
+
     function populateAssignmentMonthSearch(force) {
         const details = assignmentMonthDetails($('#ifdc-assignment-month').val());
         if (!details) return;
@@ -1096,9 +1112,9 @@ jQuery(function($){
         const $button = $(this);
         const $status = $('#ifdc-assignment-event-status');
         populateAssignmentCapacity(false);
-        const month = assignmentMonthDetails($('#ifdc-assignment-month').val());
-        if (!month) {
-            showResult($status, false, 'Choose a month before searching.');
+        const range = assignmentDateDetails();
+        if (!range) {
+            showResult($status, false, 'Choose a valid month or custom date range before searching.');
             return;
         }
         $button.prop('disabled', true).text('Searching…');
@@ -1106,8 +1122,8 @@ jQuery(function($){
         $.post(IFDC.ajax, {
             action: 'ifdc_search_assignment_events',
             nonce: IFDC.nonce,
-            start: month.start,
-            end: month.end,
+            start: range.start,
+            end: range.end,
             name: $('#ifdc-assignment-name').val(),
             event_type: $('#ifdc-assignment-type').val(),
             include_other: $('#ifdc-assignment-include-other').is(':checked') ? 1 : 0,
@@ -1172,17 +1188,20 @@ jQuery(function($){
         });
     });
 
-    $('#ifdc-assignment-month').on('change', function(){
+    $('#ifdc-assignment-date-mode, #ifdc-assignment-month, #ifdc-assignment-start, #ifdc-assignment-end').on('change', function(){
+        updateAssignmentDateMode();
         populateAssignmentMonthSearch(true);
         assignmentTeam = null;
         assignmentEvents = [];
         $('#ifdc-clear-assignment-team').prop('disabled', true);
         $('#ifdc-assignment-team-results').empty();
         $('#ifdc-assignment-team-status, #ifdc-assignment-event-status, #ifdc-assignment-apply-status').attr('hidden', true);
-        $('#ifdc-assignment-events').html('<div class="ifdc-empty-state"><span class="dashicons dashicons-calendar-alt"></span><h3>No preview loaded</h3><p>Search the selected month. Nothing in Dash changes during the search.</p></div>');
+        $('#ifdc-assignment-events').html('<div class="ifdc-empty-state"><span class="dashicons dashicons-calendar-alt"></span><h3>No preview loaded</h3><p>Search the selected dates. Nothing in Dash changes during the search.</p></div>');
         $('#ifdc-select-all-events, #ifdc-deselect-all-events').prop('disabled', true);
         updateAssignmentControls();
     });
+
+    updateAssignmentDateMode();
 
     $(document).on('change', 'input[name="ifdc-assignment-team"]', function(){
         assignmentTeam = {id: parseInt($(this).val(), 10), label: String($(this).data('label') || '')};

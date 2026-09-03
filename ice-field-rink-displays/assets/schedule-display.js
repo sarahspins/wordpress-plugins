@@ -11,9 +11,9 @@
         function beginConnection() {
             started = Date.now();
             if (timer) window.clearInterval(timer);
-            status.textContent = 'Display 2.8.10 • API status: connecting… 0s';
+            status.textContent = 'Display 2.8.13 • API status: connecting… 0s';
             timer = window.setInterval(function () {
-                status.textContent = 'Display 2.8.10 • API status: connecting… ' + Math.floor((Date.now() - started) / 1000) + 's';
+                status.textContent = 'Display 2.8.13 • API status: connecting… ' + Math.floor((Date.now() - started) / 1000) + 's';
             }, 1000);
         }
         function finishConnection(message) {
@@ -226,7 +226,7 @@
                 var cached = JSON.parse(window.localStorage.getItem(cacheKey));
                 if (cached && cached.cachedDay === localDayKey()) {
                     displaySchedule(cached);
-                    status.textContent = 'Display 2.8.10 • API status: connecting — showing saved schedule';
+                    status.textContent = 'Display 2.8.13 • API status: connecting — showing saved schedule';
                     return true;
                 }
                 if (cached) window.localStorage.removeItem(cacheKey);
@@ -271,7 +271,14 @@
             }
         }
 
-        var currentRefreshVersion = new URL(window.location.href).searchParams.get('screen_refresh') || root.getAttribute('data-ifrd-refresh-version');
+        var initialPageUrl = new URL(window.location.href);
+        var currentRefreshVersion = initialPageUrl.searchParams.get('screen_refresh') || root.getAttribute('data-ifrd-refresh-version');
+        if (initialPageUrl.searchParams.has('screen_refresh') && window.history && history.replaceState) {
+            window.setTimeout(function () {
+                initialPageUrl.searchParams.delete('screen_refresh');
+                history.replaceState(history.state, '', initialPageUrl.toString());
+            }, 0);
+        }
         async function checkForScreenRefresh() {
             try {
                 var body = new URLSearchParams();

@@ -1,4 +1,6 @@
-Ice & Field Rink Displays v2.8.10
+Ice & Field Rink Displays v2.8.13
+
+Version 2.8.13 adds editor-accessible image slideshow modes to Video for Screens and the schedule banner. Each image can have its own expiration date and time, with configurable display time and fade, slide, or instant transitions. It also adds an admin-side background schedule-data refresh control, retains the lightweight three-minute registration-count refresh introduced in 2.8.11, and automatically removes the temporary screen-refresh cache-buster from the visible browser URL after reload.
 
 Version 2.8.10 adds a lightweight three-minute browser heartbeat that requests a non-blocking server-side rebuild of today's static schedule. The TV keeps showing its current schedule while Dash data and registration totals refresh in the background, then reloads the static snapshot after the queued rebuild has had time to finish. A shared transient prevents multiple screens from starting duplicate refreshes.
 

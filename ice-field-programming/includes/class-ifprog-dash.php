@@ -52,14 +52,19 @@ class IFPROG_Dash {
     }
 
     public static function teams($season_id = 0, $args = []) {
-        if (!self::ready()) return self::collection('teams', [], $args);
-        if (method_exists('IFDC_Client', 'get_teams')) {
-            return IFDC_Client::get_teams(
-                $season_id ? ['season_id' => absint($season_id)] : [],
-                wp_parse_args($args, ['cache_ttl' => 300])
-            );
-        }
-        return self::collection('teams', [], $args);
+        $season_id = absint($season_id);
+        $query = ['page[size]' => 100];
+        if ($season_id) $query['filter[season_id]'] = $season_id;
+
+        $result = self::collection('teams', $query, wp_parse_args($args, ['cache_ttl' => 300]));
+        if (is_wp_error($result) || !$season_id) return $result;
+
+        // Keep a local check in case Dash ever ignores the requested filter.
+        $result['data'] = array_values(array_filter((array) ($result['data'] ?? []), function($team) use ($season_id) {
+            $attributes = is_array($team['attributes'] ?? null) ? $team['attributes'] : [];
+            return absint($attributes['season_id'] ?? 0) === $season_id;
+        }));
+        return $result;
     }
 
     public static function team($team_id, $args = []) {

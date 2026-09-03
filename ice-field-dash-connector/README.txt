@@ -1,7 +1,12 @@
 Ice & Field Dash Connector
-Version 1.7.21
+Version 1.7.22
 
 Shared Dash/DaySmart connection for Ice & Field WordPress plugins.
+
+1.7.22 adds:
+- Whole Month or Custom Date Range selection for guarded Event Assignment searches
+- Inclusive start/end dates with the existing 92-day safety limit
+- Custom ranges for assignment, capacity, naming, and bulk Event Type correction previews
 
 1.7.21 updates:
 - Event Type IDs are preserved as identifiers, including letter-based values such as k
