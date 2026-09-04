@@ -1,6 +1,6 @@
-ICE & FIELD PRODUCTIONS THEME — VERSION 1.6.7
+ICE & FIELD PRODUCTIONS THEME — VERSION 1.6.8
 
-Version 1.6.7 adds private GitHub Release update support through Ice & Field Dash Connector.
+Version 1.6.8 uses the active theme version for CSS and JavaScript cache busting, so browsers and CDNs reliably request updated assets after each release. Version 1.6.7 added private GitHub Release update support through Ice & Field Dash Connector.
 
 INSTALLATION
 1. WordPress: Appearance > Themes > Add New > Upload Theme.

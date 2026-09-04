@@ -6,14 +6,15 @@
         root.setAttribute('data-ifrd-ready', '1');
 
         var status = root.querySelector('[data-status]');
+        var displayVersion = root.getAttribute('data-ifrd-display-version') || '';
         var started = Date.now();
         var timer = null;
         function beginConnection() {
             started = Date.now();
             if (timer) window.clearInterval(timer);
-            status.textContent = 'Display 2.8.13 • API status: connecting… 0s';
+            status.textContent = 'Display ' + displayVersion + ' • API status: connecting… 0s';
             timer = window.setInterval(function () {
-                status.textContent = 'Display 2.8.13 • API status: connecting… ' + Math.floor((Date.now() - started) / 1000) + 's';
+                status.textContent = 'Display ' + displayVersion + ' • API status: connecting… ' + Math.floor((Date.now() - started) / 1000) + 's';
             }, 1000);
         }
         function finishConnection(message) {
@@ -226,7 +227,7 @@
                 var cached = JSON.parse(window.localStorage.getItem(cacheKey));
                 if (cached && cached.cachedDay === localDayKey()) {
                     displaySchedule(cached);
-                    status.textContent = 'Display 2.8.13 • API status: connecting — showing saved schedule';
+                    status.textContent = 'Display ' + displayVersion + ' • API status: connecting — showing saved schedule';
                     return true;
                 }
                 if (cached) window.localStorage.removeItem(cacheKey);
@@ -243,7 +244,9 @@
                 var staticUrl = root.getAttribute('data-ifrd-static-url') || '';
                 if (staticUrl) {
                     try {
-                        var staticResponse = await fetchWithTimeout(staticUrl, {cache: 'no-store'}, 5000);
+                        var staticRequestUrl = new URL(staticUrl, window.location.href);
+                        staticRequestUrl.searchParams.set('ifrd_cache_bust', String(Date.now()));
+                        var staticResponse = await fetchWithTimeout(staticRequestUrl.toString(), {cache: 'no-store'}, 5000);
                         if (staticResponse.ok) schedule = await staticResponse.json();
                     } catch (ignore) {}
                 }
@@ -294,17 +297,21 @@
             } catch (ignore) {}
         }
 
-        var backgroundReloadTimer = null;
+        var backgroundReloadTimers = [];
+        function scheduleBackgroundReads() {
+            for (var index = 0; index < backgroundReloadTimers.length; index += 1) window.clearTimeout(backgroundReloadTimers[index]);
+            backgroundReloadTimers = [
+                window.setTimeout(load, 20000),
+                window.setTimeout(load, 70000)
+            ];
+        }
         async function requestFreshSchedule() {
             try {
                 var body = new URLSearchParams();
                 body.set('action', 'ifrd_request_schedule_refresh');
                 var response = await window.fetch(root.getAttribute('data-ifrd-ajax-url'), {method: 'POST', headers: {'Accept': 'application/json', 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'}, body: body.toString(), credentials: 'same-origin', cache: 'no-store'});
                 var payload = await response.json();
-                if (payload && payload.success && payload.data && payload.data.queued) {
-                    window.clearTimeout(backgroundReloadTimer);
-                    backgroundReloadTimer = window.setTimeout(load, 75000);
-                }
+                if (payload && payload.success) scheduleBackgroundReads();
             } catch (ignore) {}
         }
 

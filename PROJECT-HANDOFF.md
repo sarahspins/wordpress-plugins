@@ -4,24 +4,24 @@ Last updated: September 3, 2026
 
 ## Current published release
 
-GitHub release: `suite-17`
+GitHub release: `suite-18`
 
 | Component | Published version |
 | --- | ---: |
 | Dash Connector | 1.7.22 |
 | Programming | 1.9.2.6 |
 | Productions | 3.7.1 |
-| Rink Displays | 2.8.13 |
-| Productions Theme | 1.6.7 |
+| Rink Displays | 2.8.17 |
+| Productions Theme | 1.6.8 |
 
-Suite 17 contains all five ZIPs and `ice-field-updates.json`. It publishes custom Connector Event Assignment date ranges, bounded Programming Team and Event preparation for host reliability, and Rink Displays image slideshows and background refresh controls. The GitHub wiki update is pending explicit approval.
+Suite 18 contains all five ZIPs and `ice-field-updates.json`. It publishes the Rink Displays class-file reorganization, version-aware asset loading, cache-resistant recurring schedule reads, 48-hour expired-media cleanup, and consolidated non-linking schedule-banner controls. It also publishes Productions Theme asset cache busting based on the active theme version.
 
 ## Current state
 
 - Dash Connector 1.7.22 adds administrator-managed Event Assignment Rules, bounded read-only retries, explicit bulk Event Type Correction, string-safe DaySmart event-type IDs and dropdowns, and inclusive Custom Date Range searches up to the existing 92-day safety limit while retaining Whole Month as the default.
 - Programming 1.9.2.6 includes lightweight Season discovery, protected synchronization, classifications, and staged AJAX preparation. It filters Team requests by Season, reports HTTP status details, and splits scheduled Event preparation into cached seven-day requests to address the reproduced Flywheel/Shows-site timeouts and HTTP 500 failures.
-- Productions 3.7.1 and Productions Theme 1.6.7 are stable and published.
-- Rink Displays 2.8.13 includes the external schedule loader, adaptive Later pagination, stable pinned regions, locker/registration enrichment, atomic static schedule JSON, responsive timing, and background refreshes. It adds editor-accessible expiring image slideshows for Video for Screens and the schedule banner, configurable image and transition timing, and an admin-side background schedule-data refresh control. Temporary cache-busting parameters are removed from the visible browser URL after use.
+- Productions 3.7.1 is stable and published. Productions Theme 1.6.8 is published; its enqueued CSS and JavaScript use the active theme version for reliable browser/CDN cache busting.
+- Rink Displays 2.8.17 is published. It includes the external schedule loader, adaptive Later pagination, stable pinned regions, locker/registration enrichment, atomic static schedule JSON, responsive timing, editor-accessible expiring image slideshows, cache-resistant background schedule reads, hourly 48-hour media-list cleanup with optional attachment trashing, and consolidated non-linking schedule-banner controls for administrators and editors.
 - The wiki is public and enabled at `https://github.com/sarahspins/wordpress-plugins/wiki`.
 
 ## Hosting and API context
