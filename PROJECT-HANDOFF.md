@@ -1,6 +1,6 @@
 # Project Handoff
 
-Last updated: September 3, 2026
+Last updated: September 10, 2026
 
 ## Current published release
 
@@ -49,6 +49,7 @@ Participant-display development is tabled. Do not include or resume per-rink par
 
 ## Next likely work
 
+- Test Programming 1.9.2.7, which uses the first and last scheduled Dash Events for a class's displayed date range and warns when those dates disagree with the Team record. The test ZIP is not yet published.
 - Test Programming 1.9.2.6 Check Changes on the shows website and confirm both the filtered Teams stage and weekly Events stages complete.
 - Observe Rink Displays 2.8.13 on the shows website and LG screens, especially slideshow transitions and background registration-total refreshes.
 - Keep component README/changelog/roadmap files and the GitHub wiki synchronized with behavior changes.

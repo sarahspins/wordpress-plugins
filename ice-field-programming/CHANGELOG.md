@@ -1,5 +1,11 @@
 # Ice & Field Programming Changelog
 
+## 1.9.2.7
+
+- Compares each Team's planned dates with the first and last occurrence in its scheduled Dash Events.
+- Uses scheduled Event dates for the public Program range when Events exist, with Team dates retained as the fallback.
+- Labels Event-derived date ranges in the protected preview and warns when the Team and Event boundaries disagree.
+
 ## 1.9.2.6
 
 - Prepares scheduled Events in individual seven-day AJAX requests instead of one complete Season-range request.

@@ -1,6 +1,6 @@
 === Ice & Field Programming ===
 Contributors: iceandfield
-Stable tag: 1.9.2.6
+Stable tag: 1.9.2.7
 Requires at least: 6.4
 Requires PHP: 7.4
 Requires Plugins: ice-field-dash-connector
@@ -10,6 +10,8 @@ Manage seasons, program groups, levels, classes, leagues, camps, clinics, and pu
 == Description ==
 
 Ice & Field Programming is the public program and registration module for the main Ice & Field website.
+
+Version 1.9.2.7 compares each Dash Team's planned dates with its actual scheduled Events. When scheduled Events are available, the first and last occurrence become the Program's displayed date range; Team dates remain the fallback when no usable Events are returned. The protected preview identifies Event-derived ranges and warns when Team and Event dates disagree.
 
 Version 1.9.2.6 prepares scheduled Events in separate seven-day requests and reuses those weekly caches when building the protected review. Long Seasons no longer ask one WordPress request to retrieve the facility's complete multi-month event range.
 

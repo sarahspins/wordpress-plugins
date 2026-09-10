@@ -393,12 +393,15 @@ class IFPROG_Preview {
             $level = sanitize_text_field((string) ($league['name'] ?? ''));
             $format = self::format($season_attrs, $league, $team);
             $schedule = self::schedule($team);
-            $start_date = self::date_only($team['start_date'] ?? '');
+            $team_start_date = self::date_only($team['start_date'] ?? '');
+            $team_end_date = self::date_only($team['end_date'] ?? '');
             $event_starts = $events_by_team[$team_id] ?? [];
             if (!$event_starts && sanitize_title($format) === 'camp') {
                 $event_starts = self::team_event_starts($team_id, $season_attrs, $shared_args);
             }
-            $end_date = self::program_end_date($team, $format, $event_starts);
+            $event_date_range = self::event_date_range($event_starts);
+            $start_date = $event_date_range['start'] ?: $team_start_date;
+            $end_date = $event_date_range['end'] ?: self::program_end_date($team, $format);
             $registration_open = self::datetime_local($season_attrs['signup_start'] ?? '');
             $registration_close = self::datetime_local($season_attrs['signup_end'] ?? '');
             $age_range = IFPROG_Dash::age_range_label($league);
@@ -421,6 +424,15 @@ class IFPROG_Preview {
             if (!$registration) $warnings[] = 'Availability not found';
             if (!$online_signup) $warnings[] = 'Online signup is not enabled';
             if ($online_signup && !$registration_url) $warnings[] = 'Registration link could not be generated';
+            if (
+                $event_date_range['start'] !== '' &&
+                (
+                    ($team_start_date !== '' && $team_start_date !== $event_date_range['start']) ||
+                    ($team_end_date !== '' && $team_end_date !== $event_date_range['end'])
+                )
+            ) {
+                $warnings[] = 'Team dates differ from scheduled Events; Event dates will be used';
+            }
             if ($league_id === IFPROG_Sync::CURRENT_LEARN_TO_PLAY_LEAGUE_ID) {
                 $warnings[] = 'Season routing: Current Learn to Play';
             }
@@ -440,6 +452,9 @@ class IFPROG_Preview {
                 'schedule' => $schedule,
                 'start_date' => $start_date,
                 'end_date' => $end_date,
+                'date_source' => $event_date_range['start'] !== '' ? 'events' : 'team',
+                'team_start_date' => $team_start_date,
+                'team_end_date' => $team_end_date,
                 'registration_open' => $registration_open,
                 'registration_close' => $registration_close,
                 'age_range' => $age_range,
@@ -1166,7 +1181,12 @@ class IFPROG_Preview {
                                         </td>
                                         <td>
                                             <?php echo esc_html($row['schedule'] ?: ($standalone_level ? 'No class schedule' : 'Not supplied')); ?>
-                                            <?php if ($row['start_date']): ?><span class="ifprog-preview-sub">Starts <?php echo esc_html(self::date_label($row['start_date'])); ?></span><?php endif; ?>
+                                            <?php if ($row['start_date']): ?>
+                                                <span class="ifprog-preview-sub">
+                                                    <?php echo esc_html(self::date_range($row['start_date'], $row['end_date'])); ?>
+                                                    <?php if (($row['date_source'] ?? '') === 'events'): ?> · Scheduled Events<?php endif; ?>
+                                                </span>
+                                            <?php endif; ?>
                                         </td>
                                         <td>
                                             <span class="ifprog-status ifprog-status--<?php echo esc_attr(self::registration_status_class($row['registration_status'])); ?>"><?php echo esc_html($row['registration_status'] ? ucwords(str_replace('_', ' ', $row['registration_status'])) : 'Unknown'); ?></span>
@@ -1695,6 +1715,17 @@ class IFPROG_Preview {
         $count = absint($team['num_games'] ?? 0);
         if (!$start || !$count) return '';
         return wp_date('Y-m-d', $start + (($count - 1) * DAY_IN_SECONDS));
+    }
+
+    private static function event_date_range($event_starts) {
+        $starts = array_values(array_unique(array_filter(array_map('intval', (array) $event_starts))));
+        sort($starts, SORT_NUMERIC);
+        if (!$starts) return ['start' => '', 'end' => ''];
+
+        return [
+            'start' => wp_date('Y-m-d', reset($starts)),
+            'end' => wp_date('Y-m-d', end($starts)),
+        ];
     }
 
     private static function availability($registration) {
