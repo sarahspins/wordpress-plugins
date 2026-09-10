@@ -1,4 +1,6 @@
-Ice & Field Rink Displays v2.8.17
+Ice & Field Rink Displays v2.8.18
+
+Version 2.8.18 adds a Refresh Displayed Week control to the public schedule calendar for logged-in Editors and Administrators. The control force-rebuilds the exact week currently shown—even weeks well into the future—and immediately updates both Day and Week views from their shared fresh payload.
 
 Version 2.8.17 removes banner linking and groups Current Banner Media with the slideshow and scheduled-banner controls on the Schedule Display settings page. It retains the 2.8.16 automatic expired-media cleanup and optional Media Library trash controls.
 

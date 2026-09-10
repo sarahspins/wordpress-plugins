@@ -77,13 +77,13 @@
 
 .ifrd-calendar-controls {
     display: grid;
-    grid-template-columns: minmax(170px, .8fr) minmax(150px, .7fr) minmax(230px, 1.3fr) auto;
+    grid-template-columns: minmax(170px, .8fr) minmax(150px, .7fr) minmax(230px, 1.3fr) auto auto;
     align-items: end;
     gap: 12px;
 }
 
 .ifrd-calendar-controls.without-session-selector {
-    grid-template-columns: minmax(170px, .8fr) minmax(150px, .7fr) auto;
+    grid-template-columns: minmax(170px, .8fr) minmax(150px, .7fr) auto auto;
 }
 
 .ifrd-calendar-controls label {
@@ -117,7 +117,8 @@
     border-color: #33b6ff;
 }
 
-.ifrd-calendar-today {
+.ifrd-calendar-today,
+.ifrd-calendar-refresh {
     min-height: 48px;
     padding: 0 22px;
     border: 0;
@@ -129,6 +130,16 @@
     text-transform: uppercase;
     cursor: pointer;
     box-shadow: 0 8px 18px rgba(255, 120, 51, .22);
+}
+
+.ifrd-calendar-refresh {
+    background: var(--ifrdc-navy);
+    box-shadow: 0 8px 18px rgba(6, 77, 121, .18);
+}
+
+.ifrd-calendar-refresh:disabled {
+    cursor: wait;
+    opacity: .65;
 }
 
 .ifrd-calendar-week-nav {
@@ -672,7 +683,8 @@ button.ifrd-calendar-week-event {
         grid-template-columns: 1fr 1fr;
     }
 
-    .ifrd-calendar-today {
+    .ifrd-calendar-today,
+    .ifrd-calendar-refresh {
         grid-column: 1 / -1;
     }
 
@@ -686,7 +698,8 @@ button.ifrd-calendar-week-event {
         grid-template-columns: 1fr;
     }
 
-    .ifrd-calendar-today {
+    .ifrd-calendar-today,
+    .ifrd-calendar-refresh {
         grid-column: auto;
     }
 

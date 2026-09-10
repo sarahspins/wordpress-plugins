@@ -79,6 +79,7 @@
         var rinkSelect = root.querySelector('[data-calendar-rink]');
         var sessionSelect = root.querySelector('[data-calendar-session]');
         var todayButton = root.querySelector('[data-calendar-today]');
+        var refreshButton = root.querySelector('[data-calendar-refresh]');
         var weekNav = root.querySelector('[data-week-nav]');
         var weekRange = root.querySelector('[data-week-range]');
         var previousButton = root.querySelector('[data-week-previous]');
@@ -641,6 +642,54 @@
         todayButton.addEventListener('click', function () {
             load(config.initialDate || dateValue(new Date()), false);
         });
+
+        if (refreshButton && config.canRefresh) {
+            refreshButton.addEventListener('click', async function () {
+                var originalLabel = refreshButton.textContent;
+                refreshButton.disabled = true;
+                refreshButton.textContent = 'Refreshing…';
+                setUpdating(true);
+                status.classList.remove('is-warning');
+                status.textContent = 'Rebuilding the displayed week from Dash…';
+
+                try {
+                    var body = new URLSearchParams();
+                    body.set('action', config.refreshAction);
+                    body.set('nonce', config.nonce);
+                    body.set('date', state.data ? state.data.weekStart : mondayFor(state.date));
+
+                    var response = await fetch(config.ajaxUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Accept': 'application/json',
+                            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
+                        },
+                        body: body.toString(),
+                        credentials: 'same-origin',
+                        cache: 'no-store'
+                    });
+                    var payload = await response.json();
+                    if (!response.ok || !payload.success) {
+                        throw new Error(payload && payload.data && payload.data.message
+                            ? payload.data.message
+                            : 'Unable to refresh the displayed week.');
+                    }
+
+                    state.weekCache.set(payload.data.weekStart, payload.data);
+                    state.data = payload.data;
+                    updateSessionOptions();
+                    render();
+                    status.textContent = 'Displayed week refreshed • ' + statusMessage(payload.data);
+                } catch (error) {
+                    status.textContent = error.message;
+                    status.classList.add('is-warning');
+                } finally {
+                    setUpdating(false);
+                    refreshButton.disabled = false;
+                    refreshButton.textContent = originalLabel;
+                }
+            });
+        }
 
         previousButton.addEventListener('click', function () {
             load(addDays(state.data ? state.data.weekStart : mondayFor(state.date), -7), false);

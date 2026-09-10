@@ -61,3 +61,4 @@ Write durable facts, not a transcript. Never store credentials, tokens, private 
 - Productions extends Programming Seasons marked as Productions with show-specific content and workflows.
 - Rink Displays owns schedule/calendar/TV/media displays. Participant-display work is tabled unless Sarah explicitly resumes it.
 - Productions Theme provides presentation for the dedicated productions website.
+- Elementor Slide Scheduler is an optional standalone helper for Elementor Pro Slides and is not yet part of the five-component suite updater.

@@ -8,6 +8,7 @@
  */
 class IFRD_Schedule_Calendar {
     const AJAX_ACTION = 'ifrd_schedule_calendar_data';
+    const REFRESH_AJAX_ACTION = 'ifrd_refresh_schedule_calendar_data';
     const NONCE_ACTION = 'ifrd_schedule_calendar_nonce';
     const CRON_HOOK = 'ifrd_warm_schedule_calendar_cache';
     const REFRESH_HOOK = 'ifrd_refresh_schedule_calendar_week';
@@ -24,6 +25,7 @@ class IFRD_Schedule_Calendar {
         add_shortcode('rink_schedule_list', array($this, 'shortcode'));
         add_action('wp_ajax_' . self::AJAX_ACTION, array($this, 'ajax'));
         add_action('wp_ajax_nopriv_' . self::AJAX_ACTION, array($this, 'ajax'));
+        add_action('wp_ajax_' . self::REFRESH_AJAX_ACTION, array($this, 'ajax_refresh_week'));
         add_filter('cron_schedules', array($this, 'cron_schedules'));
         add_action('init', array($this, 'ensure_cron'));
         add_action(self::CRON_HOOK, array($this, 'warm_cache'));
@@ -110,7 +112,9 @@ class IFRD_Schedule_Calendar {
             'ajaxUrl' => admin_url('admin-ajax.php'),
             'staticBaseUrl' => IFRD_Static_Schedule_Cache::base_url(),
             'action' => self::AJAX_ACTION,
+            'refreshAction' => self::REFRESH_AJAX_ACTION,
             'nonce' => wp_create_nonce(self::NONCE_ACTION),
+            'canRefresh' => current_user_can('edit_pages'),
             'initialDate' => $today->format('Y-m-d'),
             'initialView' => $view,
             'refreshMs' => max(60, absint($o['refresh_seconds'] ?? 300)) * 1000,
@@ -155,6 +159,9 @@ class IFRD_Schedule_Calendar {
                     </label>
                 <?php endif; ?>
                 <button type="button" class="ifrd-calendar-today" data-calendar-today>Today</button>
+                <?php if (current_user_can('edit_pages')): ?>
+                    <button type="button" class="ifrd-calendar-refresh" data-calendar-refresh>Refresh Displayed Week</button>
+                <?php endif; ?>
             </div>
 
             <div class="ifrd-calendar-week-nav" data-week-nav>
@@ -186,6 +193,27 @@ class IFRD_Schedule_Calendar {
 
         if (is_wp_error($payload)) {
             wp_send_json_error(array('message' => $payload->get_error_message()), 500);
+        }
+
+        wp_send_json_success($payload);
+    }
+
+    public function ajax_refresh_week() {
+        check_ajax_referer(self::NONCE_ACTION, 'nonce');
+
+        if (!current_user_can('edit_pages')) {
+            wp_send_json_error(array('message' => 'You are not allowed to refresh schedule data.'), 403);
+        }
+
+        $date = isset($_POST['date']) ? sanitize_text_field(wp_unslash($_POST['date'])) : '';
+        $payload = $this->get_week($this->week_start_for($date), true);
+
+        if (is_wp_error($payload)) {
+            wp_send_json_error(array('message' => $payload->get_error_message()), 500);
+        }
+
+        if (($payload['cacheStatus'] ?? '') !== 'fresh') {
+            wp_send_json_error(array('message' => 'This week is already refreshing. Please try again shortly.'), 409);
         }
 
         wp_send_json_success($payload);

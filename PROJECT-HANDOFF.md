@@ -23,6 +23,8 @@ Suite 18 contains all five ZIPs and `ice-field-updates.json`. It publishes the R
 - Productions 3.7.1 is stable and published. Productions Theme 1.6.8 is published; its enqueued CSS and JavaScript use the active theme version for reliable browser/CDN cache busting.
 - Rink Displays 2.8.17 is published. It includes the external schedule loader, adaptive Later pagination, stable pinned regions, locker/registration enrichment, atomic static schedule JSON, responsive timing, editor-accessible expiring image slideshows, cache-resistant background schedule reads, hourly 48-hour media-list cleanup with optional attachment trashing, and consolidated non-linking schedule-banner controls for administrators and editors.
 - The wiki is public and enabled at `https://github.com/sarahspins/wordpress-plugins/wiki`.
+- Ice & Field Elementor Slide Scheduler 1.0.0 is an unpublished local test plugin. It adds optional per-slide start and end display times to Elementor Pro's Slides widget and preserves hidden slides in the editor.
+- Rink Displays 2.8.18 is an unpublished local test build. It lets logged-in Editors and Administrators force-refresh the exact week currently displayed by the public schedule calendar, including future weeks.
 
 ## Hosting and API context
 
@@ -53,6 +55,8 @@ Participant-display development is tabled. Do not include or resume per-rink par
 - Test Programming 1.9.2.6 Check Changes on the shows website and confirm both the filtered Teams stage and weekly Events stages complete.
 - Observe Rink Displays 2.8.13 on the shows website and LG screens, especially slideshow transitions and background registration-total refreshes.
 - Keep component README/changelog/roadmap files and the GitHub wiki synchronized with behavior changes.
+- Test Elementor Slide Scheduler 1.0.0 against the site's installed Elementor Pro version before adding it to the suite packaging and update system.
+- Test Rink Displays 2.8.18's Refresh Displayed Week control on a future week before publishing.
 
 ## Moving to another computer
 
