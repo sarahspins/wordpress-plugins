@@ -4,21 +4,21 @@ Last updated: September 17, 2026
 
 ## Current published release
 
-GitHub release: `suite-19`
+GitHub release: `suite-20`
 
 | Component | Published version |
 | --- | ---: |
 | Dash Connector | 1.7.22 |
-| Programming | 1.9.2.7 |
+| Programming | 1.9.2.8 |
 | Productions | 3.7.1 |
-| Rink Displays | 2.8.18 |
+| Rink Displays | 2.8.19 |
 | Productions Theme | 1.6.8 |
 
-Suite 19 contains all five core ZIPs and `ice-field-updates.json`. It publishes Event-derived Programming class date ranges and the editor-only Rink Displays control for refreshing the exact calendar week being viewed. Elementor Slide Scheduler remains a standalone repository component outside the suite updater pending compatibility testing.
+Suite 20 is published from `01273b40bb2110a7f4dc9def2f032e94fd6cd4bf`. All five core ZIPs and `ice-field-updates.json` were verified uploaded. It adds per-class Sport controls, guarded daily publication of new offerings, and the inline participant-count disclaimer. Elementor Slide Scheduler remains outside the suite updater pending compatibility testing.
 
 ## Current state
 
-- Sarah confirmed Programming 1.9.2.8 and Rink Displays 2.8.19 stable and approved suite release on September 17. Suite-20 is being prepared with those versions; the other three component versions remain unchanged. PHP syntax, policy tests, whitespace checks, and all five ZIP integrity checks passed.
+- Sarah confirmed Programming 1.9.2.8 and Rink Displays 2.8.19 stable and approved suite release on September 17. Suite-20 is published with those versions; the other three component versions remain unchanged. PHP syntax, policy tests, whitespace checks, and all five ZIP integrity checks passed. Wiki documentation was updated for both behaviors and current versions.
 
 - Programming 1.9.2.8 includes per-Team/class and standalone-Level Sport selectors. Existing local Sports are preselected, otherwise mapped Dash Sports are used. Individual values beat bulk Sport; a single bulk Sport can resolve unclassified rows only during manual imports. Daily sync preserves existing classifications and leaves unresolved new offerings draft with Activity Log warnings.
 
