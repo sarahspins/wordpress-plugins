@@ -57,6 +57,7 @@ class IFPROG_Sync {
             }
         }
 
+        $row_sports = is_array($classification['row_sports'] ?? null) ? $classification['row_sports'] : [];
         $classification = self::classification_terms($classification);
         $eligible_rows = [];
         $skipped = 0;
@@ -80,13 +81,13 @@ class IFPROG_Sync {
             if (!$eligible_rows) {
                 return new WP_Error('ifprog_sync_no_eligible_rows', 'None of the selected Teams or standalone Levels are eligible to import.');
             }
-            $needs_sport = count(array_filter($eligible_rows, function($row) {
-                return !empty($row['sport_mapping_required']);
+            $needs_sport = count(array_filter($eligible_rows, function($row) use ($row_sports, $classification, $automatic) {
+                return !self::row_classification($row, $row_sports, $classification, $automatic)['ifprog_sport'];
             })) > 0;
-            if ($needs_sport && empty($classification['ifprog_sport'])) {
+            if ($needs_sport && !$automatic) {
                 return new WP_Error(
                     'ifprog_sync_sport_required',
-                    'Choose at least one Sport under Bulk classification before importing these Dash records.'
+                    'Choose a Sport for each selected class or standalone Level, or select exactly one bulk Sport for unresolved rows.'
                 );
             }
         }
@@ -95,7 +96,7 @@ class IFPROG_Sync {
         $presentation_updates = self::presentation_updates($presentation_updates);
         $season_result = self::sync_season(
             $preview,
-            $publish_imported,
+            $automatic ? false : $publish_imported,
             $presentation_updates['season_title'],
             $presentation_updates['season_description'],
             $classification
@@ -125,6 +126,14 @@ class IFPROG_Sync {
         ];
         $level_cache = [];
         foreach ($eligible_rows as $row) {
+            $row_classification = self::row_classification($row, $row_sports, $classification, $automatic);
+            $row_publish = $publish_imported && !empty($row_classification['ifprog_sport']);
+            if ($automatic && empty($row_classification['ifprog_sport'])) {
+                $result['errors'][] = $row['title'] . ': Sport needs review; new offerings remain draft.';
+            }
+            $level_classification = $classification;
+            unset($level_classification['ifprog_sport']);
+            if (($row['row_type'] ?? 'team') === 'level') $level_classification = $row_classification;
             $league_id = absint($row['league_id'] ?? 0);
             $is_camp = self::is_camp_import($row, $classification);
             if ($is_camp && ($row['row_type'] ?? 'team') === 'level') {
@@ -134,10 +143,11 @@ class IFPROG_Sync {
                 $level_cache[$league_id] = self::sync_level(
                     $row,
                     $season_result['post_id'],
-                    $publish_imported,
+                    $row_publish,
                     $presentation_updates['level_titles'],
                     $presentation_updates['level_descriptions'],
-                    $classification
+                    $level_classification,
+                    $automatic
                 );
                 if (is_wp_error($level_cache[$league_id])) {
                     $result['errors'][] = $level_cache[$league_id]->get_error_message();
@@ -163,12 +173,13 @@ class IFPROG_Sync {
                 $row,
                 $is_camp ? $season_result['post_id'] : $level_cache[$league_id]['season_id'],
                 $is_camp ? 0 : $level_cache[$league_id]['post_id'],
-                $publish_imported,
+                $row_publish,
                 !$is_camp && !empty($level_cache[$league_id]['routed']),
                 $presentation_updates['program_titles'],
                 $presentation_updates['program_descriptions'],
                 !$is_camp && !empty($level_cache[$league_id]['title_updated']),
-                $classification
+                $row_classification,
+                $automatic
             );
             if (is_wp_error($program_result)) {
                 $result['errors'][] = $program_result->get_error_message();
@@ -328,7 +339,8 @@ class IFPROG_Sync {
         $publish_imported = false,
         $update_title = false,
         $update_description = false,
-        $classification = []
+        $classification = [],
+        $automatic = false
     ) {
         $league_id = absint($row['league_id'] ?? 0);
         $payload = is_array($row['source_payload'] ?? null) ? $row['source_payload'] : [];
@@ -397,7 +409,7 @@ class IFPROG_Sync {
         }
         self::apply_classification($post_id, $classification);
 
-        $published = self::publish_if_requested($post_id, $publish_imported);
+        $published = self::publish_if_requested($post_id, $publish_imported && (!$automatic || self::automatic_publication_allowed($is_new, $assigned_season_id)));
         if (is_wp_error($published)) return $published;
 
         return [
@@ -420,7 +432,8 @@ class IFPROG_Sync {
         $update_program_title = false,
         $update_program_description = false,
         $refresh_special_categories = false,
-        $classification = []
+        $classification = [],
+        $automatic = false
     ) {
         $team_id = absint($row['team_id'] ?? 0);
         if (!$team_id) return new WP_Error('ifprog_sync_invalid_team', 'A selected Team did not include a valid Dash ID.');
@@ -494,7 +507,7 @@ class IFPROG_Sync {
         update_post_meta($post_id, '_ifprog_dash_waitlisted_customers', absint($registration['waitlisted_customers'] ?? 0));
         update_post_meta($post_id, '_ifprog_dash_has_waitlist', self::dash_truthy($registration['has_waitlist'] ?? '') ? 1 : 0);
 
-        $published = self::publish_if_requested($post_id, $publish_imported);
+        $published = self::publish_if_requested($post_id, $publish_imported && (!$automatic || self::automatic_publication_allowed($is_new, $season_post_id, $level_post_id)));
         if (is_wp_error($published)) return $published;
 
         return [
@@ -639,6 +652,11 @@ class IFPROG_Sync {
         return sanitize_text_field(wp_trim_words(wp_strip_all_tags((string) $description), 24));
     }
 
+    private static function automatic_publication_allowed($is_new, $season_post_id, $level_post_id = 0) {
+        return $is_new && get_post_status($season_post_id) === 'publish'
+            && (!$level_post_id || get_post_status($level_post_id) === 'publish');
+    }
+
     private static function publish_if_requested($post_id, $publish_imported) {
         if (!$publish_imported) return false;
 
@@ -673,6 +691,21 @@ class IFPROG_Sync {
         $format_ids = IFPROG_Post_Types::assignment_term_ids('ifprog_format', [$format]);
         if ($sport_ids) wp_set_object_terms($post_id, $sport_ids, 'ifprog_sport', false);
         if ($format_ids) wp_set_object_terms($post_id, $format_ids, 'ifprog_format', false);
+    }
+
+    private static function row_classification($row, $row_sports, $bulk, $automatic) {
+        $key = ($row['row_type'] ?? 'team') === 'level' ? 'level_' . absint($row['league_id']) : 'team_' . absint($row['team_id']);
+        $ids = IFPROG_Preview::row_sport_ids($row);
+        if (!$automatic && array_key_exists($key, $row_sports)) {
+            if ($row_sports[$key] !== 'preserve') {
+                $id = absint($row_sports[$key]);
+                $term = $id ? get_term($id, 'ifprog_sport') : null;
+                $ids = $term && !is_wp_error($term) ? [$id] : [];
+            }
+        }
+        if (!$automatic && !$ids && count($bulk['ifprog_sport'] ?? []) === 1) $ids = $bulk['ifprog_sport'];
+        $bulk['ifprog_sport'] = $ids;
+        return $bulk;
     }
 
     private static function classification_terms($raw) {

@@ -163,7 +163,7 @@ class IFPROG_Monitoring {
                 $result = IFPROG_Sync::run(
                     $preview,
                     $team_ids,
-                    get_post_status($season_post_id) === 'publish',
+                    get_post_status($season_post_id) === 'publish' && self::automatic_publication_enabled($season_post_id),
                     false,
                     $level_ids,
                     $presentation_updates,
@@ -176,12 +176,26 @@ class IFPROG_Monitoring {
                     continue;
                 }
                 $summary['synced']++;
+                foreach ((array) ($result['errors'] ?? []) as $warning) {
+                    $summary['errors'][] = get_the_title($season_post_id) . ': ' . $warning;
+                }
             }
         } catch (Throwable $error) {
             $summary['errors'][] = $error->getMessage();
         }
 
         return self::finish_automatic_sync($summary);
+    }
+
+    public static function automatic_publication_enabled($season_post_id) {
+        if (metadata_exists('post', $season_post_id, '_ifprog_automatic_sync_publish_new')) {
+            return get_post_meta($season_post_id, '_ifprog_automatic_sync_publish_new', true) === '1';
+        }
+        if (get_post_meta($season_post_id, '_ifprog_is_production', true) === '1') return false;
+        $source = get_post_meta($season_post_id, '_ifprog_dash_payload', true);
+        $name = is_array($source) ? ($source['name'] ?? '') : '';
+        if ($name === '') $name = get_the_title($season_post_id);
+        return (bool) preg_match('/\blearn[\s-]+to[\s-]+skate\b/i', $name);
     }
 
     private static function finish_automatic_sync($summary) {

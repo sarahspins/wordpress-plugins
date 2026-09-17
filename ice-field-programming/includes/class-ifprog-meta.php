@@ -76,6 +76,7 @@ class IFPROG_Meta {
         $automatic_sync = get_post_meta($post->ID, '_ifprog_automatic_sync', true) === '1';
         $automatic_sync_names = get_post_meta($post->ID, '_ifprog_automatic_sync_names', true) === '1';
         $automatic_sync_descriptions = get_post_meta($post->ID, '_ifprog_automatic_sync_descriptions', true) === '1';
+        $automatic_publish_new = IFPROG_Monitoring::automatic_publication_enabled($post->ID);
         $automatic_sync_checked = get_post_meta($post->ID, '_ifprog_automatic_sync_last_checked', true);
         $is_production = get_post_meta($post->ID, '_ifprog_is_production', true) === '1';
         $production_id = absint(get_post_meta($post->ID, '_ifprog_production_id', true));
@@ -106,6 +107,11 @@ class IFPROG_Meta {
                     <strong>Keep up to date automatically</strong>
                 </label><br>
                 <span class="description">Once daily, while this Dash Season's registration window is open, import new class offerings and refresh protected Dash fields. Local presentation and classifications remain protected.<?php echo $automatic_sync_checked ? ' Last checked: ' . esc_html($automatic_sync_checked) . '.' : ''; ?></span></p>
+                <p style="margin-left:24px"><label>
+                    <input type="checkbox" name="ifprog_automatic_sync_publish_new" value="1" <?php checked($automatic_publish_new); ?>>
+                    Publish newly discovered Levels and classes automatically
+                </label><br>
+                <span class="description">Defaults on for Learn to Skate, off elsewhere (including Productions). Requires daily sync, open registration, and published parents. Existing drafts and unpublished offerings are never published automatically.</span></p>
                 <p style="margin-left:24px"><label>
                     <input type="checkbox" name="ifprog_automatic_sync_names" value="1" <?php checked($automatic_sync_names); ?>>
                     Update Season, Level, and class names automatically from Dash
@@ -423,6 +429,9 @@ class IFPROG_Meta {
         update_post_meta($post_id, '_ifprog_automatic_sync', isset($_POST['ifprog_automatic_sync']) ? '1' : '0');
         update_post_meta($post_id, '_ifprog_automatic_sync_names', isset($_POST['ifprog_automatic_sync_names']) ? '1' : '0');
         update_post_meta($post_id, '_ifprog_automatic_sync_descriptions', isset($_POST['ifprog_automatic_sync_descriptions']) ? '1' : '0');
+        if (!empty($_POST['ifprog_dash_season_id'])) {
+            update_post_meta($post_id, '_ifprog_automatic_sync_publish_new', isset($_POST['ifprog_automatic_sync_publish_new']) ? '1' : '0');
+        }
         update_post_meta($post_id, '_ifprog_is_production', isset($_POST['ifprog_is_production']) ? '1' : '0');
         update_post_meta($post_id, '_ifprog_season_pin_to_top', isset($_POST['ifprog_season_pin_to_top']) ? '1' : '0');
         $production_id = absint($_POST['ifprog_production_id'] ?? 0);

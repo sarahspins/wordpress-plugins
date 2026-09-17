@@ -59,6 +59,16 @@ Goal: detect the next registration cycle and routine class changes automatically
 - Add overlap locking, activity logging, and last-check visibility.
 - Leave automatic discovery and importing of entirely new Seasons for a later stage.
 
+### 1.9.2.8 — New Offering Publication Policy (Ready for testing)
+
+- Add per-class and standalone-Level Sport selectors; individual values override bulk Sport and existing local values are preselected.
+- Keep automatically discovered offerings draft when no individual Sport mapping is available, with review warnings in the Activity Log.
+
+- Daily imported-Season sync can publish only newly created eligible Levels and Programs beneath published parents.
+- Defaults on for Learn to Skate, off elsewhere including Productions; each Season has an explicit override.
+- Existing drafts, private records, and deliberately unpublished offerings remain protected.
+- Registration-open and daily-sync opt-in requirements remain unchanged.
+
 ### 1.9.3 — Review Notifications
 
 - Email the configured administrator only for a genuinely new or newly changed actionable result.

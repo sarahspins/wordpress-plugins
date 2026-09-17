@@ -254,6 +254,7 @@ class IFPROG_Preview {
                                     'sync_participants' => !empty($_POST['ifprog_sync_production_participants']),
                                 ];
                                 $classification = (array) wp_unslash($_POST['ifprog_classification'] ?? []);
+                                $classification['row_sports'] = (array) wp_unslash($_POST['ifprog_row_sports'] ?? []);
                                 $sync_result = IFPROG_Sync::run(
                                     $preview,
                                     $team_ids,
@@ -1174,7 +1175,7 @@ class IFPROG_Preview {
                                             <?php if ($row['age_range']): ?><span class="ifprog-preview-sub"><?php echo esc_html($row['age_range']); ?></span><?php endif; ?>
                                         </td>
                                         <td>
-                                            <?php echo esc_html($row['sport']['label'] ?: 'Needs mapping'); ?><br>
+                                            <?php self::render_row_sport($row); ?><br>
                                             <strong><?php echo esc_html($row['level'] ?: 'Needs Level'); ?></strong>
                                             <span class="ifprog-preview-sub">League #<?php echo esc_html($row['league_id']); ?> · Level would <?php echo $row['existing_level_id'] ? 'update' : 'be created'; ?></span>
                                             <span class="ifprog-preview-sub"><?php echo esc_html($row['format']); ?></span>
@@ -1284,6 +1285,33 @@ class IFPROG_Preview {
         <?php
     }
 
+    public static function row_sport_ids($row) {
+        $existing_id = absint(($row['row_type'] ?? 'team') === 'level' ? ($row['existing_level_id'] ?? 0) : ($row['existing_id'] ?? 0));
+        if ($existing_id) {
+            $ids = wp_get_object_terms($existing_id, 'ifprog_sport', ['fields' => 'ids']);
+            if (!is_wp_error($ids) && $ids) return array_map('absint', $ids);
+        }
+        return IFPROG_Post_Types::assignment_term_ids('ifprog_sport', array_filter([(string) ($row['sport']['slug'] ?? '')]));
+    }
+
+    private static function render_row_sport($row) {
+        $key = ($row['row_type'] ?? 'team') === 'level' ? 'level_' . absint($row['league_id']) : 'team_' . absint($row['team_id']);
+        $ids = self::row_sport_ids($row);
+        $terms = get_terms(['taxonomy' => 'ifprog_sport', 'hide_empty' => false]);
+        if (is_wp_error($terms)) $terms = [];
+        ?>
+        <label>Sport
+            <select name="ifprog_row_sports[<?php echo esc_attr($key); ?>]" aria-label="<?php echo esc_attr('Sport for ' . $row['title']); ?>">
+                <option value="0">Choose Sport / single bulk fallback</option>
+                <?php if (count($ids) > 1): ?><option value="preserve" selected>Keep existing Sports</option><?php endif; ?>
+                <?php foreach ($terms as $term): ?>
+                    <option value="<?php echo esc_attr($term->term_id); ?>" <?php selected(count($ids) === 1 && in_array(absint($term->term_id), $ids, true)); ?>><?php echo esc_html($term->name); ?></option>
+                <?php endforeach; ?>
+            </select>
+        </label>
+        <?php
+    }
+
     private static function render_classification_choices($preview) {
         $guesses = self::classification_guesses($preview);
         $taxonomies = [
@@ -1294,7 +1322,7 @@ class IFPROG_Preview {
         ?>
         <fieldset class="ifprog-classification-options">
             <legend>Bulk classification</legend>
-            <p class="description">Programming has preselected its best guess. Adjust it once here; the selected values will replace Sport, Format, and Category on the Season and every Level and Program selected in this import.</p>
+            <p class="description">Bulk Sport applies to the Season and is a fallback only for rows without an individual Sport when exactly one bulk Sport is selected. Each class's Sport choice takes precedence. Existing parent Level Sports are preserved. Bulk Format and Category still apply to selected records.</p>
             <div class="ifprog-classification-options__grid">
                 <?php foreach ($taxonomies as $key => $config): ?>
                     <?php $terms = get_terms(['taxonomy' => $config['taxonomy'], 'hide_empty' => false]); ?>

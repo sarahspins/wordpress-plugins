@@ -1,6 +1,6 @@
 === Ice & Field Programming ===
 Contributors: iceandfield
-Stable tag: 1.9.2.7
+Stable tag: 1.9.2.8
 Requires at least: 6.4
 Requires PHP: 7.4
 Requires Plugins: ice-field-dash-connector
@@ -10,6 +10,10 @@ Manage seasons, program groups, levels, classes, leagues, camps, clinics, and pu
 == Description ==
 
 Ice & Field Programming is the public program and registration module for the main Ice & Field website.
+
+The 1.9.2.8 import review includes a Sport selector per Team/class and standalone Level. Existing local Sports are preselected; otherwise a mapped Dash Sport is used. Individual choices beat bulk Sport, so Learn to Skate can contain both Hockey and Figure Skating. Exactly one bulk Sport can resolve unclassified rows during manual import. Automatic sync never uses a blanket Season Sport for unresolved classes: it leaves new offerings draft and records review warnings in the Activity Log. Existing class Sports and parent Level Sports remain protected unless explicitly changed.
+
+Version 1.9.2.8 adds a per-Season Publish newly discovered Levels and classes automatically setting. It defaults on for Seasons whose Dash name contains Learn to Skate, and off for other Seasons and Productions. Explicit choices override defaults. Daily synchronization must be enabled and registration open; only newly created eligible offerings beneath published parents are published. Existing drafts/private/unpublished offerings remain unchanged. New offerings beneath unpublished parents stay draft. Production companion visibility remains independently protected.
 
 Version 1.9.2.7 compares each Dash Team's planned dates with its actual scheduled Events. When scheduled Events are available, the first and last occurrence become the Program's displayed date range; Team dates remain the fallback when no usable Events are returned. The protected preview identifies Event-derived ranges and warns when Team and Event dates disagree.
 

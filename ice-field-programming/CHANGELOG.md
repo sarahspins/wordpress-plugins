@@ -1,5 +1,16 @@
 # Ice & Field Programming Changelog
 
+## 1.9.2.8
+
+- Adds individual Sport selectors for Teams/classes and standalone Levels in the import review, preselected from existing local classifications or mapped Dash values.
+- Individual Sports take precedence over bulk Sport; exactly one bulk Sport can resolve otherwise unclassified rows during a manual import.
+- Automatic sync preserves existing Sports and leaves new unclassified offerings draft with Activity Log warnings rather than assigning a blanket Season Sport.
+
+- Adds a per-Season automatic-publication choice for newly discovered eligible Levels and Programs during the existing registration-open daily sync.
+- Defaults on for Learn to Skate Seasons and off for all others, including Production Seasons; saved choices take precedence.
+- Requires published parents and preserves every existing offering's publication state, including deliberately unpublished records.
+- Leaves manual import publication choices and Production companion visibility unchanged.
+
 ## 1.9.2.7
 
 - Compares each Team's planned dates with the first and last occurrence in its scheduled Dash Events.
