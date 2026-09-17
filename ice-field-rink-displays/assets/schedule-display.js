@@ -131,7 +131,7 @@
                 if (event.registrantText) {
                     var countText = event.isFull && isFinite(Number(event.registrantCount)) ? (Number(event.registrantCount) === 1 ? '1 registered skater' : Number(event.registrantCount) + ' registered skaters') : event.registrantText;
                     var fullLabel = String(event.fullLabel || 'FULL').replace(/\s*[-–—:]+\s*$/, '');
-                    registrationMeta = '<div class="ifrd-schedule-meta ifrd-registration-meta">' + (event.isFull ? '<span class="ifrd-full-inline">' + esc(fullLabel || 'FULL') + '</span>' : '') + '<span>' + esc(countText) + '</span></div>';
+                    registrationMeta = '<div class="ifrd-schedule-meta ifrd-registration-meta">' + (event.isFull ? '<span class="ifrd-full-inline">' + esc(fullLabel || 'FULL') + '</span>' : '') + '<span>' + esc(countText) + '<sup aria-label="See participant count disclaimer">*</sup></span></div>';
                 }
                 var locker = event.lockerText ? '<div class="ifrd-schedule-meta ifrd-schedule-locker">' + esc(event.lockerText) + '</div>' : '';
                 var blocks = event.subBlocks && event.subBlocks.length ? '<div class="ifrd-schedule-subblocks">' + event.subBlocks.map(function (block) {

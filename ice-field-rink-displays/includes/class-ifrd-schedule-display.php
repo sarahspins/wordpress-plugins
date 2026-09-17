@@ -1424,7 +1424,7 @@ class IFRD_Schedule_Display {
             </div>
             <div class="ifrd-schedule-footer">
                 <span class="ifrd-schedule-health" data-status>Display <?php echo esc_html(IFRD_VERSION); ?> • API status: connecting… 0s</span>
-				<span data-updated>Last updated: --</span>
+				<span><span data-updated>Last updated: --</span> <span class="ifrd-schedule-count-disclaimer">*<em>Participant counts may not always be accurate due to delays in API processing.</em></span></span>
 			</div>
 			<div class="ifrd-schedule-footer ifrd-schedule-banner-footer">
                 <?php if ($banner_slides): ?>
@@ -1456,6 +1456,7 @@ class IFRD_Schedule_Display {
         .ifrd-schedule-banner-slideshow{position:relative;width:100%;height:140px}.ifrd-schedule-banner-slideshow .ifrd-slide{position:absolute;inset:0;width:100%;height:100%}.ifrd-schedule-banner-slideshow img{display:block;width:100%;height:100%;object-fit:contain;object-position:center center;border-radius:8px}
         @media(max-width:99999px){.ifrd-schedule-grid{grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important}}
         </style>
+        <style>.ifrd-schedule-count-disclaimer{font-size:inherit;color:var(--ifr-muted)}</style>
         <script type="text/plain" data-ifrd-legacy-script>
         (function(){
             const root=document.getElementById('<?php echo esc_js($id); ?>');

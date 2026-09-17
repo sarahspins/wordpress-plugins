@@ -1,4 +1,6 @@
-Ice & Field Rink Displays v2.8.18
+Ice & Field Rink Displays v2.8.19
+
+Version 2.8.19 marks schedule-display participant counts with an asterisk and adds a note immediately after Last updated explaining that API processing delays can make participant counts inaccurate. This is presentation only; count calculation, FULL indicators, and schedule refresh timing are unchanged.
 
 Version 2.8.18 adds a Refresh Displayed Week control to the public schedule calendar for logged-in Editors and Administrators. The control force-rebuilds the exact week currently shown—even weeks well into the future—and immediately updates both Day and Week views from their shared fresh payload.
 
