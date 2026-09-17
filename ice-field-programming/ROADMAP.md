@@ -59,7 +59,7 @@ Goal: detect the next registration cycle and routine class changes automatically
 - Add overlap locking, activity logging, and last-check visibility.
 - Leave automatic discovery and importing of entirely new Seasons for a later stage.
 
-### 1.9.2.8 — New Offering Publication Policy (Ready for testing)
+### 1.9.2.8 — New Offering Publication Policy (Release approved)
 
 - Add per-class and standalone-Level Sport selectors; individual values override bulk Sport and existing local values are preselected.
 - Keep automatically discovered offerings draft when no individual Sport mapping is available, with review warnings in the Activity Log.

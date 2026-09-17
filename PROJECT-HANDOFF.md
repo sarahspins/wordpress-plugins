@@ -1,6 +1,6 @@
 # Project Handoff
 
-Last updated: September 10, 2026
+Last updated: September 17, 2026
 
 ## Current published release
 
@@ -17,6 +17,13 @@ GitHub release: `suite-19`
 Suite 19 contains all five core ZIPs and `ice-field-updates.json`. It publishes Event-derived Programming class date ranges and the editor-only Rink Displays control for refreshing the exact calendar week being viewed. Elementor Slide Scheduler remains a standalone repository component outside the suite updater pending compatibility testing.
 
 ## Current state
+
+- Sarah confirmed Programming 1.9.2.8 and Rink Displays 2.8.19 stable and approved suite release on September 17. Suite-20 is being prepared with those versions; the other three component versions remain unchanged. PHP syntax, policy tests, whitespace checks, and all five ZIP integrity checks passed.
+
+- Programming 1.9.2.8 includes per-Team/class and standalone-Level Sport selectors. Existing local Sports are preselected, otherwise mapped Dash Sports are used. Individual values beat bulk Sport; a single bulk Sport can resolve unclassified rows only during manual imports. Daily sync preserves existing classifications and leaves unresolved new offerings draft with Activity Log warnings.
+
+- Programming 1.9.2.8 new-offering publication defaults on for Dash Season names containing Learn to Skate and off elsewhere (including Productions); explicit per-Season choices override defaults. Daily sync remains opt-in and registration-open only. Automatic publication requires published parents and never republishes existing drafts/unpublished offerings. Manual publishing and Production companion visibility are unchanged.
+- Rink Displays 2.8.19 adds an asterisk to schedule participant counts and an inline italic disclaimer immediately after Last updated, with no space after the asterisk. Counts, FULL indicators, and refresh timing are unchanged. Participant-display development remains tabled.
 
 - Dash Connector 1.7.22 adds administrator-managed Event Assignment Rules, bounded read-only retries, explicit bulk Event Type Correction, string-safe DaySmart event-type IDs and dropdowns, and inclusive Custom Date Range searches up to the existing 92-day safety limit while retaining Whole Month as the default.
 - Programming 1.9.2.7 includes lightweight Season discovery, protected synchronization, classifications, staged AJAX preparation, Season-filtered Team requests, and cached seven-day Event preparation. Scheduled Events now determine each imported class's displayed first and last dates when available; Team dates remain the fallback and mismatches are shown in the protected preview.
