@@ -55,7 +55,7 @@ Suite 20 is published from `01273b40bb2110a7f4dc9def2f032e94fd6cd4bf`. All five 
 ## Decisions that should remain stable
 
 - GitHub `main` is the code source of truth; iCloud is cross-computer file availability, not branch synchronization.
-- New suite releases use human-readable decimal versions beginning with `suite-1.0`, followed by `suite-1.1`, `suite-1.2`, and so on. Component plugins and the theme retain their independent versions. Historical integer tags such as `suite-20` remain unchanged.
+- New combined releases use human-readable decimal versions beginning with `release-1.0`, followed by `release-1.1`, `release-1.2`, and so on. Public titles use “Ice & Field WordPress Release” rather than “Suite.” Component plugins and the theme retain their independent versions. Historical integer tags such as `suite-20` remain unchanged.
 - Automatic Connector event checks are disabled by default and should be enabled on only one website.
 - Public Skating event type 10 uses capacity 250 only when capacity is zero/missing; nonzero capacity is preserved.
 - Protected Public Skating Teams and titles longer than 22 characters are never automatically changed.

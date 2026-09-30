@@ -3,8 +3,8 @@ name: Publish WordPress release
 on:
   workflow_dispatch:
     inputs:
-      suite_version:
-        description: "Suite version to publish (for example 1.0 or 2.0). Leave blank to increment the latest minor version."
+      release_version:
+        description: "Release version to publish (for example 1.0 or 2.0). Leave blank to increment the latest minor version."
         required: false
         type: string
 
@@ -26,15 +26,15 @@ jobs:
             unzip -t "$package"
           done
 
-      - name: Choose suite version and tag
+      - name: Choose release version and tag
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          version="${{ inputs.suite_version }}"
-          version="${version#suite-}"
+          version="${{ inputs.release_version }}"
+          version="${version#release-}"
 
           if [ -z "$version" ]; then
-            latest_version="$(gh release list --repo "${{ github.repository }}" --limit 100 --json tagName --jq '.[].tagName' | sed -n 's/^suite-\([0-9]\+\.[0-9]\+\)$/\1/p' | sort -V | tail -n 1)"
+            latest_version="$(gh release list --repo "${{ github.repository }}" --limit 100 --json tagName --jq '.[].tagName' | sed -n 's/^release-\([0-9]\+\.[0-9]\+\)$/\1/p' | sort -V | tail -n 1)"
             if [ -z "$latest_version" ]; then
               version="1.0"
             else
@@ -45,17 +45,17 @@ jobs:
           fi
 
           if ! [[ "$version" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
-            echo "Invalid suite version: $version" >&2
+            echo "Invalid release version: $version" >&2
             exit 1
           fi
 
-          if gh release view "suite-$version" --repo "${{ github.repository }}" >/dev/null 2>&1; then
-            echo "Suite $version already exists." >&2
+          if gh release view "release-$version" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "Release $version already exists." >&2
             exit 1
           fi
 
           echo "RELEASE_VERSION=$version" >> "$GITHUB_ENV"
-          echo "RELEASE_TAG=suite-$version" >> "$GITHUB_ENV"
+          echo "RELEASE_TAG=release-$version" >> "$GITHUB_ENV"
 
       - name: Publish private release
         env:
@@ -64,5 +64,5 @@ jobs:
           gh release create "$RELEASE_TAG" dist/* \
             --repo "${{ github.repository }}" \
             --target "${{ github.sha }}" \
-            --title "Ice & Field WordPress Suite ${RELEASE_VERSION}" \
+            --title "Ice & Field WordPress Release ${RELEASE_VERSION}" \
             --notes "Private WordPress update packages built from commit ${{ github.sha }}."
