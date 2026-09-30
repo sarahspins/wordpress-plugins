@@ -1,6 +1,15 @@
 # Project Handoff
 
-Last updated: September 17, 2026
+Last updated: September 30, 2026
+
+## Active security incident — main website
+
+- September 24: anonymous `iceandfield.com` homepage HTML contains a malicious encoded JavaScript loader targeting Windows visitors. Sarah supplied a matching fake Cloudflare/PowerShell verification screenshot; execution on a visitor PC is uncertain.
+- The installed must-use file `/www/wp-content/mu-plugins/wp-fixplugin.php` is strongly implicated. Database option `wp_fixplugin_payload` matches the homepage loader exactly by SHA-256. The public REST index advertises `wp-fixplugin/v1` update/remove/status routes, with payload/contract/encryption-key parameters on the update route. No control route was invoked.
+- No matching injection indicators were found in the inspected checked-in suite or searched Git history. This does not rule out vulnerabilities or changes to deployed files. Wordfence and Heartbeat Control main files showed no visible injected loader; neither has been established as the intrusion route.
+- PHP contents of the must-use file and initial entry remain unverified. Wordfence's viewer looks under `/wordpress`, while this file is under `/www`; Sarah does not have Flywheel access. Hosting/design team must preserve and inspect the file and logs, quarantine confirmed malware, and purge caches. Investigation notes and inert text evidence are under `output/security/2026-09-24/` locally.
+- A fresh Wordfence scan was started; no repair, deletion, deactivation, or database change was performed. Do not blindly repair managed-host core changes: the inspected `wp-settings.php` difference adds a Flywheel configuration include.
+- Dash Connector 1.7.23 was recovered from the production-tested ZIP in `dist/`, compared file-for-file with 1.7.22, and incorporated into the repository source. It adds available DaySmart creator and last-editor details to automatic-update email event lines, while retaining the event date/time when audit metadata is unavailable. Sarah confirmed the production build has been working reliably. Suite 20 still publishes Connector 1.7.22 until a later release is explicitly approved.
 
 ## Current published release
 
@@ -26,6 +35,7 @@ Suite 20 is published from `01273b40bb2110a7f4dc9def2f032e94fd6cd4bf`. All five 
 - Rink Displays 2.8.19 adds an asterisk to schedule participant counts and an inline italic disclaimer immediately after Last updated, with no space after the asterisk. Counts, FULL indicators, and refresh timing are unchanged. Participant-display development remains tabled.
 
 - Dash Connector 1.7.22 adds administrator-managed Event Assignment Rules, bounded read-only retries, explicit bulk Event Type Correction, string-safe DaySmart event-type IDs and dropdowns, and inclusive Custom Date Range searches up to the existing 92-day safety limit while retaining Whole Month as the default.
+- Dash Connector 1.7.23 is the current repository source and production-tested build. It enriches automatic-update email event lines with available DaySmart creator and last-editor names/timestamps, with a safe fallback to the event date/time when DaySmart omits audit metadata. It is not yet part of a published suite release.
 - Programming 1.9.2.7 includes lightweight Season discovery, protected synchronization, classifications, staged AJAX preparation, Season-filtered Team requests, and cached seven-day Event preparation. Scheduled Events now determine each imported class's displayed first and last dates when available; Team dates remain the fallback and mismatches are shown in the protected preview.
 - Productions 3.7.1 is stable and published. Productions Theme 1.6.8 is published; its enqueued CSS and JavaScript use the active theme version for reliable browser/CDN cache busting.
 - Rink Displays 2.8.18 is published. It includes the external schedule loader, adaptive Later pagination, stable pinned regions, locker/registration enrichment, atomic static schedule JSON, responsive timing, editor-accessible expiring image slideshows, cache-resistant background schedule reads, hourly 48-hour media-list cleanup with optional attachment trashing, consolidated non-linking schedule-banner controls, and a logged-in Editor/Administrator control to refresh the exact calendar week being viewed.
@@ -50,6 +60,7 @@ Suite 20 is published from `01273b40bb2110a7f4dc9def2f032e94fd6cd4bf`. All five 
 - Camps import without redundant Levels and display/sort by actual event dates.
 - Programming synchronization preserves local presentation unless an explicit replacement option is selected.
 - Production data is layered onto Programming records rather than maintained as an independent competing import hierarchy.
+- The schedule participant-count disclaimer is a completed public-facing presentation choice, not evidence of a Dash API delay or an open software defect. Known count discrepancies arise from internal registration-processing workflows and should not be listed as a pending API issue.
 
 ## Tabled work
 
@@ -63,6 +74,7 @@ Participant-display development is tabled. Do not include or resume per-rink par
 - Keep component README/changelog/roadmap files and the GitHub wiki synchronized with behavior changes.
 - Test Elementor Slide Scheduler 1.0.0 against the site's installed Elementor Pro version before adding it to the suite packaging and update system.
 - Verify Rink Displays 2.8.18's Refresh Displayed Week control on a future week after its suite-19 update.
+- Include production-tested Dash Connector 1.7.23 in the next explicitly approved suite release; do not publish it solely because its source is now reconciled.
 
 ## Moving to another computer
 

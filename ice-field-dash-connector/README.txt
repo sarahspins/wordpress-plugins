@@ -1,7 +1,11 @@
 Ice & Field Dash Connector
-Version 1.7.22
+Version 1.7.23
 
 Shared Dash/DaySmart connection for Ice & Field WordPress plugins.
+
+1.7.23 adds:
+- Available DaySmart creator and last-editor names/timestamps to each event line in automatic-update emails
+- Graceful fallback to the existing event date/time when DaySmart omits audit metadata
 
 1.7.22 adds:
 - Whole Month or Custom Date Range selection for guarded Event Assignment searches

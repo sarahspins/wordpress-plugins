@@ -763,6 +763,7 @@ class IFDC_Event_Assignment {
                     'capacity_update' => $capacity_needs_update,
                     'assignment_update' => $team_needs_update || $capacity_needs_update || $automated_name_needs_update,
                     'name_mismatch' => $name_needs_update,
+                    'event_audit' => self::event_audit_metadata($record, $attrs),
                 ];
             }
             usort($updates, function($a, $b) {
@@ -972,7 +973,7 @@ class IFDC_Event_Assignment {
                 '#%d %s%s — %s → %s; capacity %d → %d; name “%s” → “%s”',
                 absint($change['event_id'] ?? 0),
                 sanitize_text_field($change['event_name'] ?? 'Event'),
-                !empty($change['event_start']) ? ' (' . sanitize_text_field($change['event_start']) . ')' : '',
+                self::format_event_email_context($change),
                 self::format_email_team($before),
                 self::format_email_team($after),
                 absint($before['capacity'] ?? 0),
@@ -984,6 +985,77 @@ class IFDC_Event_Assignment {
         $lines[] = '';
         $lines[] = 'Review history or use guarded Undo: ' . admin_url('admin.php?page=ifdc-update-history');
         return IFDC_Mailer::send('automatic_event_updates', $recipients, $subject, implode("\n", $lines));
+    }
+
+    private static function event_audit_metadata($record, $attrs) {
+        $sources = [$attrs];
+        if (is_array($record)) {
+            if (!empty($record['relationships']) && is_array($record['relationships'])) $sources[] = $record['relationships'];
+            $sources[] = $record;
+        }
+        return array_filter([
+            'created_by' => self::first_audit_value($sources, ['created_by_username', 'created_by_user_name', 'created_by_name', 'create_user_name', 'created_by', 'create_user', 'creator', 'creator_name', 'createdBy']),
+            'created_at' => self::first_audit_value($sources, ['created_at', 'created_date', 'create_date', 'created', 'create_dt', 'createdAt']),
+            'edited_by' => self::first_audit_value($sources, ['updated_by_username', 'updated_by_user_name', 'updated_by_name', 'modified_by_username', 'modified_by_name', 'last_edited_by', 'last_modified_by', 'updated_by', 'modified_by', 'update_user', 'edit_user', 'editor', 'updatedBy', 'modifiedBy']),
+            'edited_at' => self::first_audit_value($sources, ['updated_at', 'updated_date', 'update_date', 'modified_at', 'modified_date', 'last_edited_at', 'last_modified_at', 'update_dt', 'updatedAt', 'modifiedAt']),
+        ], function($value) { return $value !== ''; });
+    }
+
+    private static function first_audit_value($sources, $keys) {
+        foreach ((array) $sources as $source) {
+            if (!is_array($source)) continue;
+            foreach ($keys as $key) {
+                if (!array_key_exists($key, $source)) continue;
+                $value = $source[$key];
+                if (is_array($value)) {
+                    if (isset($value['data']) && is_array($value['data'])) $value = $value['data'];
+                    foreach (['username', 'user_name', 'login', 'name', 'display_name', 'id'] as $field) {
+                        if (is_array($value) && isset($value[$field]) && is_scalar($value[$field])) {
+                            $value = $value[$field];
+                            break;
+                        }
+                    }
+                }
+                if (!is_scalar($value)) continue;
+                $value = sanitize_text_field((string) $value);
+                if ($value !== '') return $value;
+            }
+        }
+        return '';
+    }
+
+    private static function format_event_email_context($change) {
+        $parts = [];
+        if (!empty($change['event_start'])) $parts[] = sanitize_text_field($change['event_start']);
+        $audit = (array) ($change['event_audit'] ?? []);
+        $created = trim(implode(' ', array_filter([
+            self::format_audit_actor($audit['created_by'] ?? ''),
+            sanitize_text_field($audit['created_at'] ?? ''),
+        ])));
+        $edited = trim(implode(' ', array_filter([
+            self::format_audit_actor($audit['edited_by'] ?? ''),
+            sanitize_text_field($audit['edited_at'] ?? ''),
+        ])));
+        if ($created !== '') $parts[] = 'created by ' . $created;
+        if ($edited !== '') $parts[] = 'last edited by ' . $edited;
+        return $parts ? ' (' . implode('; ', $parts) . ')' : '';
+    }
+
+    private static function format_audit_actor($value) {
+        $value = sanitize_text_field((string) $value);
+        if ($value === '' || !ctype_digit($value)) return $value;
+        static $names = [];
+        if (array_key_exists($value, $names)) return $names[$value];
+        foreach (['users', 'employees'] as $resource) {
+            $payload = IFDC_Client::get_data($resource . '/' . absint($value), [], ['cache_ttl' => DAY_IN_SECONDS]);
+            if (is_wp_error($payload)) continue;
+            $record = self::data_record($payload);
+            $attrs = self::attributes($record);
+            foreach (['username', 'user_name', 'login', 'name', 'display_name'] as $field) {
+                if (!empty($attrs[$field])) return $names[$value] = sanitize_text_field($attrs[$field]);
+            }
+        }
+        return $names[$value] = 'user #' . $value;
     }
 
     private static function format_email_team($state) {
@@ -1185,6 +1257,7 @@ class IFDC_Event_Assignment {
                     'event_start' => sanitize_text_field($attrs['start'] ?? $event['start'] ?? ''),
                     'month' => $month,
                     'group' => sanitize_text_field($group['name'] ?? ''),
+                    'event_audit' => (array) ($event['event_audit'] ?? []),
                     'before' => [
                         'team_id' => $before_team_id,
                         'team_name' => $before_team_id ? self::resource_name('teams', $before_team_id) : '',
