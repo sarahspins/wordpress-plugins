@@ -2,7 +2,7 @@
 /*
 Plugin Name: Ice & Field Rink Displays
 Description: Combined Dash/DaySmart schedule display and rink participants/check-in display for Ice & Field.
-Version: 2.8.19
+Version: 2.8.20
 Author: Ice & Field
 Requires Plugins: ice-field-dash-connector
 Update URI: https://github.com/sarahspins/wordpress-plugins/tree/main/ice-field-rink-displays
@@ -12,7 +12,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('IFRD_VERSION', '2.8.19');
+define('IFRD_VERSION', '2.8.20');
 define('IFRD_DIR', plugin_dir_path(__FILE__));
 define('IFRD_URL', plugin_dir_url(__FILE__));
 
@@ -20,6 +20,7 @@ require_once IFRD_DIR . 'includes/class-ifrd-dash-connector.php';
 require_once IFRD_DIR . 'includes/class-ifrd-static-schedule-cache.php';
 require_once IFRD_DIR . 'includes/class-ifrd-banner-media.php';
 require_once IFRD_DIR . 'includes/class-ifrd-scheduled-media.php';
+require_once IFRD_DIR . 'includes/class-ifrd-schedule-takeover.php';
 require_once IFRD_DIR . 'includes/class-ifrd-expiring-slideshow.php';
 require_once IFRD_DIR . 'includes/class-ifrd-media-cleanup.php';
 require_once IFRD_DIR . 'includes/class-ifrd-video-for-screens.php';

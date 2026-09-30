@@ -93,12 +93,14 @@ class IFRD_Video_For_Screens {
             'banner_slideshow_seconds' => '10',
             'banner_slideshow_transition' => 'fade',
             'banner_slideshow_transition_seconds' => '1',
+            'takeover_schedule' => array(),
         ));
         $timezone_name = IFRD_Scheduled_Media::timezone_name($schedule_settings);
         $video = IFRD_Scheduled_Media::effective($video_settings['video_url'], 'video', $video_settings['video_schedule'], $timezone_name);
         $banner = IFRD_Scheduled_Media::effective($schedule_settings['banner_url'], $schedule_settings['banner_media_type'], $schedule_settings['banner_schedule'], $timezone_name);
+        $takeover = IFRD_Schedule_Takeover::effective($schedule_settings['takeover_schedule'] ?? array(), $timezone_name);
 
-        return self::current_refresh_version() . '-' . substr(md5($video['token'] . '|' . $banner['token']), 0, 16);
+        return self::current_refresh_version() . '-' . substr(md5($video['token'] . '|' . $banner['token'] . '|' . $takeover['token']), 0, 16);
     }
 
     public function maybe_refresh_after_update() {
@@ -222,10 +224,22 @@ class IFRD_Video_For_Screens {
     }
 
     public function shortcode($atts) {
-        $o = $this->opts();
+        return self::render_current();
+    }
+
+    public static function render_current($id_prefix = 'ifrd-screen-video-') {
+        $o = wp_parse_args(get_option(self::OPTION, array()), array(
+            'video_url' => '',
+            'video_schedule' => array(),
+            'display_mode' => 'video',
+            'slideshow_images' => array(),
+            'slideshow_seconds' => '10',
+            'slideshow_transition' => 'fade',
+            'slideshow_transition_seconds' => '1',
+        ));
         if (($o['display_mode'] ?? 'video') === 'slideshow') {
             $slides = IFRD_Expiring_Slideshow::active($o['slideshow_images'] ?? array(), IFRD_Scheduled_Media::timezone_name());
-            return self::render_player('', self::current_display_version(), self::AJAX_ACTION, 'ifrd-screen-video-', $slides, $o['slideshow_seconds'] ?? 10, $o['slideshow_transition'] ?? 'fade', $o['slideshow_transition_seconds'] ?? 1);
+            return self::render_player('', self::current_display_version(), self::AJAX_ACTION, $id_prefix, $slides, $o['slideshow_seconds'] ?? 10, $o['slideshow_transition'] ?? 'fade', $o['slideshow_transition_seconds'] ?? 1);
         }
         $effective = IFRD_Scheduled_Media::effective(
             $o['video_url'] ?? '',
@@ -236,7 +250,7 @@ class IFRD_Video_For_Screens {
         $video_url = $effective['url'];
         $refresh_version = self::current_display_version();
 
-        return self::render_player($video_url, $refresh_version, self::AJAX_ACTION, 'ifrd-screen-video-');
+        return self::render_player($video_url, $refresh_version, self::AJAX_ACTION, $id_prefix);
     }
 
     public static function render_player($video_url, $refresh_version, $ajax_action, $id_prefix = 'ifrd-screen-video-', $slides = array(), $slide_seconds = 10, $transition = 'fade', $transition_seconds = 1) {

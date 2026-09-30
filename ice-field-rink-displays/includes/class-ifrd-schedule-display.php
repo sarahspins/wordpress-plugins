@@ -157,6 +157,7 @@ class IFRD_Schedule_Display {
             'banner_slideshow_seconds' => '10',
             'banner_slideshow_transition' => 'fade',
             'banner_slideshow_transition_seconds' => '1',
+            'takeover_schedule' => array(),
             'locker_name_map' => "4=Warm Room\n5=Party Room 1\n6=Party Room 2\n7=Locker Room B\n8=Locker Room D\n9=Party Room 3\n10=Locker Room C\n11=Locker Room E\n12=Locker Room H\n13=Locker Room I\n14=Locker Room J\n15=Locker Room K",
             'bg_color' => '#06131f',
             'panel_color' => '#0d2235',
@@ -232,6 +233,10 @@ class IFRD_Schedule_Display {
             $clean['banner_slideshow_seconds'] = (string) min(300, max(2, intval($input['banner_slideshow_seconds'] ?? 10)));
             $clean['banner_slideshow_transition'] = in_array(($input['banner_slideshow_transition'] ?? 'fade'), array('fade', 'slide', 'none'), true) ? $input['banner_slideshow_transition'] : 'fade';
             $clean['banner_slideshow_transition_seconds'] = (string) min(5, max(0.1, floatval($input['banner_slideshow_transition_seconds'] ?? 1)));
+            $clean['takeover_schedule'] = IFRD_Schedule_Takeover::sanitize(
+                $input['takeover_schedule'] ?? array(),
+                IFRD_Scheduled_Media::timezone_name($old)
+            );
         } else {
 
             foreach ($defaults as $key => $default) {
@@ -242,6 +247,11 @@ class IFRD_Schedule_Display {
                 }
                 if ($key === 'banner_slideshow_images') {
                     $clean[$key] = IFRD_Expiring_Slideshow::sanitize($input[$key] ?? array(), sanitize_text_field((string) ($input['display_timezone'] ?? $old['display_timezone'])));
+                    continue;
+                }
+                if ($key === 'takeover_schedule') {
+                    $submitted_timezone = sanitize_text_field((string) ($input['display_timezone'] ?? $old['display_timezone'] ?? 'America/Chicago'));
+                    $clean[$key] = IFRD_Schedule_Takeover::sanitize($input[$key] ?? array(), $submitted_timezone);
                     continue;
                 }
 
@@ -294,6 +304,7 @@ class IFRD_Schedule_Display {
             || ($clean['banner_slideshow_seconds'] ?? '10') !== ($old['banner_slideshow_seconds'] ?? '10')
             || ($clean['banner_slideshow_transition'] ?? 'fade') !== ($old['banner_slideshow_transition'] ?? 'fade')
             || ($clean['banner_slideshow_transition_seconds'] ?? '1') !== ($old['banner_slideshow_transition_seconds'] ?? '1')
+            || wp_json_encode($clean['takeover_schedule'] ?? array()) !== wp_json_encode($old['takeover_schedule'] ?? array())
         ) {
             IFRD_Video_For_Screens::bump_refresh_version();
         }
@@ -324,6 +335,8 @@ class IFRD_Schedule_Display {
         foreach (IFRD_Scheduled_Media::sanitize($o['banner_schedule'] ?? array(), IFRD_Scheduled_Media::timezone_name($o)) as $scheduled_banner) {
             if ($scheduled_banner['starts_at'] > $now_key) { $next_banner_at = $scheduled_banner['starts_at']; break; }
         }
+        $effective_takeover = IFRD_Schedule_Takeover::effective($o['takeover_schedule'] ?? array(), IFRD_Scheduled_Media::timezone_name($o));
+        $next_takeover_at = IFRD_Schedule_Takeover::next_transition($o['takeover_schedule'] ?? array(), IFRD_Scheduled_Media::timezone_name($o));
         $manual_refresh = (array) get_option(self::MANUAL_REFRESH_STATUS_OPTION, array());
         ?>
         <div class="wrap">
@@ -415,6 +428,17 @@ class IFRD_Schedule_Display {
                     IFRD_Scheduled_Media::timezone_name($o),
                     'Scheduled Banner Video Changes'
                 ); ?>
+                <?php IFRD_Schedule_Takeover::render_editor(
+                    self::OPTION,
+                    'takeover_schedule',
+                    $o['takeover_schedule'] ?? array(),
+                    IFRD_Scheduled_Media::timezone_name($o)
+                ); ?>
+                <?php if (!empty($effective_takeover['active'])): ?>
+                    <p class="notice notice-info inline"><strong>Schedule takeover is active.</strong> It ends <?php echo esc_html(str_replace('T', ' at ', $effective_takeover['ends_at'])); ?>.</p>
+                <?php elseif ($next_takeover_at): ?>
+                    <p class="description"><strong>Next takeover transition:</strong> <?php echo esc_html(str_replace('T', ' at ', $next_takeover_at)); ?></p>
+                <?php endif; ?>
                 <?php submit_button(); ?>
             </form>
             <hr>
@@ -438,6 +462,7 @@ class IFRD_Schedule_Display {
         </div>
         <?php IFRD_Banner_Media::print_picker_script(); ?>
         <?php IFRD_Scheduled_Media::print_editor_script(); ?>
+        <?php IFRD_Schedule_Takeover::print_editor_script(); ?>
         <?php IFRD_Expiring_Slideshow::print_editor_script(); ?>
         <script>(function(){const field=document.getElementById('ifrd-schedule-banner');const preview=document.querySelector('[data-admin-banner-preview]');if(!field||!preview)return;field.addEventListener('input',function(){const url=field.value.trim();const type=field.closest('.ifrd-media-picker').querySelector('.ifrd-media-type');const video=(type&&type.value==='video')||/\.(mp4|m4v|webm|ogv|ogg|mov)(?:[?#]|$)/i.test(url);preview.innerHTML=url?(video?'<video muted loop autoplay playsinline src="'+url.replace(/"/g,'&quot;')+'"></video>':'<img src="'+url.replace(/"/g,'&quot;')+'" alt="">'):'<span>No banner selected</span>';});})();</script>
         <?php
@@ -1379,6 +1404,21 @@ class IFRD_Schedule_Display {
 
     public function shortcode($atts) {
         $o = $this->opts();
+        $takeover = IFRD_Schedule_Takeover::effective(
+            $o['takeover_schedule'] ?? array(),
+            IFRD_Scheduled_Media::timezone_name($o)
+        );
+        if (!empty($takeover['active'])) {
+            if (($takeover['source'] ?? '') === 'custom_video') {
+                return IFRD_Video_For_Screens::render_player(
+                    $takeover['video_url'] ?? '',
+                    IFRD_Video_For_Screens::current_display_version(),
+                    IFRD_Video_For_Screens::AJAX_ACTION,
+                    'ifrd-schedule-takeover-'
+                );
+            }
+            return IFRD_Video_For_Screens::render_current('ifrd-schedule-takeover-');
+        }
         $effective_banner = IFRD_Scheduled_Media::effective(
             $o['banner_url'] ?? '',
             $o['banner_media_type'] ?? 'auto',

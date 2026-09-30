@@ -1,4 +1,6 @@
-Ice & Field Rink Displays v2.8.19
+Ice & Field Rink Displays v2.8.20
+
+Version 2.8.20 adds scheduled full-screen Schedule Display takeovers. Editors and administrators can choose a start and end time, temporarily replace the normal rink schedule with the current Video for Screens content or a separate Media Library video, and rely on open TVs to enter and leave the takeover automatically through the existing refresh check.
 
 Version 2.8.19 marks schedule-display participant counts with an asterisk and adds a note immediately after Last updated explaining that API processing delays can make participant counts inaccurate. This is presentation only; count calculation, FULL indicators, and schedule refresh timing are unchanged.
 

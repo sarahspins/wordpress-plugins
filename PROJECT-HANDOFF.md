@@ -33,6 +33,7 @@ Suite 20 is published from `01273b40bb2110a7f4dc9def2f032e94fd6cd4bf`. All five 
 
 - Programming 1.9.2.8 new-offering publication defaults on for Dash Season names containing Learn to Skate and off elsewhere (including Productions); explicit per-Season choices override defaults. Daily sync remains opt-in and registration-open only. Automatic publication requires published parents and never republishes existing drafts/unpublished offerings. Manual publishing and Production companion visibility are unchanged.
 - Rink Displays 2.8.19 adds an asterisk to schedule participant counts and an inline italic disclaimer immediately after Last updated, with no space after the asterisk. Counts, FULL indicators, and refresh timing are unchanged. Participant-display development remains tabled.
+- Rink Displays 2.8.20 is in active local testing in `dist/ice-field-rink-displays-2.8.20-test.zip`. It adds scheduled full-screen Schedule Display takeovers with explicit start/end times in the display timezone. A takeover can reuse the current Video for Screens content or use a separate Media Library video; open schedule TVs detect both start and end transitions through the existing minute refresh check and return to the schedule automatically. Editors and administrators can manage these windows from Schedule Display. Overlaps resolve to the active window with the latest start time.
 
 - Dash Connector 1.7.22 adds administrator-managed Event Assignment Rules, bounded read-only retries, explicit bulk Event Type Correction, string-safe DaySmart event-type IDs and dropdowns, and inclusive Custom Date Range searches up to the existing 92-day safety limit while retaining Whole Month as the default.
 - Dash Connector 1.7.23 is the current repository source and production-tested build. It enriches automatic-update email event lines with available DaySmart creator and last-editor names/timestamps, with a safe fallback to the event date/time when DaySmart omits audit metadata. It is not yet part of a published suite release.
@@ -75,6 +76,7 @@ Participant-display development is tabled. Do not include or resume per-rink par
 - Test Elementor Slide Scheduler 1.0.0 against the site's installed Elementor Pro version before adding it to the suite packaging and update system.
 - Verify Rink Displays 2.8.18's Refresh Displayed Week control on a future week after its suite-19 update.
 - Include production-tested Dash Connector 1.7.23 in the next explicitly approved suite release; do not publish it solely because its source is now reconciled.
+- Test the Rink Displays 2.8.20 scheduled takeover ZIP on a schedule screen, including automatic entry, automatic return, reuse of Video for Screens, and a separate selected video, before publication.
 
 ## Moving to another computer
 
