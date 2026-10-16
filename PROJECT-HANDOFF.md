@@ -13,22 +13,22 @@ Last updated: October 16, 2026
 
 ## Current published release
 
-GitHub release: `release-1.0`
+GitHub release: `release-1.1`
 
 | Component | Published version |
 | --- | ---: |
-| Dash Connector | 1.7.23 |
+| Dash Connector | 1.7.25 |
 | Programming | 1.9.2.8 |
 | Productions | 3.7.1 |
-| Rink Displays | 2.8.20 |
+| Rink Displays | 2.8.22 |
 | Productions Theme | 1.6.8 |
 
-Release 1.0 is published from `13b951d8a89be6ae505045a91fe61bde6e994f4c`. All five core ZIPs and `ice-field-updates.json` were downloaded and verified after publication. It publishes Dash Connector 1.7.23 and Rink Displays 2.8.20 alongside the unchanged Programming, Productions, and Productions Theme packages. Elementor Slide Scheduler remains outside the combined updater pending compatibility testing.
+Release 1.1 is published from `9e296ccf41d2d5beb13ea03214f9e7f0962c4748`. All five core ZIPs and `ice-field-updates.json` were downloaded and verified after publication. It publishes Dash Connector 1.7.25 and Rink Displays 2.8.22 alongside the unchanged Programming, Productions, and Productions Theme packages. Elementor Slide Scheduler remains outside the combined updater pending compatibility testing.
 
 ## Current state
 
-- Dash Connector 1.7.25 is in local testing. It includes the 1.7.24 no-op automatic-update fix and adds optional day-of-week plus exact start-time filters to manual Event Assignment searches. This supports precise date-range repairs such as Friday 6:00 AM Private Hockey Coaches Ice without changing unrelated sessions. The test ZIP is `dist/ice-field-dash-connector-1.7.25.zip`; it is not yet published.
-- Rink Displays 2.8.22 is in local testing. Public calendar cache timestamps now include weekday, date, and time. Administrators can mirror Dash blackout dates under Calendar Closure Dates using `YYYY-MM-DD|Label`; Day and Week views render those dates as full-day closure blocks instead of blank calendars. Matching Gold/Silver events with identical date, time, and title are combined into one facility-wide closure notice when the title contains `closing`, `closed`, or `late`. Dash exposes blackout management through its legacy browser-session admin screen, but no supported blackout resource was found in the documented JSON API used by WordPress. The test ZIP is `dist/ice-field-rink-displays-2.8.22.zip`; it is not yet published.
+- Dash Connector 1.7.25 is published in Release 1.1. It includes the 1.7.24 no-op automatic-update fix and adds optional day-of-week plus exact start-time filters to manual Event Assignment searches. This supports precise date-range repairs such as Friday 6:00 AM Private Hockey Coaches Ice without changing unrelated sessions.
+- Rink Displays 2.8.22 is published in Release 1.1. Public calendar cache timestamps include weekday, date, and time. Administrators can mirror Dash blackout dates under Calendar Closure Dates using `YYYY-MM-DD|Label`; Day and Week views render those dates as full-day closure blocks instead of blank calendars. Matching Gold/Silver events with identical date, time, and title are combined into one facility-wide closure notice when the title contains `closing`, `closed`, or `late`. Dash exposes blackout management through its legacy browser-session admin screen, but no supported blackout resource was found in the documented JSON API used by WordPress.
 - Sarah confirmed and approved Rink Displays 2.8.20 after testing its scheduled full-screen Schedule Display takeovers. Release 1.0 was published September 30 with Dash Connector 1.7.23, Programming 1.9.2.8, Productions 3.7.1, Rink Displays 2.8.20, and Productions Theme 1.6.8. PHP syntax, timing tests, workflow validation, manifest validation, and all five ZIP integrity checks passed.
 
 - Programming 1.9.2.8 includes per-Team/class and standalone-Level Sport selectors. Existing local Sports are preselected, otherwise mapped Dash Sports are used. Individual values beat bulk Sport; a single bulk Sport can resolve unclassified rows only during manual imports. Daily sync preserves existing classifications and leaves unresolved new offerings draft with Activity Log warnings.
@@ -82,7 +82,7 @@ Participant-display development is tabled. Do not include or resume per-rink par
 - Keep component README/changelog/roadmap files and the GitHub wiki synchronized with behavior changes.
 - Test Elementor Slide Scheduler 1.0.0 against the site's installed Elementor Pro version before adding it to the suite packaging and update system.
 - Verify Rink Displays 2.8.18's Refresh Displayed Week control on a future week after its suite-19 update.
-- Confirm the WordPress updater offers Release 1.0 on each intended website and spot-check Connector 1.7.23 and Displays 2.8.20 after installation.
+- Confirm the WordPress updater offers Release 1.1 on each intended website and spot-check Connector 1.7.25 and Displays 2.8.22 after installation.
 
 ## Moving to another computer
 
