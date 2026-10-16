@@ -1,7 +1,15 @@
 Ice & Field Dash Connector
-Version 1.7.23
+Version 1.7.25
 
 Shared Dash/DaySmart connection for Ice & Field WordPress plugins.
+
+1.7.25 adds:
+- Optional day-of-week and exact start-time filters to manual Event Assignment searches
+- Safer targeted bulk changes such as selecting only Friday 6:00 AM sessions inside a custom date range
+
+1.7.24 fixes:
+- Automatic Event Assignment skips name-only mismatches when automatic naming is disabled
+- Specially named events already assigned to the correct Team and capacity no longer receive repeated no-op updates, history entries, or email notices
 
 1.7.23 adds:
 - Available DaySmart creator and last-editor names/timestamps to each event line in automatic-update emails

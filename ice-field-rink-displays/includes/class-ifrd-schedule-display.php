@@ -140,6 +140,7 @@ class IFRD_Schedule_Display {
             'calendar_color_strength' => '50',
             'calendar_registration_links' => '1',
             'calendar_session_selector' => '1',
+            'calendar_closure_dates' => '',
             'full_session_label' => 'FULL',
             'failure_alert_enabled' => '1',
             'failure_alert_threshold' => '3',
@@ -272,6 +273,8 @@ class IFRD_Schedule_Display {
                     $clean[$key] = in_array($value, array('day', 'week'), true) ? $value : 'week';
                 } elseif ($key === 'locker_name_map') {
                     $clean[$key] = sanitize_textarea_field($value);
+                } elseif ($key === 'calendar_closure_dates') {
+                    $clean[$key] = sanitize_textarea_field($value);
                 } elseif ($key === 'banner_media_type') {
                     $clean[$key] = in_array($value, array('auto', 'image', 'video'), true) ? $value : 'auto';
                 } elseif ($key === 'banner_mode') {
@@ -382,6 +385,7 @@ class IFRD_Schedule_Display {
                     <tr><th>Calendar Event Color Strength</th><td><input type="number" min="0" max="100" step="5" class="small-text" name="<?php echo esc_attr(self::OPTION); ?>[calendar_color_strength]" value="<?php echo esc_attr($o['calendar_color_strength']); ?>">%<p class="description">Controls event-block color intensity in the selectable calendar. <code>50</code> is muted, <code>100</code> uses the full Dash or category color, and <code>0</code> removes the background fill.</p></td></tr>
                     <tr><th>Calendar Registration Links</th><td><label><input type="checkbox" name="<?php echo esc_attr(self::OPTION); ?>[calendar_registration_links]" value="1" <?php checked(!empty($o['calendar_registration_links'])); ?>> Enable clickable registration links</label><p class="description">When disabled, calendar events are display-only and related registration records are not requested from Dash.</p></td></tr>
                     <tr><th>Calendar Session Type Selector</th><td><label><input type="checkbox" name="<?php echo esc_attr(self::OPTION); ?>[calendar_session_selector]" value="1" <?php checked(!empty($o['calendar_session_selector'])); ?>> Show the Session Type selector</label><p class="description">Turn this off to hide the session-category filter from the public day/week calendar.</p></td></tr>
+                    <tr><th>Calendar Closure Dates</th><td><textarea class="large-text code" rows="5" name="<?php echo esc_attr(self::OPTION); ?>[calendar_closure_dates]" placeholder="2026-11-26|Closed for Thanksgiving"><?php echo esc_textarea($o['calendar_closure_dates'] ?? ''); ?></textarea><p class="description">One date per line as <code>YYYY-MM-DD|Label</code>. Closed dates appear across the full normal calendar day in both Day and Week views. Dash stores blackout dates in its legacy admin area but does not currently expose them through the documented JSON API, so this list safely mirrors the dates that should be public.</p></td></tr>
                 </table>
                 <h2>Display</h2>
                 <table class="form-table">
@@ -1510,7 +1514,7 @@ class IFRD_Schedule_Display {
             const scheduleCacheKey='ifrd_schedule_last_success_v231';
             function localDayKey(){const d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');}
             let currentScheduleData=null;
-            function displaySchedule(data){currentScheduleData=data;render('gold',data.gold||[],data.goldAdditional||0);render('silver',data.silver||[],data.silverAdditional||0);const updated=data.cachedAt?new Date(data.cachedAt):new Date();root.querySelector('[data-updated]').textContent='Last updated: '+updated.toLocaleTimeString([],{hour:'numeric',minute:'2-digit',second:'2-digit'});}
+            function displaySchedule(data){currentScheduleData=data;render('gold',data.gold||[],data.goldAdditional||0);render('silver',data.silver||[],data.silverAdditional||0);const updated=data.cachedAt?new Date(data.cachedAt):new Date();root.querySelector('[data-updated]').textContent='Last updated: '+updated.toLocaleString([],{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit',second:'2-digit'});}
             function showCachedSchedule(){try{const cached=JSON.parse(localStorage.getItem(scheduleCacheKey));if(cached&&cached.cachedDay===localDayKey()){displaySchedule(cached);root.querySelector('[data-status]').textContent='API status: connecting — showing saved schedule';return true;}if(cached){localStorage.removeItem(scheduleCacheKey);}}catch(e){try{localStorage.removeItem(scheduleCacheKey);}catch(ignore){}}return false;}
             async function load(){const status=root.querySelector('[data-status]');try{let schedule=null;const staticUrl=<?php echo wp_json_encode($static_schedule_url); ?>;if(staticUrl){try{const staticResponse=await fetch(staticUrl,{cache:'no-store'});if(staticResponse.ok)schedule=await staticResponse.json();}catch(ignore){}}if(!schedule){let f=new FormData();f.append('action','ifrd_schedule_data');let r=await fetch('<?php echo esc_url(admin_url('admin-ajax.php')); ?>',{method:'POST',body:f,cache:'no-store'});if(!r.ok)throw new Error('Schedule refresh failed');let p=await r.json();if(!p.success)throw new Error(p.data?.message||'Unable to load schedule');schedule=p.data;}schedule=Object.assign({},schedule,{cachedAt:Date.now(),cachedDay:localDayKey()});displaySchedule(schedule);try{localStorage.setItem(scheduleCacheKey,JSON.stringify(schedule));}catch(ignore){}clearInterval(connectionTimer);status.textContent='API status: connected';}catch(e){clearInterval(connectionTimer);const gold=root.querySelector('[data-list="gold"]');const silver=root.querySelector('[data-list="silver"]');const hasVisibleSchedule=(gold&&gold.children.length>0)||(silver&&silver.children.length>0);status.textContent=hasVisibleSchedule?'API status: refresh failed — showing last schedule':'API status: error';if(!hasVisibleSchedule&&gold){gold.innerHTML='<div class="ifrd-schedule-error">'+esc(e.message)+'</div>';}if(window.console&&console.error)console.error(e);}}
             const embeddedRefreshVersion=<?php echo wp_json_encode($screen_refresh_version); ?>;

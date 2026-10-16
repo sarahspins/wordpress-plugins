@@ -497,6 +497,44 @@ button.ifrd-calendar-day-event {
     box-shadow: inset 0 0 0 2px rgba(255, 120, 51, .5);
 }
 
+.ifrd-calendar-week-closure {
+    position: absolute;
+    z-index: 4;
+    inset: 3px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    padding: 10px;
+    border: 2px solid #b42318;
+    border-radius: 8px;
+    background: repeating-linear-gradient(135deg, #fff1f0 0, #fff1f0 12px, #ffe4e1 12px, #ffe4e1 24px);
+    color: #7a1712;
+    text-align: center;
+}
+
+.ifrd-calendar-week-closure strong { font-size: .9rem; line-height: 1.2; }
+.ifrd-calendar-week-closure span { font-size: .72rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+
+.ifrd-calendar-day-closure {
+    min-height: 360px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 28px;
+    border: 2px solid #b42318;
+    border-radius: 14px;
+    background: repeating-linear-gradient(135deg, #fff1f0 0, #fff1f0 18px, #ffe4e1 18px, #ffe4e1 36px);
+    color: #7a1712;
+    text-align: center;
+}
+
+.ifrd-calendar-day-closure strong { font-size: clamp(1.4rem, 4vw, 2.3rem); }
+.ifrd-calendar-day-closure span { color: #8b3a35; }
+
 .ifrd-calendar-time-label {
     position: absolute;
     right: 9px;
@@ -526,6 +564,38 @@ button.ifrd-calendar-day-event {
     text-align: left;
     text-decoration: none;
 }
+
+.ifrd-calendar-week-event.is-facility-notice {
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid #b42318;
+    background: repeating-linear-gradient(135deg, #fff1f0 0, #fff1f0 10px, #ffe4e1 10px, #ffe4e1 20px);
+    --ifrd-event-text: #7a1712;
+    text-align: center;
+}
+
+.ifrd-calendar-week-event.is-facility-notice .ifrd-calendar-week-event-title {
+    color: #7a1712;
+}
+
+.ifrd-calendar-day-facility-notice {
+    display: grid;
+    grid-template-columns: max-content 1fr max-content;
+    align-items: center;
+    gap: 14px;
+    margin: 0 0 12px;
+    padding: 14px 18px;
+    border: 2px solid #b42318;
+    border-radius: 12px;
+    background: repeating-linear-gradient(135deg, #fff1f0 0, #fff1f0 12px, #ffe4e1 12px, #ffe4e1 24px);
+    color: #7a1712;
+}
+
+.ifrd-calendar-day-facility-notice strong { font-size: 1.05rem; text-align: center; }
+.ifrd-calendar-day-facility-notice span,
+.ifrd-calendar-day-facility-notice small { font-weight: 800; }
 
 button.ifrd-calendar-week-event {
     appearance: none;
@@ -710,5 +780,11 @@ button.ifrd-calendar-week-event {
 
     .ifrd-calendar-day-event-time {
         font-size: .94rem;
+    }
+
+    .ifrd-calendar-day-facility-notice {
+        grid-template-columns: 1fr;
+        gap: 5px;
+        text-align: center;
     }
 }

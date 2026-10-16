@@ -1,4 +1,8 @@
-Ice & Field Rink Displays v2.8.20
+Ice & Field Rink Displays v2.8.22
+
+Version 2.8.22 combines matching Gold and Silver calendar events into one facility-wide notice when their date, time, and title match and the title contains closing, closed, or late. The combined notice uses the same closure color treatment in Week view and appears as a facility-wide notice above the Day timeline.
+
+Version 2.8.21 shows the weekday and date alongside the public calendar cache update time. It also adds administrator-managed calendar closure dates that render as full-day Closed blocks across the facility's normal calendar hours; this provides a safe fallback because Dash blackout dates are available in legacy administration but are not exposed through the documented JSON API used by WordPress.
 
 Version 2.8.20 adds scheduled full-screen Schedule Display takeovers. Editors and administrators can choose a start and end time, temporarily replace the normal rink schedule with the current Video for Screens content or a separate Media Library video, and rely on open TVs to enter and leave the takeover automatically through the existing refresh check.
 

@@ -1,6 +1,6 @@
 # Project Handoff
 
-Last updated: September 30, 2026
+Last updated: October 16, 2026
 
 ## Active security incident — main website
 
@@ -27,6 +27,8 @@ Release 1.0 is published from `13b951d8a89be6ae505045a91fe61bde6e994f4c`. All fi
 
 ## Current state
 
+- Dash Connector 1.7.25 is in local testing. It includes the 1.7.24 no-op automatic-update fix and adds optional day-of-week plus exact start-time filters to manual Event Assignment searches. This supports precise date-range repairs such as Friday 6:00 AM Private Hockey Coaches Ice without changing unrelated sessions. The test ZIP is `dist/ice-field-dash-connector-1.7.25.zip`; it is not yet published.
+- Rink Displays 2.8.22 is in local testing. Public calendar cache timestamps now include weekday, date, and time. Administrators can mirror Dash blackout dates under Calendar Closure Dates using `YYYY-MM-DD|Label`; Day and Week views render those dates as full-day closure blocks instead of blank calendars. Matching Gold/Silver events with identical date, time, and title are combined into one facility-wide closure notice when the title contains `closing`, `closed`, or `late`. Dash exposes blackout management through its legacy browser-session admin screen, but no supported blackout resource was found in the documented JSON API used by WordPress. The test ZIP is `dist/ice-field-rink-displays-2.8.22.zip`; it is not yet published.
 - Sarah confirmed and approved Rink Displays 2.8.20 after testing its scheduled full-screen Schedule Display takeovers. Release 1.0 was published September 30 with Dash Connector 1.7.23, Programming 1.9.2.8, Productions 3.7.1, Rink Displays 2.8.20, and Productions Theme 1.6.8. PHP syntax, timing tests, workflow validation, manifest validation, and all five ZIP integrity checks passed.
 
 - Programming 1.9.2.8 includes per-Team/class and standalone-Level Sport selectors. Existing local Sports are preselected, otherwise mapped Dash Sports are used. Individual values beat bulk Sport; a single bulk Sport can resolve unclassified rows only during manual imports. Daily sync preserves existing classifications and leaves unresolved new offerings draft with Activity Log warnings.
@@ -34,6 +36,7 @@ Release 1.0 is published from `13b951d8a89be6ae505045a91fe61bde6e994f4c`. All fi
 - Programming 1.9.2.8 new-offering publication defaults on for Dash Season names containing Learn to Skate and off elsewhere (including Productions); explicit per-Season choices override defaults. Daily sync remains opt-in and registration-open only. Automatic publication requires published parents and never republishes existing drafts/unpublished offerings. Manual publishing and Production companion visibility are unchanged.
 - Rink Displays 2.8.19 adds an asterisk to schedule participant counts and an inline italic disclaimer immediately after Last updated, with no space after the asterisk. Counts, FULL indicators, and refresh timing are unchanged. Participant-display development remains tabled.
 - Rink Displays 2.8.20 is published in Release 1.0. It adds scheduled full-screen Schedule Display takeovers with explicit start/end times in the display timezone. A takeover can reuse the current Video for Screens content or use a separate Media Library video; open schedule TVs detect both start and end transitions through the existing minute refresh check and return to the schedule automatically. Editors and administrators can manage these windows from Schedule Display. Overlaps resolve to the active window with the latest start time.
+- The maintained Editor PDF guide under `output/pdf/` was rebuilt September 30 for Release 1.0. Its source now includes beginner instructions for scheduled full-screen Schedule Display takeovers, current component versions, and the corrected participant-count guidance. The contents prioritize Video for Screens, Schedule Display media/takeovers, and schedule refresh immediately after sign-in/workspace basics. The US Letter PDF retains the verified 3/4-inch text margins and 1/4-inch colored-area printer clearance.
 
 - Dash Connector 1.7.22 adds administrator-managed Event Assignment Rules, bounded read-only retries, explicit bulk Event Type Correction, string-safe DaySmart event-type IDs and dropdowns, and inclusive Custom Date Range searches up to the existing 92-day safety limit while retaining Whole Month as the default.
 - Dash Connector 1.7.23 is published in Release 1.0. It enriches automatic-update email event lines with available DaySmart creator and last-editor names/timestamps, with a safe fallback to the event date/time when DaySmart omits audit metadata.
@@ -50,13 +53,16 @@ Release 1.0 is published from `13b951d8a89be6ae505045a91fe61bde6e994f4c`. All fi
 - Programming now separates expensive protected imports into AJAX stages to reduce per-request PHP memory and gateway exposure.
 - Rink Displays now serves shared static schedule snapshots so TV screens normally bypass WordPress/PHP.
 - The Dash API uses `leagues` for the records presented as Programming Levels and `teams` for monthly/session offerings.
+- Dash blackout dates currently require a local Displays mirror because the legacy Dash admin endpoint is session-bound and no supported equivalent is documented for API-key access. Do not store or scrape a staff Dash browser session in WordPress.
 - Do not assume hosting logs are available. Error messages and staged operations should identify the failed resource wherever possible.
 
 ## Decisions that should remain stable
 
 - GitHub `main` is the code source of truth; iCloud is cross-computer file availability, not branch synchronization.
+- After implementing a plugin or theme change, create and validate a test ZIP by default unless Sarah explicitly says not to package it.
 - New combined releases use human-readable decimal versions beginning with `release-1.0`, followed by `release-1.1`, `release-1.2`, and so on. Public titles use “Ice & Field WordPress Release” rather than “Suite.” Component plugins and the theme retain their independent versions. Historical integer tags such as `suite-20` remain unchanged.
 - Automatic Connector event checks are disabled by default and should be enabled on only one website.
+- Calendar closure dates are maintained in Displays as `YYYY-MM-DD|Label` lines and should mirror Dash Admin → Blackout Dates until DaySmart exposes a supported API-key endpoint.
 - Public Skating event type 10 uses capacity 250 only when capacity is zero/missing; nonzero capacity is preserved.
 - Protected Public Skating Teams and titles longer than 22 characters are never automatically changed.
 - Camps import without redundant Levels and display/sort by actual event dates.

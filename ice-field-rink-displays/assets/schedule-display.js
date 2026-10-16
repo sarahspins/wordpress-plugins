@@ -212,7 +212,7 @@
             render('gold', data.goldAll || data.gold || [], data.pageSize || root.getAttribute('data-ifrd-max-visible'), animate);
             render('silver', data.silverAll || data.silver || [], data.pageSize || root.getAttribute('data-ifrd-max-visible'), animate);
             var updated = data.generatedAt ? new Date(data.generatedAt) : (data.cachedAt ? new Date(data.cachedAt) : new Date());
-            root.querySelector('[data-updated]').textContent = 'Last updated: ' + updated.toLocaleTimeString([], {hour: 'numeric', minute: '2-digit', second: '2-digit'});
+            root.querySelector('[data-updated]').textContent = 'Last updated: ' + updated.toLocaleString([], {weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit'});
         }
 
         function fetchWithTimeout(url, options, timeout) {

@@ -1126,6 +1126,8 @@ jQuery(function($){
             end: range.end,
             name: $('#ifdc-assignment-name').val(),
             event_type: $('#ifdc-assignment-type').val(),
+            weekday: $('#ifdc-assignment-weekday').val(),
+            start_time: $('#ifdc-assignment-start-time').val(),
             include_other: $('#ifdc-assignment-include-other').is(':checked') ? 1 : 0,
             only_unlimited: $('#ifdc-assignment-unlimited-only').is(':checked') ? 1 : 0
         }).done(function(response){
@@ -1152,6 +1154,8 @@ jQuery(function($){
         $('input[name="ifdc-assignment-team"]').prop('checked', false);
         $('#ifdc-clear-assignment-team').prop('disabled', true);
         $('#ifdc-assignment-name').val('');
+        $('#ifdc-assignment-weekday').val('');
+        $('#ifdc-assignment-start-time').val('');
         $('#ifdc-assignment-unlimited-only').prop('checked', false);
         $('#ifdc-assignment-capacity').val('');
         $('#ifdc-assignment-event-name').val('');

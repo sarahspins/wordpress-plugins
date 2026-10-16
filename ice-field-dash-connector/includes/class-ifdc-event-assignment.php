@@ -353,6 +353,21 @@ class IFDC_Event_Assignment {
                         <label>Event type <span class="description">(optional)</span>
                             <?php self::render_event_type_select('ifdc-assignment-type', '', '', $event_types, 'All event types'); ?>
                         </label>
+                        <label>Day of week <span class="description">(optional)</span>
+                            <select id="ifdc-assignment-weekday">
+                                <option value="">Any day</option>
+                                <option value="1">Monday</option>
+                                <option value="2">Tuesday</option>
+                                <option value="3">Wednesday</option>
+                                <option value="4">Thursday</option>
+                                <option value="5">Friday</option>
+                                <option value="6">Saturday</option>
+                                <option value="0">Sunday</option>
+                            </select>
+                        </label>
+                        <label>Start time <span class="description">(optional)</span>
+                            <input type="time" id="ifdc-assignment-start-time" step="300">
+                        </label>
                     </div>
                     <label class="ifdc-checkbox-row">
                         <input type="checkbox" id="ifdc-assignment-include-other" checked>
@@ -1225,6 +1240,7 @@ class IFDC_Event_Assignment {
             if ($event_name === '') $event_name = null;
             $result['unchanged'] += absint($group['ready_count'] ?? 0);
             foreach ((array) ($group['events'] ?? []) as $event) {
+                if (!self::event_requires_automatic_update($event)) continue;
                 $event_id = absint($event['id'] ?? 0);
                 if (!$event_id) continue;
                 $capacity = !empty($event['capacity_update']) ? absint($group['capacity']) : null;
@@ -1274,6 +1290,10 @@ class IFDC_Event_Assignment {
             }
         }
         return $result;
+    }
+
+    private static function event_requires_automatic_update($event) {
+        return !empty($event['assignment_update']);
     }
 
     private static function assignment_definitions($cleanup_only = false) {
@@ -1456,6 +1476,10 @@ class IFDC_Event_Assignment {
 
         $name = sanitize_text_field(wp_unslash($_POST['name'] ?? ''));
         $event_type = self::sanitize_event_type_id(wp_unslash($_POST['event_type'] ?? ''));
+        $weekday = sanitize_text_field(wp_unslash($_POST['weekday'] ?? ''));
+        $weekday = $weekday !== '' && preg_match('/^[0-6]$/', $weekday) ? (int) $weekday : null;
+        $start_time = sanitize_text_field(wp_unslash($_POST['start_time'] ?? ''));
+        $start_time = preg_match('/^(?:[01]\d|2[0-3]):[0-5]\d$/', $start_time) ? $start_time : '';
         $include_other = !empty($_POST['include_other']);
         $only_unlimited = !empty($_POST['only_unlimited']);
         $events = [];
@@ -1486,10 +1510,16 @@ class IFDC_Event_Assignment {
                 'collect_included' => false,
                 // Discard nonmatching records page-by-page so they never build
                 // up in the collection held by this WordPress request.
-                'collection_filter' => function($record) use ($name, $event_type, $include_other, $only_unlimited) {
+                'collection_filter' => function($record) use ($name, $event_type, $weekday, $start_time, $include_other, $only_unlimited) {
                     $attrs = self::attributes($record);
                     if ($name !== '' && stripos((string) ($attrs['desc'] ?? ''), $name) === false) return false;
                     if ($event_type !== '' && self::sanitize_event_type_id($attrs['event_type_id'] ?? '') !== $event_type) return false;
+                    $event_start = (string) ($attrs['start'] ?? '');
+                    if ($weekday !== null) {
+                        $event_date = substr($event_start, 0, 10);
+                        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $event_date) || (int) date('w', strtotime($event_date . ' 12:00:00')) !== $weekday) return false;
+                    }
+                    if ($start_time !== '' && substr($event_start, 11, 5) !== $start_time) return false;
                     $current_team_id = absint($attrs['hteam_id'] ?? 0);
                     $current_capacity = absint($attrs['register_capacity'] ?? 0);
                     if (self::is_protected_public_skating_event($attrs)) return false;

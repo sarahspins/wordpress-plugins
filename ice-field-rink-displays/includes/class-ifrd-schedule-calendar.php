@@ -92,6 +92,20 @@ class IFRD_Schedule_Calendar {
         }
     }
 
+    private function closure_dates() {
+        $o = $this->opts();
+        $dates = array();
+        foreach (preg_split('/\r\n|\r|\n/', (string) ($o['calendar_closure_dates'] ?? '')) as $line) {
+            $parts = array_map('trim', explode('|', $line, 2));
+            if (empty($parts[0]) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $parts[0])) continue;
+            $parsed = DateTimeImmutable::createFromFormat('!Y-m-d', $parts[0], $this->timezone());
+            if (!$parsed || $parsed->format('Y-m-d') !== $parts[0]) continue;
+            $dates[$parts[0]] = sanitize_text_field($parts[1] ?? 'Closed');
+            if ($dates[$parts[0]] === '') $dates[$parts[0]] = 'Closed';
+        }
+        return $dates;
+    }
+
     public function shortcode($atts) {
         $o = $this->opts();
         $atts = shortcode_atts(array(
@@ -1123,6 +1137,30 @@ class IFRD_Schedule_Calendar {
             }
             unset($event['titles']);
         }
+        unset($event);
+
+        $notice_groups = array();
+        foreach ($groups as $key => $event) {
+            if (!$this->is_facility_notice_title($event['title'] ?? '')) continue;
+            $notice_key = implode('|', array(
+                $event['date'],
+                $event['start'],
+                $event['end'],
+                strtolower(trim(preg_replace('/\s+/', ' ', (string) $event['title']))),
+            ));
+            $notice_groups[$notice_key][$event['rinkKey']] = $key;
+        }
+
+        foreach ($notice_groups as $rink_keys) {
+            if (empty($rink_keys['gold']) || empty($rink_keys['silver'])) continue;
+            $gold_key = $rink_keys['gold'];
+            $silver_key = $rink_keys['silver'];
+            $groups[$gold_key]['rinkKey'] = 'both';
+            $groups[$gold_key]['rink'] = 'Gold & Silver Rinks';
+            $groups[$gold_key]['facilityNotice'] = true;
+            $groups[$gold_key]['registrationLinks'] = array();
+            unset($groups[$silver_key]);
+        }
 
         $merged = array_values($groups);
         usort($merged, function($a, $b) {
@@ -1136,6 +1174,10 @@ class IFRD_Schedule_Calendar {
         });
 
         return $merged;
+    }
+
+    private function is_facility_notice_title($title) {
+        return (bool) preg_match('/\b(?:closing|closed|late)\b/i', wp_strip_all_tags((string) $title));
     }
 
     private function collapse_overlapping_lts($events) {
@@ -1320,6 +1362,7 @@ class IFRD_Schedule_Calendar {
         $events = $this->collapse_overlapping_lts($events);
         $days = array();
         $today = (new DateTimeImmutable('now', $this->timezone()))->format('Y-m-d');
+        $closure_dates = $this->closure_dates();
 
         for ($offset = 0; $offset < 7; $offset++) {
             $date = $week_start->modify('+' . $offset . ' days');
@@ -1330,8 +1373,10 @@ class IFRD_Schedule_Calendar {
                 'dayNumber' => $date->format('j'),
                 'longLabel' => $date->format('l, F j'),
                 'isToday' => $key === $today,
+                'closureLabel' => $closure_dates[$key] ?? '',
                 'gold' => array(),
                 'silver' => array(),
+                'notices' => array(),
                 'total' => 0,
             );
         }
@@ -1340,7 +1385,11 @@ class IFRD_Schedule_Calendar {
             if (!isset($days[$event['date']])) {
                 continue;
             }
-            $days[$event['date']][$event['rinkKey']][] = $event;
+            if (($event['rinkKey'] ?? '') === 'both') {
+                $days[$event['date']]['notices'][] = $event;
+            } else {
+                $days[$event['date']][$event['rinkKey']][] = $event;
+            }
             $days[$event['date']]['total']++;
         }
 

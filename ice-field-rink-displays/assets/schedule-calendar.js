@@ -49,7 +49,10 @@
 
     function updatedTime(value) {
         if (!value) return '';
-        return new Date(value).toLocaleTimeString([], {
+        return new Date(value).toLocaleString([], {
+            weekday: 'short',
+            month: 'short',
+            day: 'numeric',
             hour: 'numeric',
             minute: '2-digit'
         });
@@ -175,8 +178,9 @@
             var seen = {};
             var sessionTypes = [];
             state.data.days.forEach(function (day) {
-                (day.gold || []).concat(day.silver || []).forEach(function (event) {
+                (day.gold || []).concat(day.silver || [], day.notices || []).forEach(function (event) {
                     if (Number(event.endMinutes) <= 300) return;
+                    if (event.facilityNotice) return;
                     eventCategories(event).forEach(function (value) {
                         var key = value.toLocaleLowerCase();
                         if (seen[key]) return;
@@ -338,7 +342,14 @@
                 return;
             }
 
+            if (day.closureLabel) {
+                content.innerHTML = '<p class="ifrd-calendar-day-summary">Facility schedule for ' + escapeHtml(prettyDate(day.date)) + '.</p>' +
+                    '<div class="ifrd-calendar-day-closure"><strong>' + escapeHtml(day.closureLabel) + '</strong><span>No events can be scheduled on this blackout date.</span></div>';
+                return;
+            }
+
             var lanes = [];
+            var notices = filterBySession(day.notices || []);
             if (state.rink === 'all' || state.rink === 'gold') {
                 lanes.push({ key: 'gold', title: config.goldTitle || 'Gold Rink', events: filterBySession(day.gold) });
             }
@@ -350,6 +361,7 @@
             lanes.forEach(function (lane) {
                 visibleEvents = visibleEvents.concat(lane.events);
             });
+            visibleEvents = visibleEvents.concat(notices);
             var visibleCount = visibleEvents.length;
 
             var summary = '<p class="ifrd-calendar-day-summary">' +
@@ -360,10 +372,19 @@
                 return;
             }
 
+            var noticeHtml = notices.map(function (event) {
+                return '<div class="ifrd-calendar-day-facility-notice"><span>' + escapeHtml(event.startLabel) + ' – ' + escapeHtml(event.endLabel) + '</span><strong>' + escapeHtml(event.title) + '</strong><small>Gold &amp; Silver Rinks</small></div>';
+            }).join('');
+
+            if (!lanes.some(function (lane) { return lane.events.length; }) && notices.length) {
+                content.innerHTML = summary + noticeHtml;
+                return;
+            }
+
             var range = rangeForEvents(visibleEvents);
             var bodyHeight = (range.endHour - range.startHour) * 72;
             var minimumWidth = lanes.length > 1 ? 650 : 390;
-            var html = summary + '<div class="ifrd-calendar-day-timeline-scroll"><div class="ifrd-calendar-day-timeline-grid" style="grid-template-columns:70px repeat(' + lanes.length + ',minmax(280px,1fr));min-width:' + minimumWidth + 'px">';
+            var html = summary + noticeHtml + '<div class="ifrd-calendar-day-timeline-scroll"><div class="ifrd-calendar-day-timeline-grid" style="grid-template-columns:70px repeat(' + lanes.length + ',minmax(280px,1fr));min-width:' + minimumWidth + 'px">';
 
             html += '<div class="ifrd-calendar-time-head">Time</div>';
             lanes.forEach(function (lane) {
@@ -388,9 +409,10 @@
         }
 
         function filteredEvents(day) {
-            if (state.rink === 'gold') return filterBySession(day.gold);
-            if (state.rink === 'silver') return filterBySession(day.silver);
-            return filterBySession((day.gold || []).concat(day.silver || []));
+            var notices = filterBySession(day.notices || []);
+            if (state.rink === 'gold') return filterBySession(day.gold).concat(notices);
+            if (state.rink === 'silver') return filterBySession(day.silver).concat(notices);
+            return filterBySession((day.gold || []).concat(day.silver || [])).concat(notices);
         }
 
         function calendarRange() {
@@ -415,10 +437,11 @@
             var top = Math.max(0, (visibleStart - (range.startHour * 60)) * pixelsPerMinute);
             var naturalHeight = (Number(event.endMinutes) - visibleStart) * pixelsPerMinute;
             var height = Math.max(29, naturalHeight - 3);
-            var left = singleLane ? 2 : (event.rinkKey === 'gold' ? 2 : 51);
-            var width = singleLane ? 96 : 47;
+            var facilityNotice = Boolean(event.facilityNotice);
+            var left = singleLane || facilityNotice ? 2 : (event.rinkKey === 'gold' ? 2 : 51);
+            var width = singleLane || facilityNotice ? 96 : 47;
             var sizeClass = height < 42 ? ' is-short' : (height >= 78 ? ' is-tall' : '');
-            var classes = 'ifrd-calendar-week-event is-' + event.rinkKey + ' type-' + sessionColorIndex(event) + sizeClass;
+            var classes = 'ifrd-calendar-week-event is-' + event.rinkKey + ' type-' + sessionColorIndex(event) + sizeClass + (facilityNotice ? ' is-facility-notice' : '');
             var style = 'top:' + top.toFixed(1) + 'px;height:' + height.toFixed(1) + 'px;left:' + left + '%;width:' + width + '%;' + eventColorStyle(event);
             var title = event.startLabel + '–' + event.endLabel + ' — ' + event.rink + ' — ' + event.title;
             var links = registrationLinks(event);
@@ -475,7 +498,11 @@
             days.forEach(function (day) {
                 var events = filteredEvents(day);
                 html += '<div class="ifrd-calendar-day-body show-' + escapeHtml(state.rink) + (day.isToday ? ' is-today' : '') + '" style="height:' + bodyHeight + 'px">';
-                html += events.map(function (event) { return weekEvent(event, range, singleLane); }).join('');
+                if (day.closureLabel) {
+                    html += '<div class="ifrd-calendar-week-closure"><strong>' + escapeHtml(day.closureLabel) + '</strong><span>Closed</span></div>';
+                } else {
+                    html += events.map(function (event) { return weekEvent(event, range, singleLane); }).join('');
+                }
                 html += '</div>';
             });
 
