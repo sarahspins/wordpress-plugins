@@ -199,7 +199,12 @@ class IFRD_Schedule_Calendar {
     }
 
     public function ajax() {
-        check_ajax_referer(self::NONCE_ACTION, 'nonce');
+        // Public calendar pages are commonly cached much longer than a
+        // WordPress nonce. Anonymous access is read-only and already exposed
+        // by the nopriv action, so require a nonce only for signed-in users.
+        if (is_user_logged_in()) {
+            check_ajax_referer(self::NONCE_ACTION, 'nonce');
+        }
 
         $date = isset($_POST['date']) ? sanitize_text_field(wp_unslash($_POST['date'])) : '';
         $week_start = $this->week_start_for($date);

@@ -1,4 +1,6 @@
-Ice & Field Rink Displays v2.8.22
+Ice & Field Rink Displays v2.8.23
+
+Version 2.8.23 ensures public visitors receive refreshed weekly calendar data after an administrator rebuilds a week. Static calendar JSON requests now omit login cookies and use a unique cache-busting URL on every scheduled read, preventing the browser or host's anonymous static-file cache from retaining an older copy while logged-in users see the current file. The read-only anonymous AJAX fallback no longer depends on a nonce embedded in a potentially long-cached public page.
 
 Version 2.8.22 combines matching Gold and Silver calendar events into one facility-wide notice when their date, time, and title match and the title contains closing, closed, or late. The combined notice uses the same closure color treatment in Week view and appears as a facility-wide notice above the Day timeline.
 

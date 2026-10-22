@@ -532,10 +532,11 @@
 
             if (config.staticBaseUrl) {
                 try {
-                    var staticUrl = String(config.staticBaseUrl).replace(/\/?$/, '/') + 'week-' + encodeURIComponent(key) + '.json';
+                    var staticUrl = String(config.staticBaseUrl).replace(/\/?$/, '/') + 'week-' + encodeURIComponent(key) + '.json?v=' + Date.now();
                     var staticResponse = await fetch(staticUrl, {
                         headers: { 'Accept': 'application/json' },
-                        cache: 'no-store'
+                        cache: 'no-store',
+                        credentials: 'omit'
                     });
                     if (staticResponse.ok) {
                         var staticPayload = await staticResponse.json();
