@@ -6,6 +6,7 @@ Self-contained Raspberry Pi display management for Ice & Field. One physical Pi 
 
 - Detects connected Wayland/HDMI outputs with `wlr-randr`.
 - Assigns a web page, image, video, or standby screen to each output.
+- Uses the locally bundled white Ice & Field logo on the branded standby screen, with no website dependency.
 - Stores assignments locally and restores them after a reboot.
 - Runs one isolated Chromium kiosk instance per connected output.
 - Uses Chromium's local basic password store for kiosk profiles so desktop keyring prompts cannot block unattended startup.

@@ -10,9 +10,11 @@ command -v chromium >/dev/null 2>&1 || command -v chromium-browser >/dev/null 2>
 command -v wlr-randr >/dev/null 2>&1 || { echo "wlr-randr is required." >&2; exit 1; }
 
 mkdir -p "$APP_DIR" "$UNIT_DIR" "$HOME/.local/share/ice-field-display-controller"
+mkdir -p "$APP_DIR/assets"
 install -m 0755 "$SOURCE_DIR/controller.py" "$APP_DIR/controller.py"
 install -m 0755 "$SOURCE_DIR/agent.py" "$APP_DIR/agent.py"
 install -m 0644 "$SOURCE_DIR/VERSION" "$APP_DIR/VERSION"
+install -m 0644 "$SOURCE_DIR/assets/ice-and-field-logo-white.png" "$APP_DIR/assets/ice-and-field-logo-white.png"
 
 sed "s|@APP_DIR@|$APP_DIR|g" "$SOURCE_DIR/systemd/ice-field-display-controller.service.in" > "$UNIT_DIR/ice-field-display-controller.service"
 sed "s|@APP_DIR@|$APP_DIR|g" "$SOURCE_DIR/systemd/ice-field-display-agent.service.in" > "$UNIT_DIR/ice-field-display-agent.service"
