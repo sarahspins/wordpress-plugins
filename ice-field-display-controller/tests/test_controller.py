@@ -33,6 +33,22 @@ class StateStoreTests(unittest.TestCase):
             state = store.assign("HDMI-A-1", "image", f"/media/{media_id}", "Lobby 1")
             self.assertEqual("Lobby 1", state["assignments"]["HDMI-A-1"]["label"])
 
+    def test_named_channel_is_resolved_for_assigned_screen(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = StateStore(Path(directory) / "state.json")
+            store.save_channel("schedule", "web", "https://example.com/schedule")
+            state = store.assign("HDMI-A-1", "standby", "", "Lobby 1", "schedule")
+            resolved = store.resolve_assignment(state, state["assignments"]["HDMI-A-1"])
+            self.assertEqual("web", resolved["kind"])
+            self.assertEqual("https://example.com/schedule", resolved["source"])
+
+    def test_updating_channel_increments_revision(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = StateStore(Path(directory) / "state.json")
+            before = store.load()["revision"]
+            after = store.save_channel("pricing", "video", "https://example.com/pricing.mp4")
+            self.assertEqual(before + 1, after["revision"])
+
 
 class MediaStoreTests(unittest.TestCase):
     def test_valid_png_is_streamed_and_indexed(self):
