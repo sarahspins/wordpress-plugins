@@ -11,6 +11,7 @@ import sys
 import time
 from pathlib import Path
 from urllib.parse import quote
+from urllib.request import urlopen
 
 from controller import detect_outputs
 
@@ -27,15 +28,26 @@ def chromium_binary() -> str:
     raise RuntimeError("Chromium is not installed.")
 
 
+def controller_ready() -> bool:
+    try:
+        with urlopen(f"{CONTROLLER}/api/revision", timeout=1) as response:
+            return response.status == 200
+    except OSError:
+        return False
+
+
 def launch(output: dict) -> subprocess.Popen:
     profile = Path.home() / ".local/share/ice-field-display-controller/chromium" / output["name"]
     profile.mkdir(parents=True, exist_ok=True)
-    url = f"{CONTROLLER}/display/{quote(output['name'])}"
+    target = f"{CONTROLLER}/display/{quote(output['name'])}"
+    startup = Path(__file__).resolve().parent / "startup.html"
+    url = f"{startup.as_uri()}?target={quote(target, safe='')}"
     command = [
         chromium_binary(),
         f"--user-data-dir={profile}",
         "--no-first-run",
         "--password-store=basic",
+        "--default-background-color=043c5eff",
         "--disable-session-crashed-bubble",
         "--disable-infobars",
         "--autoplay-policy=no-user-gesture-required",
@@ -67,6 +79,9 @@ def main() -> None:
     signal.signal(signal.SIGTERM, stop_all)
     signal.signal(signal.SIGINT, stop_all)
     while True:
+        if not controller_ready():
+            time.sleep(POLL_SECONDS)
+            continue
         outputs = detect_outputs()
         active_names = {output["name"] for output in outputs}
         for name in list(processes):

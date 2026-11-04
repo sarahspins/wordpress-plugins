@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Ice &amp; Field Display Starting</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: #043c5e;
+    }
+    body {
+      display: grid;
+      place-content: center;
+      color: white;
+      text-align: center;
+      font: 22px/1.4 system-ui, sans-serif;
+    }
+    img { width: min(46vw, 560px); height: auto; }
+    p { margin: 26px 0 0; opacity: .72; }
+  </style>
+</head>
+<body>
+  <main>
+    <img src="assets/ice-and-field-logo-white.svg" alt="Ice &amp; Field">
+    <p>Display Starting…</p>
+  </main>
+  <script>
+    const target = new URLSearchParams(location.search).get('target');
+    if (target && /^http:\/\/127\.0\.0\.1:8787\/display\//.test(target)) {
+      setTimeout(() => location.replace(target), 450);
+    }
+  </script>
+</body>
+</html>

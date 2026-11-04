@@ -13,6 +13,7 @@ mkdir -p "$APP_DIR" "$UNIT_DIR" "$HOME/.local/share/ice-field-display-controller
 mkdir -p "$APP_DIR/assets"
 install -m 0755 "$SOURCE_DIR/controller.py" "$APP_DIR/controller.py"
 install -m 0755 "$SOURCE_DIR/agent.py" "$APP_DIR/agent.py"
+install -m 0644 "$SOURCE_DIR/startup.html" "$APP_DIR/startup.html"
 install -m 0644 "$SOURCE_DIR/VERSION" "$APP_DIR/VERSION"
 install -m 0644 "$SOURCE_DIR/assets/ice-and-field-logo-white.png" "$APP_DIR/assets/ice-and-field-logo-white.png"
 install -m 0644 "$SOURCE_DIR/assets/ice-and-field-logo-white.svg" "$APP_DIR/assets/ice-and-field-logo-white.svg"
