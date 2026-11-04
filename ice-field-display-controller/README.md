@@ -30,6 +30,18 @@ The installer uses only software already present in a standard Raspberry Pi OS D
 
 The control panel is available locally at `http://127.0.0.1:8787/`. It is intentionally not exposed to the network until authenticated remote access is implemented.
 
+## Optional boot and desktop branding
+
+After the normal controller installation is working, run:
+
+```bash
+./install-branding.sh
+```
+
+This intentionally separate installer makes system-level changes with `sudo`. It installs Raspberry Pi's supported early-splash package and ImageMagick, generates a compliant 1920×1080 uncompressed TGA from the bundled white SVG, configures it as the early boot image, and applies a matching 2560×1440 local desktop background. The consistent navy background reduces the visual transition between firmware startup, desktop login, and the Chromium kiosk.
+
+The generated files remain in `~/.local/share/ice-field-display-controller/branding/`. Re-running the installer safely regenerates and reapplies them after a logo or design change.
+
 ## Service controls
 
 ```bash
