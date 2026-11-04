@@ -157,7 +157,7 @@ main{{max-width:1100px;margin:0 auto;padding:28px 20px 60px}} .summary{{display:
 .card h2{{margin:0 0 5px;color:var(--navy)}} .muted{{color:var(--muted)}} label{{display:block;font-weight:700;margin:14px 0 5px}}
 input,select{{width:100%;font:inherit;padding:11px;border:1px solid #aebdc6;border-radius:8px;background:white}}
 button{{border:0;border-radius:9px;padding:11px 16px;background:var(--orange);color:white;font:700 15px system-ui;cursor:pointer;margin-top:16px}}
-button:hover{{filter:brightness(.95)}} .status{{min-height:23px;margin-top:10px;font-weight:650}} .error{{color:#a32b22}} .success{{color:#287d4d}}
+button:hover{{filter:brightness(.95)}} .return{{display:inline-block;margin:16px 0 0 10px;color:var(--navy);font-weight:700}} .status{{min-height:23px;margin-top:10px;font-weight:650}} .error{{color:#a32b22}} .success{{color:#287d4d}}
 code{{font-size:.9em;background:#eef3f6;padding:2px 5px;border-radius:5px}}
 </style></head><body><header><h1>{html.escape(title)}</h1><p>Controller and Node 1</p></header><main>{body}</main><script>{script}</script></body></html>""".encode("utf-8")
 
@@ -186,7 +186,7 @@ async function loadStatus(){
       <label>What should this screen show?</label><select name="kind">
         <option value="standby">Ice & Field standby screen</option><option value="web">Web page</option><option value="image">Image</option><option value="video">Video</option>
       </select><div class="source"><label>Complete web address</label><input name="source" inputmode="url" placeholder="https://…" value="${esc(saved.source || '')}"></div>
-      <button type="submit">Apply to this screen</button><div class="status" aria-live="polite"></div></form>`;
+      <button type="submit">Apply to this screen</button><a class="return" href="/display/${encodeURIComponent(output.name)}">Return to screen</a><div class="status" aria-live="polite"></div></form>`;
     const select=card.querySelector('select'); select.value=saved.kind;
     const source=card.querySelector('.source'); const sync=()=>source.hidden=select.value==='standby'; select.addEventListener('change',sync); sync();
     card.querySelector('form').addEventListener('submit',saveAssignment); root.appendChild(card);
@@ -217,7 +217,8 @@ def display_page(output: str, assignment: dict, revision: int) -> bytes:
         content = f'<div class="standby"><div class="mark">I&amp;F</div><h1>{label}</h1><p>Display ready</p></div>'
     return f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{label}</title><style>*{{box-sizing:border-box}}html,body{{margin:0;width:100%;height:100%;overflow:hidden;background:#031f31}}iframe,img,video{{border:0;width:100%;height:100%;object-fit:contain;background:#000}}.standby{{height:100%;display:grid;place-content:center;text-align:center;color:white;font:24px system-ui;background:radial-gradient(circle at 50% 30%,#087dbb,#043c5e 55%,#021923)}}.mark{{margin:auto;width:120px;height:120px;border-radius:50%;display:grid;place-content:center;background:#ff7830;font-size:44px;font-weight:900}}h1{{margin:22px 0 0}}p{{opacity:.7}}</style></head>
-<body>{content}<script>const revision={int(revision)};setInterval(async()=>{{try{{const r=await fetch('/api/revision',{{cache:'no-store'}});const d=await r.json();if(d.revision!==revision)location.reload();}}catch(e){{}}}},5000);</script></body></html>""".encode("utf-8")
+<style>.manage{{position:fixed;z-index:10;right:0;top:0;width:76px;height:76px;display:grid;place-content:center;background:#031f31;color:white;text-decoration:none;font:700 13px system-ui;border-radius:0 0 0 14px;opacity:.015;transition:opacity .2s}}.manage:hover,.manage:focus{{opacity:.94}}</style>
+<body>{content}<a class="manage" href="/" title="Manage displays">Manage</a><script>const revision={int(revision)};setInterval(async()=>{{try{{const r=await fetch('/api/revision',{{cache:'no-store'}});const d=await r.json();if(d.revision!==revision)location.reload();}}catch(e){{}}}},5000);</script></body></html>""".encode("utf-8")
 
 
 class Handler(BaseHTTPRequestHandler):
