@@ -98,6 +98,13 @@ class DisplayPageTests(unittest.TestCase):
         self.assertIn("cursor:none", page)
         self.assertIn("pointer-events:none", page)
 
+    def test_display_has_quick_channel_menu(self):
+        page = display_page("HDMI-A-1", {"kind": "standby", "source": "", "label": "Lobby", "channel": "schedule"}, 2).decode()
+        self.assertIn('class="quick-menu"', page)
+        self.assertIn('data-channel="schedule" disabled', page)
+        self.assertIn('data-channel="pricing"', page)
+        self.assertIn("Open full controller", page)
+
 
 if __name__ == "__main__":
     unittest.main()
