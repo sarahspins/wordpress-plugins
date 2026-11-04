@@ -12,6 +12,9 @@ Self-contained Raspberry Pi display management for Ice & Field. One physical Pi 
 - Waits for the local Controller, paints a fully local branded startup page, and only then transitions to the assigned display so Chromium never needs to expose a prolonged white loading screen.
 - Uses Chromium's local basic password store for kiosk profiles so desktop keyring prompts cannot block unattended startup.
 - Provides a local, beginner-friendly control panel.
+- Provides a local media library for MP4, WebM, PNG, JPEG, WebP, and SVG files, including upload progress, previews, storage reporting, content validation, and safe removal.
+- Assigns saved media to an individual screen or every connected screen without depending on the WordPress host.
+- Uses editable location-based screen names such as **Lobby 1** and **Warm Room 1**, while retaining the HDMI hardware port only as a diagnostic reference.
 - Keeps controller and node concepts separate so fleet synchronization can be added without changing screen assignments.
 
 Remote multi-user access and additional-node enrollment are intentionally deferred until local kiosk behavior has been verified on the Raspberry Pi.
@@ -30,6 +33,8 @@ The installer uses only software already present in a standard Raspberry Pi OS D
 - `ice-field-display-agent.service` — HDMI discovery and Chromium kiosk supervision
 
 The control panel is available locally at `http://127.0.0.1:8787/`. It is intentionally not exposed to the network until authenticated remote access is implemented.
+
+Uploaded media is streamed directly to local storage rather than held in memory. Completed uploads are committed atomically, playback supports browser range requests, and an interrupted or invalid upload cannot replace the content currently shown on a screen. The controller preserves at least 1 GB of free storage and refuses to remove a file while a screen is using it.
 
 ## Optional boot and desktop branding
 

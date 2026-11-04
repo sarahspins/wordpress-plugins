@@ -1,4 +1,5 @@
 import json
+import io
 import tempfile
 import unittest
 from pathlib import Path
@@ -7,7 +8,7 @@ from unittest.mock import patch
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from controller import StateStore, detect_outputs
+from controller import MediaStore, StateStore, detect_outputs, valid_media_signature
 
 
 class StateStoreTests(unittest.TestCase):
@@ -24,6 +25,36 @@ class StateStoreTests(unittest.TestCase):
             store = StateStore(Path(directory) / "state.json")
             with self.assertRaises(ValueError):
                 store.assign("HDMI-A-1", "video", "file:///etc/passwd", "Bad")
+
+    def test_local_media_source_is_allowed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = StateStore(Path(directory) / "state.json")
+            media_id = "a" * 32
+            state = store.assign("HDMI-A-1", "image", f"/media/{media_id}", "Lobby 1")
+            self.assertEqual("Lobby 1", state["assignments"]["HDMI-A-1"]["label"])
+
+
+class MediaStoreTests(unittest.TestCase):
+    def test_valid_png_is_streamed_and_indexed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = MediaStore(Path(directory) / "media")
+            payload = b"\x89PNG\r\n\x1a\n" + b"test payload"
+            item = store.upload(io.BytesIO(payload), "lobby.png", len(payload))
+            self.assertEqual("image", item["kind"])
+            self.assertEqual("lobby.png", store.list()[0]["name"])
+            self.assertTrue(store.get(item["id"])[1].is_file())
+
+    def test_mismatched_file_contents_are_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = MediaStore(Path(directory) / "media")
+            with self.assertRaisesRegex(ValueError, "do not match"):
+                store.upload(io.BytesIO(b"not a png"), "fake.png", 9)
+            self.assertEqual([], store.list())
+
+    def test_signature_checks_cover_supported_types(self):
+        self.assertTrue(valid_media_signature(".mp4", b"\x00\x00\x00\x18ftypisom"))
+        self.assertTrue(valid_media_signature(".webm", b"\x1a\x45\xdf\xa3"))
+        self.assertTrue(valid_media_signature(".svg", b"<?xml version='1.0'?><svg></svg>"))
 
 
 class OutputDetectionTests(unittest.TestCase):
