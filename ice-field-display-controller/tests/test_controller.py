@@ -104,6 +104,8 @@ class DisplayPageTests(unittest.TestCase):
         self.assertIn('data-channel="schedule" disabled', page)
         self.assertIn('data-channel="pricing"', page)
         self.assertIn("Open full controller", page)
+        self.assertIn("event.key==='ContextMenu'", page)
+        self.assertIn("event.key==='ArrowDown'", page)
 
 
 if __name__ == "__main__":

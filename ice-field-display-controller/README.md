@@ -19,6 +19,7 @@ Self-contained Raspberry Pi display management for Ice & Field. One physical Pi 
 - Clips browser scrollbars outside the visible edge of full-screen web displays so embedded schedule pages remain clean on TVs.
 - Hides the mouse cursor on signage pages by default and treats embedded websites as non-interactive display content.
 - Provides a discreet top-right quick-switch menu on every display for Schedule, Pricing, Public Skating Rules, Video for Screens, and the full Controller.
+- Opens and navigates the quick-switch menu from common remote-control Menu/Context Menu keys, with Up/Down/Enter/Escape keyboard support and a right-click fallback.
 - Keeps controller and node concepts separate so fleet synchronization can be added without changing screen assignments.
 
 Remote multi-user access and additional-node enrollment are intentionally deferred until local kiosk behavior has been verified on the Raspberry Pi.
