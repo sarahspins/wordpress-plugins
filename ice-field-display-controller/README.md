@@ -49,7 +49,7 @@ CSS cursor hiding is retained, but Chromium can cause Labwc/Wayland to redraw th
 ./install-cursor-support.sh
 ```
 
-This separate installer uses `sudo` only to install Debian's `wtype` package when needed. It backs up the user's Labwc configuration, adds a dedicated hide-and-park shortcut, reloads Labwc, and restarts the display agent. The agent invokes the shortcut after kiosk startup and every controller revision. Moving a physical mouse can still reveal the pointer temporarily; the next display change hides it again.
+This separate installer uses `sudo` only to install Debian's `wtype` package when needed. It backs up the user's Labwc configuration, adds a dedicated hide-and-park shortcut, discovers and reloads the active Labwc session even when installation runs through a remote shell, immediately hides the pointer, and restarts the display agent. The agent invokes the shortcut after kiosk startup and every controller revision. Moving a physical mouse can still reveal the pointer temporarily; the next display change hides it again.
 
 ## Optional boot and desktop branding
 
