@@ -30,14 +30,32 @@ mkdir -p "$BRAND_DIR"
 
 echo "Generating the local desktop background…"
 "$IMAGE_TOOL" -size 2560x1440 "xc:$NAVY" \
-    \( "$WHITE_LOGO" -resize 820x \) \
-    -gravity center -composite -strip "$WALLPAPER"
+    \( -background none "$WHITE_LOGO" -resize 820x \) \
+    -gravity center -compose over -composite -alpha off -strip "$WALLPAPER"
 
 echo "Generating the early-boot image…"
 "$IMAGE_TOOL" -size 1920x1080 "xc:$NAVY" \
-    \( "$WHITE_LOGO" -resize 720x \) \
-    -gravity center -composite -colors 224 -depth 8 -type TrueColor \
+    \( -background none "$WHITE_LOGO" -resize 720x \) \
+    -gravity center -compose over -composite -colors 224 -depth 8 -type TrueColor \
     -alpha off -compress none -define tga:bits-per-sample=8 "$SPLASH"
+
+WALLPAPER_SIZE=$(identify -format '%wx%h' "$WALLPAPER")
+SPLASH_SIZE=$(identify -format '%wx%h' "$SPLASH")
+if [ "$WALLPAPER_SIZE" != "2560x1440" ]; then
+    echo "Wallpaper validation failed: expected 2560x1440, received $WALLPAPER_SIZE." >&2
+    exit 1
+fi
+if [ "$SPLASH_SIZE" != "1920x1080" ]; then
+    echo "Boot splash validation failed: expected 1920x1080, received $SPLASH_SIZE." >&2
+    exit 1
+fi
+
+CORNER=$(identify -format '%[pixel:p{0,0}]' "$WALLPAPER")
+CENTRE=$(identify -format '%[pixel:p{1280,720}]' "$WALLPAPER")
+if [ "$CORNER" = "$CENTRE" ]; then
+    echo "Branding validation failed: the centred logo did not render." >&2
+    exit 1
+fi
 
 echo "Configuring the early-boot splash…"
 sudo configure-splash "$SPLASH"
@@ -47,7 +65,7 @@ if command -v pcmanfm >/dev/null 2>&1; then
     XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}" \
     WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}" \
     DISPLAY="${DISPLAY:-:0}" \
-    pcmanfm --wallpaper-mode=fit --set-wallpaper="$WALLPAPER" || \
+    pcmanfm --wallpaper-mode=stretch --set-wallpaper="$WALLPAPER" || \
         echo "The boot splash is installed, but the running desktop did not accept the wallpaper command."
 fi
 

@@ -40,6 +40,8 @@ After the normal controller installation is working, run:
 
 This intentionally separate installer makes system-level changes with `sudo`. It installs Raspberry Pi's supported early-splash package and ImageMagick, generates a compliant 1920×1080 uncompressed TGA from the bundled white SVG, configures it as the early boot image, and applies a matching 2560×1440 local desktop background. The consistent navy background reduces the visual transition between firmware startup, desktop login, and the Chromium kiosk.
 
+The installer forces the SVG rasterisation layer to remain transparent, validates both generated dimensions, and confirms that logo pixels differ from the navy background before applying either image. This prevents a failed SVG conversion from replacing the desktop with a white logo rectangle.
+
 The generated files remain in `~/.local/share/ice-field-display-controller/branding/`. Re-running the installer safely regenerates and reapplies them after a logo or design change.
 
 ## Service controls
