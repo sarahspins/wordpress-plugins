@@ -1,0 +1,16 @@
+[Unit]
+Description=Ice & Field Display Node Agent
+After=graphical-session.target ice-field-display-controller.service
+Wants=ice-field-display-controller.service
+
+[Service]
+Type=simple
+Environment=DISPLAY=:0
+Environment=WAYLAND_DISPLAY=wayland-0
+Environment=XDG_RUNTIME_DIR=%t
+ExecStart=/usr/bin/python3 @APP_DIR@/agent.py
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=default.target
