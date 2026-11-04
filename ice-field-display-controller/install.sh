@@ -18,8 +18,10 @@ sed "s|@APP_DIR@|$APP_DIR|g" "$SOURCE_DIR/systemd/ice-field-display-controller.s
 sed "s|@APP_DIR@|$APP_DIR|g" "$SOURCE_DIR/systemd/ice-field-display-agent.service.in" > "$UNIT_DIR/ice-field-display-agent.service"
 
 systemctl --user daemon-reload
-systemctl --user enable --now ice-field-display-controller.service
-systemctl --user enable --now ice-field-display-agent.service
+systemctl --user enable ice-field-display-controller.service
+systemctl --user enable ice-field-display-agent.service
+systemctl --user restart ice-field-display-controller.service
+systemctl --user restart ice-field-display-agent.service
 
 echo
 echo "Ice & Field Display Controller installed."
