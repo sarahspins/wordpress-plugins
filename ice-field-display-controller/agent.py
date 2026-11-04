@@ -18,6 +18,8 @@ from controller import detect_outputs
 CONTROLLER = os.environ.get("IFDC_CONTROLLER_URL", "http://127.0.0.1:8787")
 POLL_SECONDS = 5
 processes: dict[str, tuple[subprocess.Popen, tuple]] = {}
+last_revision: int | None = None
+hide_cursor_at = 0.0
 
 
 def chromium_binary() -> str:
@@ -28,12 +30,28 @@ def chromium_binary() -> str:
     raise RuntimeError("Chromium is not installed.")
 
 
-def controller_ready() -> bool:
+def controller_revision() -> int | None:
     try:
         with urlopen(f"{CONTROLLER}/api/revision", timeout=1) as response:
-            return response.status == 200
-    except OSError:
-        return False
+            if response.status != 200:
+                return None
+            import json
+            return int(json.loads(response.read().decode("utf-8")).get("revision", 0))
+    except (OSError, ValueError):
+        return None
+
+
+def hide_cursor() -> None:
+    helper = shutil.which("wtype")
+    if not helper:
+        return
+    try:
+        subprocess.run(
+            [helper, "-M", "alt", "-M", "logo", "h", "-m", "logo", "-m", "alt"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=3, check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        pass
 
 
 def launch(output: dict) -> subprocess.Popen:
@@ -76,12 +94,17 @@ def stop_all(*_args: object) -> None:
 
 
 def main() -> None:
+    global last_revision, hide_cursor_at
     signal.signal(signal.SIGTERM, stop_all)
     signal.signal(signal.SIGINT, stop_all)
     while True:
-        if not controller_ready():
+        revision = controller_revision()
+        if revision is None:
             time.sleep(POLL_SECONDS)
             continue
+        if revision != last_revision:
+            last_revision = revision
+            hide_cursor_at = time.monotonic() + 8
         outputs = detect_outputs()
         active_names = {output["name"] for output in outputs}
         for name in list(processes):
@@ -99,8 +122,12 @@ def main() -> None:
                 existing[0].terminate()
             try:
                 processes[output["name"]] = (launch(output), signature)
+                hide_cursor_at = max(hide_cursor_at, time.monotonic() + 8)
             except RuntimeError as error:
                 print(error, file=sys.stderr, flush=True)
+        if hide_cursor_at and time.monotonic() >= hide_cursor_at:
+            hide_cursor()
+            hide_cursor_at = 0
         time.sleep(POLL_SECONDS)
 
 

@@ -41,6 +41,16 @@ The control panel is available locally at `http://127.0.0.1:8787/`. It is intent
 
 Uploaded media is streamed directly to local storage rather than held in memory. Completed uploads are committed atomically, playback supports browser range requests, and an interrupted or invalid upload cannot replace the content currently shown on a screen. The controller preserves at least 1 GB of free storage and refuses to remove a file while a screen is using it.
 
+## Reliable cursor hiding on Raspberry Pi OS Trixie
+
+CSS cursor hiding is retained, but Chromium can cause Labwc/Wayland to redraw the hardware pointer after a channel change. Install the compositor-level support once:
+
+```bash
+./install-cursor-support.sh
+```
+
+This separate installer uses `sudo` only to install Debian's `wtype` package when needed. It backs up the user's Labwc configuration, adds a dedicated hide-and-park shortcut, reloads Labwc, and restarts the display agent. The agent invokes the shortcut after kiosk startup and every controller revision. Moving a physical mouse can still reveal the pointer temporarily; the next display change hides it again.
+
 ## Optional boot and desktop branding
 
 After the normal controller installation is working, run:
