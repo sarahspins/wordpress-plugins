@@ -95,7 +95,7 @@ class DisplayPageTests(unittest.TestCase):
         page = display_page("HDMI-A-1", {"kind": "web", "source": "https://example.com/schedule", "label": "Lobby"}, 1).decode()
         self.assertIn('class="web-frame"', page)
         self.assertIn("width:calc(100% + 24px)", page)
-        self.assertIn("cursor:none", page)
+        self.assertIn("cursor:none!important", page)
         self.assertIn("pointer-events:none", page)
 
     def test_display_has_quick_channel_menu(self):
