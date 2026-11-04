@@ -35,6 +35,7 @@ def launch(output: dict) -> subprocess.Popen:
         chromium_binary(),
         f"--user-data-dir={profile}",
         "--no-first-run",
+        "--password-store=basic",
         "--disable-session-crashed-bubble",
         "--disable-infobars",
         "--autoplay-policy=no-user-gesture-required",

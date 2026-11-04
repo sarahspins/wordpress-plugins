@@ -8,6 +8,7 @@ Self-contained Raspberry Pi display management for Ice & Field. One physical Pi 
 - Assigns a web page, image, video, or standby screen to each output.
 - Stores assignments locally and restores them after a reboot.
 - Runs one isolated Chromium kiosk instance per connected output.
+- Uses Chromium's local basic password store for kiosk profiles so desktop keyring prompts cannot block unattended startup.
 - Provides a local, beginner-friendly control panel.
 - Keeps controller and node concepts separate so fleet synchronization can be added without changing screen assignments.
 
