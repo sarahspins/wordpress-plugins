@@ -15,6 +15,8 @@ install -m 0755 "$SOURCE_DIR/controller.py" "$APP_DIR/controller.py"
 install -m 0755 "$SOURCE_DIR/agent.py" "$APP_DIR/agent.py"
 install -m 0644 "$SOURCE_DIR/VERSION" "$APP_DIR/VERSION"
 install -m 0644 "$SOURCE_DIR/assets/ice-and-field-logo-white.png" "$APP_DIR/assets/ice-and-field-logo-white.png"
+install -m 0644 "$SOURCE_DIR/assets/ice-and-field-logo-white.svg" "$APP_DIR/assets/ice-and-field-logo-white.svg"
+install -m 0644 "$SOURCE_DIR/assets/ice-and-field-logo.svg" "$APP_DIR/assets/ice-and-field-logo.svg"
 
 sed "s|@APP_DIR@|$APP_DIR|g" "$SOURCE_DIR/systemd/ice-field-display-controller.service.in" > "$UNIT_DIR/ice-field-display-controller.service"
 sed "s|@APP_DIR@|$APP_DIR|g" "$SOURCE_DIR/systemd/ice-field-display-agent.service.in" > "$UNIT_DIR/ice-field-display-agent.service"
