@@ -441,7 +441,7 @@ def display_page(output: str, assignment: dict, revision: int) -> bytes:
     source = html.escape(assignment.get("source", ""), quote=True)
     label = html.escape(assignment.get("label", output))
     if kind == "web":
-        content = f'<iframe src="{source}" title="{label}" allow="autoplay; fullscreen"></iframe>'
+        content = f'<div class="web-frame"><iframe src="{source}" title="{label}" allow="autoplay; fullscreen"></iframe></div>'
     elif kind == "image":
         content = f'<img src="{source}" alt="{label}">'
     elif kind == "video":
@@ -449,7 +449,7 @@ def display_page(output: str, assignment: dict, revision: int) -> bytes:
     else:
         content = f'<div class="standby"><div class="brand"><img src="/assets/ice-and-field-logo-white.svg" alt="Ice &amp; Field" onerror="if(!this.dataset.fallback){{this.dataset.fallback=\'1\';this.src=\'/assets/ice-and-field-logo-white.png\'}}else{{this.hidden=true;this.nextElementSibling.hidden=false}}"><div class="mark" hidden>I&amp;F</div></div><h1>{label}</h1><p>Display Ready</p></div>'
     return f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{label}</title><style>*{{box-sizing:border-box}}html,body{{margin:0;width:100%;height:100%;overflow:hidden;background:#031f31}}iframe,body>img,video{{border:0;width:100%;height:100%;object-fit:contain;background:#000}}.standby{{height:100%;display:grid;place-content:center;text-align:center;color:white;font:24px system-ui;background:radial-gradient(circle at 50% 30%,#087dbb,#043c5e 55%,#021923)}}.brand img{{display:block;width:min(46vw,560px);height:auto;margin:auto;background:transparent}}.mark{{margin:auto;width:120px;height:120px;border-radius:50%;display:grid;place-content:center;background:#ff7830;font-size:44px;font-weight:900}}[hidden]{{display:none!important}}h1{{margin:32px 0 0}}p{{opacity:.7}}</style></head>
+<title>{label}</title><style>*{{box-sizing:border-box}}html,body{{margin:0;width:100%;height:100%;overflow:hidden;background:#031f31;cursor:none}}.web-frame{{position:fixed;inset:0;overflow:hidden;background:#000}}.web-frame iframe{{display:block;border:0;width:calc(100% + 24px);height:100%;background:#000;pointer-events:none}}body>img,video{{border:0;width:100%;height:100%;object-fit:contain;background:#000}}.standby{{height:100%;display:grid;place-content:center;text-align:center;color:white;font:24px system-ui;background:radial-gradient(circle at 50% 30%,#087dbb,#043c5e 55%,#021923)}}.brand img{{display:block;width:min(46vw,560px);height:auto;margin:auto;background:transparent}}.mark{{margin:auto;width:120px;height:120px;border-radius:50%;display:grid;place-content:center;background:#ff7830;font-size:44px;font-weight:900}}[hidden]{{display:none!important}}h1{{margin:32px 0 0}}p{{opacity:.7}}</style></head>
 <style>.manage{{position:fixed;z-index:10;right:0;top:0;width:76px;height:76px;display:grid;place-content:center;background:#031f31;color:white;text-decoration:none;font:700 13px system-ui;border-radius:0 0 0 14px;opacity:.015;transition:opacity .2s}}.manage:hover,.manage:focus{{opacity:.94}}</style>
 <body>{content}<a class="manage" href="/" title="Manage displays">Manage</a><script>const revision={int(revision)};setInterval(async()=>{{try{{const r=await fetch('/api/revision',{{cache:'no-store'}});const d=await r.json();if(d.revision!==revision)location.reload();}}catch(e){{}}}},5000);</script></body></html>""".encode("utf-8")
 

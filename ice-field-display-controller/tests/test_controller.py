@@ -8,7 +8,7 @@ from unittest.mock import patch
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from controller import MediaStore, StateStore, detect_outputs, valid_media_signature
+from controller import MediaStore, StateStore, detect_outputs, display_page, valid_media_signature
 
 
 class StateStoreTests(unittest.TestCase):
@@ -88,6 +88,15 @@ HDMI-A-2 "TV"
         outputs = detect_outputs()
         self.assertEqual(1, len(outputs))
         self.assertEqual((2560, 1440), (outputs[0]["width"], outputs[0]["height"]))
+
+
+class DisplayPageTests(unittest.TestCase):
+    def test_web_display_clips_remote_scrollbar(self):
+        page = display_page("HDMI-A-1", {"kind": "web", "source": "https://example.com/schedule", "label": "Lobby"}, 1).decode()
+        self.assertIn('class="web-frame"', page)
+        self.assertIn("width:calc(100% + 24px)", page)
+        self.assertIn("cursor:none", page)
+        self.assertIn("pointer-events:none", page)
 
 
 if __name__ == "__main__":

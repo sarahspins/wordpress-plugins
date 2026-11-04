@@ -16,6 +16,8 @@ Self-contained Raspberry Pi display management for Ice & Field. One physical Pi 
 - Assigns saved media to an individual screen or every connected screen without depending on the WordPress host.
 - Uses editable location-based screen names such as **Lobby 1** and **Warm Room 1**, while retaining the HDMI hardware port only as a diagnostic reference.
 - Defines reusable **Schedule**, **Pricing**, **Public Skating Rules**, and **Video for Screens** content channels. Each channel may use a web page or locally stored media, and updating it automatically refreshes every screen assigned to that channel.
+- Clips browser scrollbars outside the visible edge of full-screen web displays so embedded schedule pages remain clean on TVs.
+- Hides the mouse cursor on signage pages by default and treats embedded websites as non-interactive display content.
 - Keeps controller and node concepts separate so fleet synchronization can be added without changing screen assignments.
 
 Remote multi-user access and additional-node enrollment are intentionally deferred until local kiosk behavior has been verified on the Raspberry Pi.
