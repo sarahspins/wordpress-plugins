@@ -92,6 +92,15 @@ class MediaStoreTests(unittest.TestCase):
         self.assertTrue(valid_media_signature(".webm", b"\x1a\x45\xdf\xa3"))
         self.assertTrue(valid_media_signature(".svg", b"<?xml version='1.0'?><svg></svg>"))
 
+    def test_image_schedule_is_stored_with_media(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = MediaStore(Path(directory) / "media")
+            payload = b"\x89PNG\r\n\x1a\n" + b"test payload"
+            item = store.upload(io.BytesIO(payload), "scheduled.png", len(payload))
+            updated = store.update_schedule(item["id"], "2026-11-05T09:00", "2026-11-30T21:00")
+            self.assertEqual("2026-11-05T09:00", updated["start"])
+            self.assertEqual("2026-11-30T21:00", store.list()[0]["end"])
+
 
 class OutputDetectionTests(unittest.TestCase):
     @patch("controller.subprocess.run")

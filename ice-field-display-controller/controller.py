@@ -278,7 +278,7 @@ class MediaStore:
             if os.path.exists(temp_name):
                 os.unlink(temp_name)
         kind, content_type = MEDIA_TYPES[suffix]
-        item = {"id": media_id, "name": original_name, "stored_name": stored_name, "kind": kind, "content_type": content_type, "size": length, "sha256": digest.hexdigest(), "uploaded_at": int(time.time()), "url": f"/media/{media_id}"}
+        item = {"id": media_id, "name": original_name, "stored_name": stored_name, "kind": kind, "content_type": content_type, "size": length, "sha256": digest.hexdigest(), "uploaded_at": int(time.time()), "start": "", "end": "", "url": f"/media/{media_id}"}
         with self.lock:
             index = self._load()
             index.setdefault("items", {})[media_id] = {key: value for key, value in item.items() if key != "url"}
@@ -297,6 +297,27 @@ class MediaStore:
             finally:
                 self._save(index)
             return True
+
+    def update_schedule(self, media_id: str, start: str, end: str) -> dict:
+        schedule_re = re.compile(r"^$|^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$")
+        if not schedule_re.fullmatch(start) or not schedule_re.fullmatch(end):
+            raise ValueError("Use a valid local date and time.")
+        if start and end and end <= start:
+            raise ValueError("The stop time must be after the start time.")
+        with self.lock:
+            index = self._load()
+            item = index.get("items", {}).get(media_id)
+            if not item:
+                raise ValueError("Media item not found.")
+            if item.get("kind") != "image":
+                raise ValueError("Scheduling is available for slideshow images only.")
+            item["start"] = start
+            item["end"] = end
+            self._save(index)
+            result = dict(item)
+            result["id"] = media_id
+            result["url"] = f"/media/{media_id}"
+            return result
 
 
 def valid_media_signature(suffix: str, header: bytes) -> bool:
@@ -410,17 +431,17 @@ function renderMedia(data){
   const root=document.querySelector('#media-items');root.innerHTML='';
   if(!data.media.length){root.innerHTML='<p class="muted">No local media has been uploaded yet.</p>';return;}
   data.media.forEach(item=>{const card=document.createElement('article');card.className='media-item';const preview=item.kind==='video'?`<video src="${esc(item.url)}" muted controls preload="metadata"></video>`:`<img src="${esc(item.url)}" alt="">`;
-    card.innerHTML=`<div class="media-preview">${preview}</div><div class="media-info"><div class="media-name">${esc(item.name)}</div><div class="muted">${esc(item.kind)} · ${size(item.size)}</div><div class="media-actions"><button class="secondary all">Use on all screens</button><button class="danger remove">Remove</button></div><div class="status" aria-live="polite"></div></div>`;
-    card.querySelector('.all').addEventListener('click',()=>assignAll(item,card));card.querySelector('.remove').addEventListener('click',()=>removeMedia(item,card));root.appendChild(card);});
+    const schedule=item.kind==='image'?`<details><summary>Display schedule</summary><label>Starts showing (optional)</label><input class="media-start" type="datetime-local" value="${esc(item.start||'')}"><label>Stops showing (optional)</label><input class="media-end" type="datetime-local" value="${esc(item.end||'')}"><button class="secondary schedule" type="button">Save schedule</button></details>`:'';
+    card.innerHTML=`<div class="media-preview">${preview}</div><div class="media-info"><div class="media-name">${esc(item.name)}</div><div class="muted">${esc(item.kind)} · ${size(item.size)}</div>${schedule}<div class="media-actions"><button class="secondary all">Use on all screens</button><button class="danger remove">Remove</button></div><div class="status" aria-live="polite"></div></div>`;
+    card.querySelector('.all').addEventListener('click',()=>assignAll(item,card));card.querySelector('.remove').addEventListener('click',()=>removeMedia(item,card));const scheduleButton=card.querySelector('.schedule');if(scheduleButton)scheduleButton.addEventListener('click',()=>saveMediaSchedule(item,card));root.appendChild(card);});
 }
 function mediaOptions(data){return data.media.map(item=>`<option value="${esc(item.url)}" data-kind="${esc(item.kind)}">${esc(item.name)} (${esc(item.kind)})</option>`).join('');}
-function slideshowEditor(data,saved){let config={slides:[],seconds:8};if(saved.kind==='slideshow'){try{config=JSON.parse(saved.source)}catch(e){}}config.slides=(config.slides||[]).map(item=>typeof item==='string'?{source:item,start:'',end:''}:item);const images=data.media.filter(item=>item.kind==='image').sort((a,b)=>a.name.localeCompare(b.name,undefined,{numeric:true})),selected=new Set(config.slides.map(item=>item.source));return `<div class="slideshow-editor" hidden data-config="${esc(JSON.stringify(config.slides))}"><label>Slides in playback order</label><p class="muted">Choose at least two saved images. Numbered filenames are sorted naturally.</p><select class="slide-choices" multiple size="8">${images.map(item=>`<option value="${esc(item.url)}"${selected.has(item.url)?' selected':''}>${esc(item.name)}</option>`).join('')}</select><div class="slide-schedules"></div><label>Seconds per slide</label><input class="slide-seconds" type="number" min="2" max="120" value="${Number(config.seconds)||8}"></div>`;}
-function bindSlideSchedules(card){const editor=card.querySelector('.slideshow-editor'),choices=editor.querySelector('.slide-choices'),root=editor.querySelector('.slide-schedules');let saved=[];try{saved=JSON.parse(editor.dataset.config)}catch(e){}const values=new Map(saved.map(item=>[item.source,item]));const render=()=>{root.querySelectorAll('[data-slide-source]').forEach(row=>values.set(row.dataset.slideSource,{source:row.dataset.slideSource,start:row.querySelector('.slide-start').value,end:row.querySelector('.slide-end').value}));root.innerHTML=[...choices.selectedOptions].map(option=>{const item=values.get(option.value)||{start:'',end:''};return `<div class="slide-schedule" data-slide-source="${esc(option.value)}"><strong>${esc(option.textContent)}</strong><label>Starts showing (optional)</label><input class="slide-start" type="datetime-local" value="${esc(item.start||'')}"><label>Stops showing (optional)</label><input class="slide-end" type="datetime-local" value="${esc(item.end||'')}"></div>`;}).join('');};choices.addEventListener('change',render);render();}
+function slideshowEditor(data,saved){let config={slides:[],seconds:8};if(saved.kind==='slideshow'){try{config=JSON.parse(saved.source)}catch(e){}}const selected=new Set((config.slides||[]).map(item=>typeof item==='string'?item:item.source)),images=data.media.filter(item=>item.kind==='image').sort((a,b)=>a.name.localeCompare(b.name,undefined,{numeric:true}));return `<div class="slideshow-editor" hidden><label>Slides in playback order</label><p class="muted">Choose at least two saved images. Edit dates on each image in the Media Library above.</p><select class="slide-choices" multiple size="8">${images.map(item=>`<option value="${esc(item.url)}"${selected.has(item.url)?' selected':''}>${esc(item.name)}</option>`).join('')}</select><label>Seconds per slide</label><input class="slide-seconds" type="number" min="2" max="120" value="${Number(config.seconds)||8}"></div>`;}
 function renderChannels(data){
   const labels={schedule:'Schedule',pricing:'Pricing',rules:'Public Skating Rules',video_for_screens:'Video for Screens'},root=document.querySelector('#channels');root.innerHTML='';
   Object.entries(labels).forEach(([key,label])=>{const saved=data.state.channels[key]||{kind:'standby',source:''},card=document.createElement('section');card.className='card';
     card.innerHTML=`<h2>${esc(label)}</h2><form><input type="hidden" name="channel" value="${esc(key)}"><label>Content source</label><select name="kind"><option value="standby">Not configured yet</option><option value="web">Web page</option><option value="image">Local or web image</option><option value="video">Local or web video</option><option value="slideshow">Local image slideshow</option></select><div class="channel-source"><label>Saved local media (optional)</label><select class="media-choice"><option value="">Enter an external address below</option>${mediaOptions(data)}</select><label>Complete web address or local media address</label><input name="source" inputmode="url" placeholder="https://…" value="${saved.kind==='slideshow'?'':esc(saved.source||'')}"></div>${slideshowEditor(data,saved)}<button type="submit">Save ${esc(label)}</button><div class="status" aria-live="polite"></div></form>`;
-    const kind=card.querySelector('select[name=kind]'),media=card.querySelector('.media-choice'),source=card.querySelector('.channel-source'),slides=card.querySelector('.slideshow-editor'),input=card.querySelector('input[name=source]');kind.value=saved.kind;if(saved.source.startsWith('/media/'))media.value=saved.source;bindSlideSchedules(card);
+    const kind=card.querySelector('select[name=kind]'),media=card.querySelector('.media-choice'),source=card.querySelector('.channel-source'),slides=card.querySelector('.slideshow-editor'),input=card.querySelector('input[name=source]');kind.value=saved.kind;if(saved.source.startsWith('/media/'))media.value=saved.source;
     const sync=()=>{source.hidden=kind.value==='standby'||kind.value==='slideshow';slides.hidden=kind.value!=='slideshow';[...media.options].forEach((option,i)=>{if(i)option.hidden=option.dataset.kind!==kind.value;});};media.addEventListener('change',()=>{if(media.value){input.value=media.value;kind.value=media.selectedOptions[0].dataset.kind;sync();}});kind.addEventListener('change',sync);sync();card.querySelector('form').addEventListener('submit',saveChannel);root.appendChild(card);});
 }
 function renderScreens(data){
@@ -450,7 +471,8 @@ async function saveAssignment(event){
   try{ const response=await fetch('/api/assign',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}); const data=await response.json(); if(!response.ok) throw new Error(data.error || 'Could not save.'); status.classList.add('success'); status.textContent='Saved. The screen will update momentarily.'; setTimeout(loadStatus,900); }
   catch(error){status.classList.add('error'); status.textContent=error.message;}
 }
-async function saveChannel(event){event.preventDefault();const form=event.currentTarget,status=form.querySelector('.status'),payload=Object.fromEntries(new FormData(form).entries());if(payload.kind==='slideshow'){payload.source=JSON.stringify({slides:[...form.querySelectorAll('[data-slide-source]')].map(row=>({source:row.dataset.slideSource,start:row.querySelector('.slide-start').value,end:row.querySelector('.slide-end').value})),seconds:Number(form.querySelector('.slide-seconds').value)||8,transition:'brand-wipe'});}status.className='status';status.textContent='Saving…';try{const response=await fetch('/api/channel',{method:'POST',headers:{'Content-Type':'application/json'} ,body:JSON.stringify(payload)}),data=await response.json();if(!response.ok)throw new Error(data.error||'Could not save.');status.classList.add('success');status.textContent='Saved. Screens using this content will update momentarily.';setTimeout(loadStatus,900);}catch(error){status.classList.add('error');status.textContent=error.message;}}
+async function saveChannel(event){event.preventDefault();const form=event.currentTarget,status=form.querySelector('.status'),payload=Object.fromEntries(new FormData(form).entries());if(payload.kind==='slideshow'){const selected=[...form.querySelector('.slide-choices').selectedOptions].map(option=>option.value);payload.source=JSON.stringify({slides:selected.map(source=>{const item=currentData.media.find(media=>media.url===source)||{};return {source,start:item.start||'',end:item.end||''};}),seconds:Number(form.querySelector('.slide-seconds').value)||8,transition:'brand-wipe'});}status.className='status';status.textContent='Saving…';try{const response=await fetch('/api/channel',{method:'POST',headers:{'Content-Type':'application/json'} ,body:JSON.stringify(payload)}),data=await response.json();if(!response.ok)throw new Error(data.error||'Could not save.');status.classList.add('success');status.textContent='Saved. Screens using this content will update momentarily.';setTimeout(loadStatus,900);}catch(error){status.classList.add('error');status.textContent=error.message;}}
+async function saveMediaSchedule(item,card){const status=card.querySelector('.status'),button=card.querySelector('.schedule');status.className='status';status.textContent='Saving schedule…';button.disabled=true;try{const response=await fetch('/api/media/schedule',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:item.id,start:card.querySelector('.media-start').value,end:card.querySelector('.media-end').value})}),data=await response.json();if(!response.ok)throw new Error(data.error||'Could not save schedule.');status.classList.add('success');status.textContent='Schedule saved. Any playlists using this image will update momentarily.';setTimeout(loadStatus,900);}catch(error){status.classList.add('error');status.textContent=error.message;}finally{button.disabled=false;}}
 async function uploadMedia(){const input=document.querySelector('#media-file'),files=[...input.files],button=document.querySelector('#media-upload'),progress=document.querySelector('#upload-progress'),status=document.querySelector('#upload-status');status.className='status';if(!files.length){status.classList.add('error');status.textContent='Choose one or more files first.';return;}button.disabled=true;progress.hidden=false;progress.value=0;let completed=0;try{for(const file of files){status.textContent=`Uploading ${completed+1} of ${files.length}: ${file.name}`;await new Promise((resolve,reject)=>{const request=new XMLHttpRequest();request.open('POST',`/api/media/upload?filename=${encodeURIComponent(file.name)}`);request.setRequestHeader('Content-Type','application/octet-stream');request.upload.onprogress=event=>{if(event.lengthComputable)progress.value=Math.round(((completed+(event.loaded/event.total))/files.length)*100);};request.onload=()=>{let data={};try{data=JSON.parse(request.responseText);}catch(e){}if(request.status<200||request.status>=300){reject(new Error(data.error||`Upload failed for ${file.name}.`));return;}resolve();};request.onerror=()=>reject(new Error(`The connection ended while uploading ${file.name}.`));request.send(file);});completed++;progress.value=Math.round(completed/files.length*100);}status.classList.add('success');status.textContent=`${completed} file${completed===1?'':'s'} uploaded and stored locally.`;input.value='';await loadStatus();}catch(error){status.classList.add('error');status.textContent=`${completed} of ${files.length} uploaded. ${error.message}`;}finally{button.disabled=false;}}
 async function assignAll(item,card){const status=card.querySelector('.status');status.className='status';status.textContent='Applying…';try{for(const output of currentData.outputs){const saved=currentData.state.assignments[output.name]||{};const response=await fetch('/api/assign',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({output:output.name,kind:item.kind,source:item.url,label:saved.label||output.name})});if(!response.ok){const data=await response.json();throw new Error(data.error||'Could not update every screen.');}}status.classList.add('success');status.textContent='Assigned to all connected screens.';setTimeout(loadStatus,900);}catch(error){status.classList.add('error');status.textContent=error.message;}}
 async function removeMedia(item,card){if(!confirm(`Remove “${item.name}” from this node?`))return;const status=card.querySelector('.status');status.textContent='Removing…';const response=await fetch(`/api/media/${item.id}`,{method:'DELETE'});const data=await response.json();if(!response.ok){status.classList.add('error');status.textContent=data.error||'Could not remove this file.';return;}await loadStatus();}
@@ -568,6 +590,31 @@ class Handler(BaseHTTPRequestHandler):
                 item = self.media.upload(self.rfile, filename, length)
                 self.send_bytes(json_bytes({"ok": True, "media": item}), "application/json", HTTPStatus.CREATED)
             except (ValueError, TypeError, OSError) as error:
+                self.send_bytes(json_bytes({"ok": False, "error": str(error)}), "application/json", HTTPStatus.BAD_REQUEST)
+            return
+        if parsed.path == "/api/media/schedule":
+            try:
+                length = min(int(self.headers.get("Content-Length", "0")), 32_768)
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                item = self.media.update_schedule(str(payload.get("id", "")), str(payload.get("start", "")), str(payload.get("end", "")))
+                state = self.store.load()
+                changed = False
+                for content in state.get("channels", {}).values():
+                    if content.get("kind") != "slideshow":
+                        continue
+                    settings = json.loads(content.get("source", "{}"))
+                    content_changed = False
+                    for slide in settings.get("slides", []):
+                        if isinstance(slide, dict) and slide.get("source") == item["url"]:
+                            slide["start"], slide["end"] = item["start"], item["end"]
+                            content_changed = changed = True
+                    if content_changed:
+                        content["source"] = json.dumps(settings, separators=(",", ":"))
+                if changed:
+                    state["revision"] = int(state.get("revision", 0)) + 1
+                    self.store.save(state)
+                self.send_bytes(json_bytes({"ok": True, "media": item, "revision": state.get("revision", 0)}), "application/json")
+            except (ValueError, TypeError, json.JSONDecodeError) as error:
                 self.send_bytes(json_bytes({"ok": False, "error": str(error)}), "application/json", HTTPStatus.BAD_REQUEST)
             return
         if parsed.path == "/api/channel":
