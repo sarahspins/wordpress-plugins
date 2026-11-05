@@ -49,6 +49,16 @@ class StateStoreTests(unittest.TestCase):
             after = store.save_channel("pricing", "video", "https://example.com/pricing.mp4")
             self.assertEqual(before + 1, after["revision"])
 
+    def test_local_slideshow_is_normalized(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = StateStore(Path(directory) / "state.json")
+            slides = [f"/media/{'a' * 32}", f"/media/{'b' * 32}"]
+            state = store.save_channel("video_for_screens", "slideshow", json.dumps({"slides": slides, "seconds": 9}))
+            saved = json.loads(state["channels"]["video_for_screens"]["source"])
+            self.assertEqual(slides, saved["slides"])
+            self.assertEqual(9, saved["seconds"])
+            self.assertEqual("brand-wipe", saved["transition"])
+
 
 class MediaStoreTests(unittest.TestCase):
     def test_valid_png_is_streamed_and_indexed(self):
@@ -106,6 +116,16 @@ class DisplayPageTests(unittest.TestCase):
         self.assertIn("Open full controller", page)
         self.assertIn("event.key==='ContextMenu'", page)
         self.assertIn("event.key==='ArrowDown'", page)
+
+    def test_slideshow_uses_confirmed_brand_wipe(self):
+        slides = [f"/media/{'a' * 32}", f"/media/{'b' * 32}"]
+        page = display_page("HDMI-A-1", {"kind": "slideshow", "source": json.dumps({"slides": slides, "seconds": 7}), "label": "Lobby"}, 3).decode()
+        self.assertIn('class="brand-wipe"', page)
+        self.assertIn("#003b5c", page)
+        self.assertIn("#33b6ff", page)
+        self.assertIn("#ff8033", page)
+        self.assertIn("#ffc600", page)
+        self.assertIn("setInterval(nextSlide,7000)", page)
 
 
 if __name__ == "__main__":
