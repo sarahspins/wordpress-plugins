@@ -126,6 +126,10 @@ class DisplayPageTests(unittest.TestCase):
         self.assertIn("#ff8033", page)
         self.assertIn("#ffc600", page)
         self.assertIn("setInterval(nextSlide,7000)", page)
+        self.assertIn("translateX(105%)", page)
+        self.assertIn("translateX(-105%)", page)
+        self.assertIn("prepareWipe()", page)
+        self.assertIn("Math.random()", page)
 
 
 if __name__ == "__main__":
