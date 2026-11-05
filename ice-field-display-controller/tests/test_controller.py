@@ -55,9 +55,19 @@ class StateStoreTests(unittest.TestCase):
             slides = [f"/media/{'a' * 32}", f"/media/{'b' * 32}"]
             state = store.save_channel("video_for_screens", "slideshow", json.dumps({"slides": slides, "seconds": 9}))
             saved = json.loads(state["channels"]["video_for_screens"]["source"])
-            self.assertEqual(slides, saved["slides"])
+            self.assertEqual(slides, [item["source"] for item in saved["slides"]])
             self.assertEqual(9, saved["seconds"])
             self.assertEqual("brand-wipe", saved["transition"])
+
+    def test_slideshow_accepts_optional_local_schedule(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = StateStore(Path(directory) / "state.json")
+            slides = [
+                {"source": f"/media/{'a' * 32}", "start": "2026-11-05T08:00", "end": "2026-11-30T22:00"},
+                {"source": f"/media/{'b' * 32}", "start": "", "end": ""},
+            ]
+            state = store.save_channel("video_for_screens", "slideshow", json.dumps({"slides": slides, "seconds": 8}))
+            self.assertEqual(slides, json.loads(state["channels"]["video_for_screens"]["source"])["slides"])
 
 
 class MediaStoreTests(unittest.TestCase):
@@ -130,6 +140,7 @@ class DisplayPageTests(unittest.TestCase):
         self.assertIn("translateX(-105%)", page)
         self.assertIn("prepareWipe()", page)
         self.assertIn("Math.random()", page)
+        self.assertIn("activeSlides()", page)
 
 
 if __name__ == "__main__":
