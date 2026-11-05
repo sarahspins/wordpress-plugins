@@ -141,6 +141,8 @@ class DisplayPageTests(unittest.TestCase):
         self.assertIn("prepareWipe()", page)
         self.assertIn("Math.random()", page)
         self.assertIn("activeSlides()", page)
+        self.assertIn("wipe.animate", page)
+        self.assertIn("duration:280", page)
 
 
 if __name__ == "__main__":

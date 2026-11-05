@@ -14,7 +14,7 @@ Self-contained Raspberry Pi display management for Ice & Field. One physical Pi 
 - Provides a local, beginner-friendly control panel.
 - Provides a local media library for MP4, WebM, PNG, JPEG, WebP, and SVG files, including upload progress, previews, storage reporting, content validation, and safe removal.
 - Accepts multiple media files in one selection and uploads them sequentially with combined progress, avoiding a burst of simultaneous transfers on lower-memory nodes.
-- Builds locally stored image playlists for named channels with a configurable hold time and a rapid, approximately 0.3-second right-to-left Ice & Field four-color wipe between slides. Band widths and the navy, blue, orange, and gold order vary with every transition.
+- Builds locally stored image playlists for named channels with a configurable hold time and a continuous, approximately 0.3-second right-to-left Ice & Field four-color wipe between slides. The image swaps at the exact midpoint without pausing the bands. Band widths and the navy, blue, orange, and gold order vary with every transition.
 - Each playlist image may have an optional local start date/time, stop date/time, or both. Blank starts display immediately; blank stops do not expire. Screens recalculate eligible slides during playback without requiring a manual refresh.
 - Assigns saved media to an individual screen or every connected screen without depending on the WordPress host.
 - Uses editable location-based screen names such as **Lobby 1** and **Warm Room 1**, while retaining the HDMI hardware port only as a diagnostic reference.
