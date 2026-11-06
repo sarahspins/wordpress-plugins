@@ -46,6 +46,7 @@ cat > "$override_dir/20-armbian-conservative.conf" <<'EOF'
 Environment=IFDC_CONSERVATIVE_CHROMIUM=1
 Environment=IFDC_X11_MODE=1920x1080
 Environment=IFDC_X11_RATE=30
+ExecStartPre=/bin/sleep 5
 EOF
 
 if [ "$SAFE_INSTALL" -eq 1 ]; then
