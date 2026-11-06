@@ -88,7 +88,7 @@ On an Armbian/XFCE display node, run this separate installer instead:
 ./install-armbian-branding.sh
 ```
 
-It uses the same bundled white SVG to create a navy 1920×1080 XFCE wallpaper and a large, proportionate 720-pixel-wide logo for Armbian's native-size Plymouth watermark. The Plymouth background, LightDM root background, LightDM greeter, and XFCE desktop all use matching Ice & Field navy branding to minimize visible transitions, and every configured XFCE panel is set to always hide for a clean recovery desktop. Wallpaper changes occur before the initramfs rebuild so a boot-image problem cannot block desktop branding. Original Plymouth image and theme assets are retained once with an `.ice-field-original` suffix. It changes the visible Armbian Plymouth stage; an earlier board-firmware logo, if present on another model, remains a separate bootloader concern.
+It uses the same bundled white SVG to create a navy 1920×1080 XFCE wallpaper and a large, proportionate 720-pixel-wide logo for Armbian's native-size Plymouth watermark. The Plymouth background, LightDM root background, LightDM greeter, and XFCE desktop all use matching Ice & Field navy branding to minimize visible transitions. XFCE is explicitly set to center the finished wallpaper on every configured monitor and workspace, and every configured panel is set to always hide for a clean recovery desktop. Wallpaper changes occur before the initramfs rebuild so a boot-image problem cannot block desktop branding. Original Plymouth image and theme assets are retained once with an `.ice-field-original` suffix. It changes the visible Armbian Plymouth stage; an earlier board-firmware logo, if present on another model, remains a separate bootloader concern.
 
 ## Service controls
 

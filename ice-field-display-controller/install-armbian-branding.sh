@@ -72,18 +72,21 @@ export DISPLAY="${DISPLAY:-:0}"
 export XAUTHORITY="${XAUTHORITY:-$HOME/.Xauthority}"
 export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=/run/user/$(id -u)/bus}"
 wallpaper_path="$BACKGROUND_DIR/ice-field-wallpaper.png"
+# XFCE image-style 1 is centered. The previous zoomed mode (5) could place
+# the artwork unexpectedly while the output changed resolution during boot.
+wallpaper_style=1
 properties=$(xfconf-query -c xfce4-desktop -l 2>/dev/null | grep '/last-image$' || true)
 if [ -n "$properties" ]; then
     printf '%s\n' "$properties" | while IFS= read -r property; do
         [ -n "$property" ] || continue
         xfconf-query -c xfce4-desktop -p "$property" -s "$wallpaper_path"
         style_property=${property%/last-image}/image-style
-        xfconf-query -c xfce4-desktop -p "$style_property" -s 5 2>/dev/null || true
+        xfconf-query -c xfce4-desktop -p "$style_property" -s "$wallpaper_style" 2>/dev/null || true
     done
 else
     property="/backdrop/screen0/monitorHDMI-1/workspace0/last-image"
     xfconf-query -c xfce4-desktop -p "$property" -n -t string -s "$wallpaper_path"
-    xfconf-query -c xfce4-desktop -p "/backdrop/screen0/monitorHDMI-1/workspace0/image-style" -n -t int -s 5
+    xfconf-query -c xfce4-desktop -p "/backdrop/screen0/monitorHDMI-1/workspace0/image-style" -n -t int -s "$wallpaper_style"
 fi
 xfdesktop --reload 2>/dev/null || true
 
