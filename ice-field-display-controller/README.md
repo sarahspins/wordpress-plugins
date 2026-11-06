@@ -80,6 +80,16 @@ The installer uses the dedicated librsvg renderer to preserve the official SVG v
 
 The generated files remain in `~/.local/share/ice-field-display-controller/branding/`. Re-running the installer safely regenerates and reapplies them after a logo or design change.
 
+### Armbian branding
+
+On an Armbian/XFCE display node, run this separate installer instead:
+
+```bash
+./install-armbian-branding.sh
+```
+
+It uses the same bundled white SVG to create a navy 1920×1080 XFCE wallpaper plus correctly sized transparent artwork for Armbian's Plymouth theme. Original Plymouth image assets are retained once with an `.ice-field-original` suffix, the initramfs is rebuilt so the early boot environment receives the new artwork, and the running XFCE wallpaper is updated through the display user's settings. It changes the visible Armbian Plymouth stage; an earlier board-firmware logo, if present on another model, remains a separate bootloader concern.
+
 ## Service controls
 
 ```bash
