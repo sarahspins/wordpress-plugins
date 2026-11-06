@@ -85,10 +85,26 @@ def launch(output: dict) -> subprocess.Popen:
         "--kiosk",
         f"--window-position={output['x']},{output['y']}",
         f"--window-size={output['width']},{output['height']}",
-        url,
     ]
+    if os.environ.get("IFDC_CONSERVATIVE_CHROMIUM") == "1":
+        command.extend([
+            "--disable-gpu",
+            "--disable-gpu-compositing",
+            "--disable-accelerated-2d-canvas",
+            "--disable-accelerated-video-decode",
+            "--disable-features=UseSkiaRenderer,Vulkan",
+        ])
+    command.append(url)
+    state_dir = Path.home() / ".local/state/ice-field-display-controller"
+    state_dir.mkdir(parents=True, exist_ok=True)
+    safe_name = "".join(character if character.isalnum() or character in "-_" else "_" for character in output["name"])
+    log_path = state_dir / f"chromium-{safe_name}.log"
     print(f"Starting {output['name']} at {output['x']},{output['y']} ({output['width']}x{output['height']})", flush=True)
-    return subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+    print(f"Chromium log: {log_path}", flush=True)
+    with log_path.open("a", encoding="utf-8") as log_file:
+        log_file.write(f"\n--- Chromium launch {time.strftime('%Y-%m-%d %H:%M:%S')} ---\n")
+        log_file.flush()
+        return subprocess.Popen(command, stdout=log_file, stderr=subprocess.STDOUT)
 
 
 def stop_all(*_args: object) -> None:
@@ -130,6 +146,12 @@ def main() -> None:
             existing = processes.get(output["name"])
             if existing and existing[0].poll() is None and existing[1] == signature:
                 continue
+            if existing and existing[0].poll() is not None:
+                print(
+                    f"Chromium for {output['name']} exited with status {existing[0].returncode}; restarting.",
+                    file=sys.stderr,
+                    flush=True,
+                )
             if existing and existing[0].poll() is None:
                 existing[0].terminate()
             try:

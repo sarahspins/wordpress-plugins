@@ -25,9 +25,13 @@ sed "s|@APP_DIR@|$APP_DIR|g" "$SOURCE_DIR/systemd/ice-field-display-agent.servic
 
 systemctl --user daemon-reload
 systemctl --user enable ice-field-display-controller.service
-systemctl --user enable ice-field-display-agent.service
 systemctl --user restart ice-field-display-controller.service
-systemctl --user restart ice-field-display-agent.service
+if [ "${IFDC_ENABLE_AGENT:-1}" = "1" ]; then
+    systemctl --user enable ice-field-display-agent.service
+    systemctl --user restart ice-field-display-agent.service
+else
+    systemctl --user disable --now ice-field-display-agent.service
+fi
 
 echo
 echo "Ice & Field Display Controller installed."
