@@ -86,6 +86,24 @@ class IFRD_Shortcodes_Page {
                     <p><strong>Server cache:</strong> The current and next weeks are refreshed at local midnight and noon. The current week is embedded with the page so a warmed schedule can appear immediately, while stale data remains visible during background updates.</p>
                 </section>
 
+                <section class="ifrd-shortcodes-card ifrd-shortcodes-wide">
+                    <h2>Monthly Field Availability</h2>
+                    <p>Shows scheduled field bookings in a month grid without revealing the underlying Dash event name, customer, team, or booking details. Every occupied block is labeled only <strong>Unavailable</strong>.</p>
+                    <?php echo $this->shortcode_example('[field_booking_calendar]'); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+                    <?php echo $this->shortcode_example('[field_booking_calendar resource_id="3" scale="85" title="Field Availability" subtitle="Scheduled bookings are unavailable."]'); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+                    <h3>Attributes</h3>
+                    <table>
+                        <thead><tr><th>Attribute</th><th>Values</th><th>Default</th><th>Purpose</th></tr></thead>
+                        <tbody>
+                            <tr><td><code>resource_id</code></td><td>A positive Dash Resource ID</td><td><code>3</code></td><td>Chooses the facility resource whose occupied times are shown.</td></tr>
+                            <tr><td><code>title</code></td><td>Any plain text</td><td>Field Availability</td><td>Overrides the calendar heading.</td></tr>
+                            <tr><td><code>subtitle</code></td><td>Any plain text</td><td>Scheduled field bookings are shown as unavailable.</td><td>Overrides the explanatory text beneath the heading.</td></tr>
+                            <tr><td><code>scale</code></td><td><code>60</code> through <code>100</code></td><td><code>100</code></td><td>Shrinks the calendar proportionally. Try <code>85</code> for a moderately compact layout.</td></tr>
+                        </tbody>
+                    </table>
+                    <p>Visitors can move between months. Logged-in Editors and Administrators also receive a <strong>Refresh Month</strong> button. The calendar uses the Schedule Display timezone and cache duration.</p>
+                </section>
+
                 <section class="ifrd-shortcodes-card">
                     <h2>Video for Screens</h2>
                     <p>Displays the selected video full-screen, muted, and on a continuous loop.</p>
@@ -115,6 +133,7 @@ class IFRD_Shortcodes_Page {
                         <li>Use straight quotation marks around attribute values, as shown above.</li>
                         <li>The calendar opens on today’s date. Its on-page controls determine the selected date, rink, session type, and view after loading.</li>
                         <li>The calendar’s Day and Week views use the same cached weekly data. Current and upcoming weeks are warmed at local midnight and noon.</li>
+                        <li>The monthly field calendar defaults to Dash resource 3 and intentionally hides all booking details.</li>
                         <li>The TV schedule and participants display refresh automatically according to their settings.</li>
                         <li>If a display reports a connection problem, verify the shared Dash Connector first.</li>
                     </ul>

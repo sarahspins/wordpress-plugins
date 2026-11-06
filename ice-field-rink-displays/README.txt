@@ -1,4 +1,8 @@
-Ice & Field Rink Displays v2.8.23
+Ice & Field Rink Displays v2.8.25
+
+Version 2.8.25 makes the Schedule Display's 180px lower banner span the entire screen width. Single banner images and image slideshows use cover sizing inside a polished frame with subtly rounded corners and a translucent border, while the schedule content above remains unchanged.
+
+Version 2.8.24 adds a separate monthly field-availability calendar through `[field_booking_calendar]`. It defaults to Dash resource 3, labels every scheduled block only as “Unavailable,” and never exposes the underlying booking title, customer, team, or event details. Bookings separated by less than one hour are combined so only gaps of at least one hour appear available. Visitors can move between months, while Editors and Administrators can refresh the displayed month on demand. The optional `resource_id`, `title`, `subtitle`, and 60–100 `scale` attributes allow deliberate reuse and a more compact layout without changing the rink calendar.
 
 Version 2.8.23 ensures public visitors receive refreshed weekly calendar data after an administrator rebuilds a week. Static calendar JSON requests now omit login cookies and use a unique cache-busting URL on every scheduled read, preventing the browser or host's anonymous static-file cache from retaining an older copy while logged-in users see the current file. The read-only anonymous AJAX fallback no longer depends on a nonce embedded in a potentially long-cached public page.
 

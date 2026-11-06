@@ -45,6 +45,24 @@ class IFRD_Dash_Connector {
         return IFDC_Client::get_data($path_or_url, $query, $args);
     }
 
+    public static function get_events($query = array(), $args = array()) {
+        if (!self::is_available()) {
+            return new WP_Error(
+                'ifrd_connector_missing',
+                'Ice & Field Dash Connector v' . self::MIN_VERSION . ' or newer is required.'
+            );
+        }
+
+        if (!IFDC_Client::is_configured()) {
+            return new WP_Error(
+                'ifrd_connector_not_ready',
+                'The Ice & Field Dash Connector is installed but is not configured.'
+            );
+        }
+
+        return IFDC_Client::get_events($query, $args);
+    }
+
     public static function render_settings_status() {
         if (!self::is_available()) {
             echo '<p><strong>Status:</strong> Connector not detected. Install and activate Ice &amp; Field Dash Connector v' . esc_html(self::MIN_VERSION) . ' or newer.</p>';
