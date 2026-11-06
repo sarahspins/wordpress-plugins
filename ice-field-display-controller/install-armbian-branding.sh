@@ -65,19 +65,6 @@ if [ "$(identify -format '%wx%h' "$PLYMOUTH_WATERMARK")" != "333x50" ]; then
     exit 1
 fi
 
-echo "Backing up and installing the Armbian Plymouth artwork..."
-for asset in bgrt-fallback.png watermark.png; do
-    if [ -f "$THEME_DIR/$asset" ] && [ ! -f "$THEME_DIR/$asset.ice-field-original" ]; then
-        sudo cp "$THEME_DIR/$asset" "$THEME_DIR/$asset.ice-field-original"
-    fi
-done
-sudo install -m 0644 "$PLYMOUTH_FALLBACK" "$THEME_DIR/bgrt-fallback.png"
-sudo install -m 0644 "$PLYMOUTH_WATERMARK" "$THEME_DIR/watermark.png"
-
-echo "Rebuilding the early-boot image..."
-sudo plymouth-set-default-theme armbian
-sudo update-initramfs -u
-
 install -m 0644 "$WALLPAPER" "$BACKGROUND_DIR/ice-field-wallpaper.png"
 
 echo "Applying the matching XFCE desktop wallpaper..."
@@ -99,6 +86,18 @@ else
     xfconf-query -c xfce4-desktop -p "/backdrop/screen0/monitorHDMI-1/workspace0/image-style" -n -t int -s 5
 fi
 xfdesktop --reload 2>/dev/null || true
+
+echo "Backing up and installing the Armbian Plymouth artwork..."
+for asset in bgrt-fallback.png watermark.png; do
+    if [ -f "$THEME_DIR/$asset" ] && [ ! -f "$THEME_DIR/$asset.ice-field-original" ]; then
+        sudo cp "$THEME_DIR/$asset" "$THEME_DIR/$asset.ice-field-original"
+    fi
+done
+sudo install -m 0644 "$PLYMOUTH_FALLBACK" "$THEME_DIR/bgrt-fallback.png"
+sudo install -m 0644 "$PLYMOUTH_WATERMARK" "$THEME_DIR/watermark.png"
+
+echo "Rebuilding the early-boot image..."
+sudo update-initramfs -u
 
 echo
 echo "Ice & Field Armbian boot and desktop branding installed."
