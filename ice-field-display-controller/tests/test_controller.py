@@ -156,13 +156,18 @@ class DisplayPageTests(unittest.TestCase):
         self.assertIn("#ff8033", page)
         self.assertIn("#ffc600", page)
         self.assertIn("setInterval(nextSlide,7000)", page)
-        self.assertIn("translateX(105%)", page)
-        self.assertIn("translateX(-105%)", page)
+        self.assertIn("left:-50vw;right:-50vw", page)
+        self.assertIn("translate3d(75%,0,0)", page)
+        self.assertIn("translate3d(-75%,0,0)", page)
         self.assertIn("prepareWipe()", page)
         self.assertIn("Math.random()", page)
         self.assertIn("activeSlides()", page)
         self.assertIn("wipe.animate", page)
-        self.assertIn("duration:280", page)
+        self.assertIn("wipeDuration=280", page)
+        self.assertIn("duration:wipeDuration", page)
+        self.assertIn("motion.currentTime", page)
+        self.assertIn("requestAnimationFrame(swapUnderCover)", page)
+        self.assertNotIn("setTimeout(()=>{slideImage.src", page)
 
 
 if __name__ == "__main__":
