@@ -29,11 +29,23 @@ if systemctl list-unit-files lightdm.service >/dev/null 2>&1; then
     sudo install -m 0644 "$autologin_file" /etc/lightdm/lightdm.conf.d/50-ice-field-autologin.conf
 fi
 
+autostart_dir="$HOME/.config/autostart"
+mkdir -p "$autostart_dir"
+printf '%s\n' \
+    '[Desktop Entry]' \
+    'Type=Application' \
+    'Name=Light Locker' \
+    'Hidden=true' \
+    > "$autostart_dir/light-locker.desktop"
+pkill light-locker 2>/dev/null || true
+
 override_dir="$HOME/.config/systemd/user/ice-field-display-agent.service.d"
 mkdir -p "$override_dir"
 cat > "$override_dir/20-armbian-conservative.conf" <<'EOF'
 [Service]
 Environment=IFDC_CONSERVATIVE_CHROMIUM=1
+Environment=IFDC_X11_MODE=1920x1080
+Environment=IFDC_X11_RATE=30
 EOF
 
 if [ "$SAFE_INSTALL" -eq 1 ]; then

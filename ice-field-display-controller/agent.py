@@ -22,6 +22,44 @@ last_revision: int | None = None
 hide_cursor_at = 0.0
 
 
+def configure_x11_signage() -> bool:
+    mode = os.environ.get("IFDC_X11_MODE", "").strip()
+    rate = os.environ.get("IFDC_X11_RATE", "").strip()
+    if not mode:
+        return True
+    try:
+        subprocess.run(
+            ["xset", "s", "off", "-dpms"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=3,
+            check=False,
+        )
+        query = subprocess.run(
+            ["xrandr", "--query"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=True,
+        )
+        outputs = [
+            line.split()[0]
+            for line in query.stdout.splitlines()
+            if " connected" in line and not line.startswith(" ")
+        ]
+        if not outputs:
+            return False
+        for output in outputs:
+            command = ["xrandr", "--output", output, "--mode", mode]
+            if rate:
+                command.extend(["--rate", rate])
+            subprocess.run(command, timeout=8, check=True)
+        print(f"Configured X11 outputs for {mode}{('@' + rate) if rate else ''}.", flush=True)
+        return True
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
 def chromium_binary() -> str:
     for candidate in ("chromium", "chromium-browser"):
         found = shutil.which(candidate)
@@ -117,6 +155,7 @@ def stop_all(*_args: object) -> None:
 
 def main() -> None:
     global last_revision, hide_cursor_at
+    x11_configured = False
     signal.signal(signal.SIGTERM, stop_all)
     signal.signal(signal.SIGINT, stop_all)
     while True:
@@ -124,6 +163,11 @@ def main() -> None:
         if revision is None:
             time.sleep(POLL_SECONDS)
             continue
+        if not x11_configured:
+            x11_configured = configure_x11_signage()
+            if not x11_configured:
+                time.sleep(POLL_SECONDS)
+                continue
         if revision != last_revision:
             last_revision = revision
             hide_cursor_at = time.monotonic() + 8
