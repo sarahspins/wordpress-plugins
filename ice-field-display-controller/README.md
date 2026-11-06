@@ -42,6 +42,16 @@ The installer uses only software already present in a standard Raspberry Pi OS D
 
 The control panel is available locally at `http://127.0.0.1:8787/`. It is intentionally not exposed to the network until authenticated remote access is implemented.
 
+## Install on an Orange Pi Zero 3 with Armbian XFCE
+
+Use the Ubuntu XFCE image built specifically for **Orange Pi Zero 3**. From this directory run:
+
+```bash
+./install-armbian.sh
+```
+
+The Armbian installer adds Chromium, X11 display discovery, and the small `xdotool` cursor helper before running the normal user-service installer. The same controller and agent then support Armbian/XFCE's `HDMI-1` naming while retaining the Raspberry Pi OS Wayland path. Chromium uses reduced background services suitable for a 1 GB single-screen test node; active content still determines the final memory requirement.
+
 Uploaded media is streamed directly to local storage rather than held in memory. Completed uploads are committed atomically, playback supports browser range requests, and an interrupted or invalid upload cannot replace the content currently shown on a screen. The controller preserves at least 1 GB of free storage and refuses to remove a file while a screen is using it.
 
 ## Reliable cursor hiding on Raspberry Pi OS Trixie

@@ -23,6 +23,15 @@ class CursorSupportTests(unittest.TestCase):
         agent.hide_cursor()
         run.assert_not_called()
 
+    @patch("agent.subprocess.run")
+    @patch("agent.shutil.which", side_effect=lambda name: "/usr/bin/xdotool" if name == "xdotool" else None)
+    def test_x11_cursor_is_parked_off_screen(self, _which, run):
+        agent.hide_cursor()
+        self.assertEqual(
+            ["/usr/bin/xdotool", "mousemove", "--sync", "8191", "8191"],
+            run.call_args.args[0],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

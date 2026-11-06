@@ -8,7 +8,7 @@ from unittest.mock import patch
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from controller import MediaStore, StateStore, detect_outputs, display_page, valid_media_signature
+from controller import MediaStore, StateStore, detect_outputs, detect_x11_outputs, display_page, valid_media_signature
 
 
 class StateStoreTests(unittest.TestCase):
@@ -117,6 +117,17 @@ HDMI-A-2 "TV"
         outputs = detect_outputs()
         self.assertEqual(1, len(outputs))
         self.assertEqual((2560, 1440), (outputs[0]["width"], outputs[0]["height"]))
+
+    @patch("controller.subprocess.run")
+    def test_x11_current_geometry_is_parsed(self, run):
+        run.return_value.returncode = 0
+        run.return_value.stdout = """Screen 0: minimum 320 x 200, current 2560 x 1440
+HDMI-1 connected primary 2560x1440+0+0 (normal left inverted right x axis y axis)
+   2560x1440     59.95*+  74.96
+"""
+        outputs = detect_x11_outputs()
+        self.assertEqual(["HDMI-1"], [item["name"] for item in outputs])
+        self.assertEqual((2560, 1440, 0, 0), tuple(outputs[0][key] for key in ("width", "height", "x", "y")))
 
 
 class DisplayPageTests(unittest.TestCase):

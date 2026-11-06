@@ -337,7 +337,7 @@ def valid_media_signature(suffix: str, header: bytes) -> bool:
     return False
 
 
-def detect_outputs() -> list[dict]:
+def detect_wayland_outputs() -> list[dict]:
     try:
         result = subprocess.run(
             ["wlr-randr"], capture_output=True, text=True, timeout=5, check=False
@@ -371,6 +371,42 @@ def detect_outputs() -> list[dict]:
             if match:
                 current["width"], current["height"] = int(match.group(1)), int(match.group(2))
     return [item for item in outputs if item["enabled"]]
+
+
+def detect_x11_outputs() -> list[dict]:
+    try:
+        result = subprocess.run(
+            ["xrandr", "--query"], capture_output=True, text=True, timeout=5, check=False
+        )
+    except (OSError, subprocess.SubprocessError):
+        return []
+    if result.returncode != 0:
+        return []
+    outputs: list[dict] = []
+    connected_re = re.compile(
+        r"^(\S+) connected(?: primary)? (\d+)x(\d+)\+(\d+)\+(\d+)(?:\s|$)"
+    )
+    for line in result.stdout.splitlines():
+        match = connected_re.match(line)
+        if not match:
+            continue
+        name, width, height, x, y = match.groups()
+        outputs.append({
+            "name": name,
+            "description": line[len(name):].strip(),
+            "enabled": True,
+            "width": int(width),
+            "height": int(height),
+            "x": int(x),
+            "y": int(y),
+        })
+    return outputs
+
+
+def detect_outputs() -> list[dict]:
+    """Detect active displays on Raspberry Pi Wayland or Armbian/XFCE X11."""
+    outputs = detect_wayland_outputs()
+    return outputs if outputs else detect_x11_outputs()
 
 
 def json_bytes(value: object) -> bytes:

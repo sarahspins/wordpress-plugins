@@ -43,15 +43,21 @@ def controller_revision() -> int | None:
 
 def hide_cursor() -> None:
     helper = shutil.which("wtype")
-    if not helper:
-        return
-    try:
-        subprocess.run(
-            [helper, "-M", "alt", "-M", "logo", "h", "-m", "logo", "-m", "alt"],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=3, check=False,
-        )
-    except (OSError, subprocess.SubprocessError):
-        pass
+    command = None
+    if helper:
+        command = [helper, "-M", "alt", "-M", "logo", "h", "-m", "logo", "-m", "alt"]
+    else:
+        helper = shutil.which("xdotool")
+        if helper:
+            command = [helper, "mousemove", "--sync", "8191", "8191"]
+    if command:
+        try:
+            subprocess.run(
+                command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                timeout=3, check=False,
+            )
+        except (OSError, subprocess.SubprocessError):
+            pass
 
 
 def launch(output: dict) -> subprocess.Popen:
@@ -68,6 +74,12 @@ def launch(output: dict) -> subprocess.Popen:
         "--default-background-color=043c5eff",
         "--disable-session-crashed-bubble",
         "--disable-infobars",
+        "--disable-background-networking",
+        "--disable-component-update",
+        "--disable-dev-shm-usage",
+        "--disable-sync",
+        "--metrics-recording-only",
+        "--no-default-browser-check",
         "--autoplay-policy=no-user-gesture-required",
         "--check-for-update-interval=31536000",
         "--kiosk",

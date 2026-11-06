@@ -7,7 +7,7 @@ SOURCE_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
 command -v python3 >/dev/null 2>&1 || { echo "Python 3 is required." >&2; exit 1; }
 command -v chromium >/dev/null 2>&1 || command -v chromium-browser >/dev/null 2>&1 || { echo "Chromium is required." >&2; exit 1; }
-command -v wlr-randr >/dev/null 2>&1 || { echo "wlr-randr is required." >&2; exit 1; }
+command -v wlr-randr >/dev/null 2>&1 || command -v xrandr >/dev/null 2>&1 || { echo "wlr-randr or xrandr is required." >&2; exit 1; }
 
 mkdir -p "$APP_DIR" "$UNIT_DIR" "$HOME/.local/share/ice-field-display-controller"
 mkdir -p "$APP_DIR/assets"
@@ -32,6 +32,6 @@ systemctl --user restart ice-field-display-agent.service
 echo
 echo "Ice & Field Display Controller installed."
 echo "Open http://127.0.0.1:8787/ on the Pi."
-if ! command -v wtype >/dev/null 2>&1; then
+if ! command -v wtype >/dev/null 2>&1 && ! command -v xdotool >/dev/null 2>&1; then
     echo "For compositor-level cursor hiding, run: ./install-cursor-support.sh"
 fi
