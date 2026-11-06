@@ -167,8 +167,8 @@ class DisplayPageTests(unittest.TestCase):
         self.assertEqual(2, page.count("duration:wipeHalf"))
         self.assertIn("await cover.finished;slideImage.src", page)
         self.assertIn("await uncover.finished", page)
-        self.assertIn("cubic-bezier(0,0,.58,1)", page)
-        self.assertIn("cubic-bezier(.42,0,1,1)", page)
+        self.assertIn("cubic-bezier(.2,.4,.6,.8)", page)
+        self.assertIn("cubic-bezier(.4,.2,.8,.6)", page)
         self.assertNotIn("setTimeout(()=>{slideImage.src", page)
         self.assertNotIn("left:-50vw", page)
 

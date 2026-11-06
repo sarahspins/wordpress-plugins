@@ -5,6 +5,8 @@ Wants=network-online.target
 
 [Service]
 Type=simple
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=%h/.Xauthority
 ExecStart=/usr/bin/python3 @APP_DIR@/controller.py
 Restart=always
 RestartSec=3

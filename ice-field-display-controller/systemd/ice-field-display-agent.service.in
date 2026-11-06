@@ -6,6 +6,7 @@ Wants=ice-field-display-controller.service
 [Service]
 Type=simple
 Environment=DISPLAY=:0
+Environment=XAUTHORITY=%h/.Xauthority
 Environment=WAYLAND_DISPLAY=wayland-0
 Environment=XDG_RUNTIME_DIR=%t
 ExecStart=/usr/bin/python3 @APP_DIR@/agent.py

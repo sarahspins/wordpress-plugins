@@ -50,7 +50,7 @@ Use the Ubuntu XFCE image built specifically for **Orange Pi Zero 3**. From this
 ./install-armbian.sh
 ```
 
-The Armbian installer adds Chromium, X11 display discovery, and the small `xdotool` cursor helper before running the normal user-service installer. The same controller and agent then support Armbian/XFCE's `HDMI-1` naming while retaining the Raspberry Pi OS Wayland path. Chromium uses reduced background services suitable for a 1 GB single-screen test node; active content still determines the final memory requirement.
+The Armbian installer adds Chromium, X11 display discovery, and the small `xdotool` cursor helper before running the normal user-service installer. It also configures LightDM to sign the current display user into XFCE automatically after reboot; SSH and administrator commands still require the account password. Both services receive the local X11 authorization path so screen discovery and kiosk startup do not depend on manually exporting the desktop environment. The same controller and agent support Armbian/XFCE's `HDMI-1` naming while retaining the Raspberry Pi OS Wayland path. Chromium uses reduced background services suitable for a 1 GB single-screen test node; active content still determines the final memory requirement.
 
 Uploaded media is streamed directly to local storage rather than held in memory. Completed uploads are committed atomically, playback supports browser range requests, and an interrupted or invalid upload cannot replace the content currently shown on a screen. The controller preserves at least 1 GB of free storage and refuses to remove a file while a screen is using it.
 
