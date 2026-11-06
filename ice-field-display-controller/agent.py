@@ -89,10 +89,8 @@ def launch(output: dict) -> subprocess.Popen:
     if os.environ.get("IFDC_CONSERVATIVE_CHROMIUM") == "1":
         command.extend([
             "--disable-gpu",
-            "--disable-gpu-compositing",
-            "--disable-accelerated-2d-canvas",
             "--disable-accelerated-video-decode",
-            "--disable-features=UseSkiaRenderer,Vulkan",
+            "--disable-features=Vulkan",
         ])
     command.append(url)
     state_dir = Path.home() / ".local/state/ice-field-display-controller"
