@@ -54,6 +54,24 @@ The Armbian installer adds Chromium, X11 display discovery, and the small `xdoto
 
 Armbian nodes use a balanced Chromium profile that retains GPU compositing and hardware video decoding but disables Vulkan. The installer protects 1 GB nodes from 4K-TV framebuffer allocation failures by adding a 1920×1080 kernel boot override and an Xorg 1080p preferred mode; the original `armbianEnv.txt` is retained once with an `.ice-field-backup` suffix. The Armbian service waits 15 seconds after the user service starts so X11 and the graphics driver can settle before Chromium launches. Connected X11 outputs are then set to the hardware-tested 1920×1080 at 30 Hz profile. If a TV rejects exactly 30 Hz, the agent retries 1080p at a supported refresh rate; a mode-setting failure is logged but no longer prevents Chromium from launching. Screen blanking and DPMS are disabled, and the installer's user-level autostart override prevents Light Locker from covering unattended signage. Browser output is retained under `~/.local/state/ice-field-display-controller/chromium-HDMI-1.log` (with the actual output name substituted). For recovery work, `./install-armbian.sh --safe` installs every update while leaving the display agent disabled; start it once for testing with `systemctl --user start ice-field-display-agent.service`, and enable it at boot only after the hardware proves stable.
 
+## Clone an Orange Pi SD card safely
+
+The Armbian installer includes an early-boot personalization service so one tested SD card can become a golden image without giving every clone the same network identity. After writing the image to a new card and booting it, connect by local-network SSH and run:
+
+```bash
+sudo ice-field-personalize-node 03
+```
+
+Replace `03` for each node. The command stages `ice-and-field-display-03` and reboots. During that boot, before networking, SSH, Tailscale, or the desktop starts, the service sets the hostname, creates a fresh Linux machine ID and SSH host keys, removes the copied Tailscale identity, and reboots once more. The changed SSH host fingerprint is expected. When the node returns, enroll it as a new Tailscale device:
+
+```bash
+sudo tailscale up
+```
+
+If the SD card exposes a writable boot partition on another computer, the same process can start automatically: create a plain-text file named `node-number` containing only the desired number in `/boot` (or `/boot/firmware`) before first boot. Armbian images commonly use a Linux-only partition that macOS cannot edit, so the SSH command is the reliable default.
+
+Do not boot multiple unpersonalized copies of the golden image at the same time. They initially share the source card's hostname, SSH keys, machine ID, and Tailscale state until personalization runs.
+
 Uploaded media is streamed directly to local storage rather than held in memory. Completed uploads are committed atomically, playback supports browser range requests, and an interrupted or invalid upload cannot replace the content currently shown on a screen. The controller preserves at least 1 GB of free storage and refuses to remove a file while a screen is using it.
 
 ## Reliable cursor hiding on Raspberry Pi OS Trixie

@@ -1,0 +1,12 @@
+[Unit]
+Description=Personalize an Ice & Field cloned display node
+DefaultDependencies=no
+After=local-fs.target
+Before=network-pre.target NetworkManager.service systemd-networkd.service ssh.service tailscaled.service lightdm.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/ice-field-personalize-node --apply-pending
+
+[Install]
+WantedBy=sysinit.target

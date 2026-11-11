@@ -23,6 +23,12 @@ echo "Installing the lightweight packages required by the Ice & Field display no
 sudo apt-get update
 sudo apt-get install -y chromium x11-xserver-utils xdotool
 
+echo "Installing cloned-node personalization support..."
+sudo install -m 0755 "$SOURCE_DIR/personalize-node.sh" /usr/local/sbin/ice-field-personalize-node
+sudo install -m 0644 "$SOURCE_DIR/systemd/ice-field-display-personalize.service" /etc/systemd/system/ice-field-display-personalize.service
+sudo systemctl daemon-reload
+sudo systemctl enable ice-field-display-personalize.service
+
 echo "Protecting 1 GB nodes from 4K framebuffer allocation failures..."
 kernel_connector=HDMI-A-1
 for connector_path in /sys/class/drm/card*-HDMI-A-*; do
@@ -98,6 +104,8 @@ fi
 
 echo
 echo "Armbian/XFCE display support is installed."
+echo "For each cloned card, run: sudo ice-field-personalize-node NODE_NUMBER"
+echo "Example for Display 3: sudo ice-field-personalize-node 03"
 if [ "$SAFE_INSTALL" -eq 1 ]; then
     echo "The display agent remains disabled for safe recovery testing."
     echo "Start it with: systemctl --user enable --now ice-field-display-agent.service"
