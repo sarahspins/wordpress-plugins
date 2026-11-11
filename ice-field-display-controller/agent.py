@@ -53,8 +53,27 @@ def configure_x11_signage() -> bool:
             command = ["xrandr", "--output", output, "--mode", mode]
             if rate:
                 command.extend(["--rate", rate])
-            subprocess.run(command, timeout=8, check=True)
-        print(f"Configured X11 outputs for {mode}{('@' + rate) if rate else ''}.", flush=True)
+            requested = subprocess.run(command, timeout=8, check=False)
+            if requested.returncode == 0:
+                continue
+            if rate:
+                fallback = subprocess.run(
+                    ["xrandr", "--output", output, "--mode", mode],
+                    timeout=8,
+                    check=False,
+                )
+                if fallback.returncode == 0:
+                    print(
+                        f"{output} does not accept {mode}@{rate}; using its supported {mode} refresh rate.",
+                        flush=True,
+                    )
+                    continue
+            print(
+                f"Could not apply {mode} to {output}; retaining the active X11 mode and continuing.",
+                file=sys.stderr,
+                flush=True,
+            )
+        print(f"X11 signage configuration completed for {len(outputs)} output(s).", flush=True)
         return True
     except (OSError, subprocess.SubprocessError):
         return False
