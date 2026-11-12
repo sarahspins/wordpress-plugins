@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import html
+import ipaddress
 import json
 import os
 import re
@@ -241,6 +242,37 @@ class MediaStore:
         path = self.directory / item.get("stored_name", "")
         return (item, path) if path.is_file() else None
 
+    def get_by_hash(self, digest: str) -> tuple[dict, Path] | None:
+        if not re.fullmatch(r"[a-f0-9]{64}", digest):
+            return None
+        for media_id, item in self._load().get("items", {}).items():
+            if item.get("sha256") != digest:
+                continue
+            path = self.directory / item.get("stored_name", "")
+            if path.is_file():
+                result = dict(item)
+                result.setdefault("id", media_id)
+                return result, path
+        return None
+
+    def sync_manifest(self, state: dict) -> dict:
+        media = []
+        for item in self.list():
+            suffix = Path(item["stored_name"]).suffix.lower()
+            if suffix == ".svg":
+                continue
+            media.append({key: item.get(key, "") for key in (
+                "id", "name", "kind", "content_type", "size", "sha256",
+                "uploaded_at", "start", "end",
+            )} | {"file": f"{item['sha256']}{suffix}"})
+        return {
+            "schema": 1,
+            "revision": int(state.get("revision", 0)),
+            "generated_at": int(time.time()),
+            "channels": state.get("channels", {}),
+            "media": media,
+        }
+
     def upload(self, source, original_name: str, length: int) -> dict:
         original_name = Path(original_name).name.strip()[:180]
         suffix = Path(original_name).suffix.lower()
@@ -413,6 +445,56 @@ def json_bytes(value: object) -> bytes:
     return json.dumps(value, separators=(",", ":")).encode("utf-8")
 
 
+def sync_config_path() -> Path:
+    return state_directory() / "sync.json"
+
+
+def load_sync_config(public: bool = False) -> dict:
+    try:
+        config = json.loads(sync_config_path().read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        config = {"mode": "node", "interval_seconds": 300}
+    if public:
+        config = dict(config)
+        config["cloud_password_set"] = bool(config.pop("cloud_application_password", ""))
+    return config
+
+
+def save_sync_config(payload: dict) -> dict:
+    current = load_sync_config()
+    mode = str(payload.get("mode", current.get("mode", "node")))
+    if mode not in {"controller", "node"}:
+        raise ValueError("Choose master controller or playback node.")
+    config = {
+        "mode": mode,
+        "interval_seconds": 300,
+        "primary_manifest_url": str(payload.get("primary_manifest_url", current.get("primary_manifest_url", ""))).strip(),
+        "cloud_manifest_url": str(payload.get("cloud_manifest_url", current.get("cloud_manifest_url", ""))).strip(),
+        "cloud_api_base": str(payload.get("cloud_api_base", current.get("cloud_api_base", ""))).strip(),
+        "cloud_username": str(payload.get("cloud_username", current.get("cloud_username", ""))).strip(),
+        "cloud_application_password": str(payload.get("cloud_application_password", "")).strip() or current.get("cloud_application_password", ""),
+    }
+    if isinstance(current.get("tv_power"), dict):
+        config["tv_power"] = current["tv_power"]
+    for key in ("primary_manifest_url", "cloud_manifest_url", "cloud_api_base"):
+        value = config[key]
+        if value and urlparse(value).scheme not in {"http", "https"}:
+            raise ValueError("Synchronization addresses must begin with http:// or https://.")
+    path = sync_config_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(prefix="sync-config-", suffix=".json", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(config, handle, indent=2, sort_keys=True)
+            handle.write("\n")
+        os.chmod(temporary, 0o600)
+        os.replace(temporary, path)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+    return load_sync_config(public=True)
+
+
 def page_shell(title: str, body: str, script: str = "") -> bytes:
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -449,6 +531,7 @@ def admin_page() -> bytes:
 <section class="wide"><h2>Display Content</h2><p class="muted">Define each familiar Ice &amp; Field display once, then choose its name on any connected screen.</p><div id="channels" class="grid"></div></section>
 <h2>Connected Screens</h2>
 <div id="screens" class="grid"></div>
+<section class="card wide" style="margin-top:24px"><h2>Fleet synchronization</h2><p class="muted">Display 01 is the master. Other nodes pull shared channels and media every five minutes, with WordPress as their recovery source.</p><a class="return" href="/sync-settings">Open synchronization settings</a></section>
 <noscript><div class="card">JavaScript is required to manage screen assignments.</div></noscript>
 """
     script = r"""
@@ -518,6 +601,26 @@ loadStatus().catch(error=>{document.querySelector('#health').textContent='Contro
     return page_shell(APP_NAME, body, script)
 
 
+def sync_settings_page() -> bytes:
+    body = """
+<section class="card wide"><h2>Controller role</h2><p class="muted">Only Display 01 should normally be the master. Playback nodes retain local screen assignments but pull shared content.</p>
+<label>Role</label><select id="mode"><option value="controller">Master controller</option><option value="node">Playback node</option></select>
+<label>Display 01 manifest address</label><input id="primary_manifest_url">
+<label>WordPress recovery manifest</label><input id="cloud_manifest_url">
+<label>WordPress cloud API base</label><input id="cloud_api_base">
+<label>WordPress username</label><input id="cloud_username" autocomplete="username">
+<label>WordPress application password</label><input id="cloud_application_password" type="password" autocomplete="new-password" placeholder="Leave blank to keep the saved password">
+<button id="save">Save settings</button> <button id="sync" class="secondary">Sync now</button><a class="return" href="/">Back to controller</a><div id="result" class="status" aria-live="polite"></div></section>
+"""
+    script = r"""
+const fields=['mode','primary_manifest_url','cloud_manifest_url','cloud_api_base','cloud_username'];
+async function load(){const r=await fetch('/api/sync/settings',{cache:'no-store'}),d=await r.json();fields.forEach(k=>document.querySelector('#'+k).value=d[k]||'');if(d.cloud_password_set)document.querySelector('#cloud_application_password').placeholder='Saved — leave blank to keep it';}
+document.querySelector('#save').onclick=async()=>{const result=document.querySelector('#result'),payload={};[...fields,'cloud_application_password'].forEach(k=>payload[k]=document.querySelector('#'+k).value);result.textContent='Saving…';const r=await fetch('/api/sync/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}),d=await r.json();result.className='status '+(r.ok?'success':'error');result.textContent=r.ok?'Saved. The role and five-minute synchronization settings are active.':d.error;};
+document.querySelector('#sync').onclick=async()=>{const result=document.querySelector('#result');result.textContent='Synchronization requested…';const r=await fetch('/api/sync/now',{method:'POST'});result.className='status '+(r.ok?'success':'error');result.textContent=r.ok?'Sync requested. Check again in a few seconds.':'Could not request synchronization.';};load();
+"""
+    return page_shell("Fleet Synchronization", body, script)
+
+
 def display_page(output: str, assignment: dict, revision: int) -> bytes:
     kind = assignment.get("kind", "standby")
     source = html.escape(assignment.get("source", ""), quote=True)
@@ -582,12 +685,24 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/":
             self.send_bytes(admin_page(), "text/html; charset=utf-8")
             return
+        if path == "/sync-settings":
+            self.send_bytes(sync_settings_page(), "text/html; charset=utf-8")
+            return
+        if path == "/api/sync/settings":
+            self.send_bytes(json_bytes(load_sync_config(public=True)), "application/json")
+            return
         if path == "/api/status":
             storage = shutil.disk_usage(self.media.directory)
             self.send_bytes(json_bytes({"version": VERSION, "state": self.store.load(), "outputs": detect_outputs(), "media": self.media.list(), "storage": {"total": storage.total, "used": storage.used, "free": storage.free}}), "application/json")
             return
         if path == "/api/revision":
             self.send_bytes(json_bytes({"revision": self.store.load().get("revision", 0)}), "application/json")
+            return
+        if path == "/api/sync/manifest":
+            self.send_bytes(json_bytes(self.media.sync_manifest(self.store.load())), "application/json")
+            return
+        if path.startswith("/api/sync/objects/"):
+            self.serve_sync_object(path[len("/api/sync/objects/"):])
             return
         logo_assets = {
             "/assets/ice-and-field-logo-white.svg": ("ice-and-field-logo-white.svg", "image/svg+xml"),
@@ -611,6 +726,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_error(HTTPStatus.NOT_FOUND)
                 return
             state = self.store.load()
+            if output not in state.get("assignments", {}) and load_sync_config().get("mode") == "node":
+                state = self.store.assign(output, "standby", "", output, "video_for_screens")
             assignment = state.get("assignments", {}).get(output, {"kind": "standby", "label": output, "source": ""})
             assignment = self.store.resolve_assignment(state, assignment)
             self.send_bytes(display_page(output, assignment, state.get("revision", 0)), "text/html; charset=utf-8")
@@ -619,6 +736,19 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
+        if parsed.path == "/api/sync/settings":
+            try:
+                length = min(int(self.headers.get("Content-Length", "0")), 65_536)
+                config = save_sync_config(json.loads(self.rfile.read(length).decode("utf-8")))
+                (state_directory() / "sync-now").touch()
+                self.send_bytes(json_bytes({"ok": True, **config}), "application/json")
+            except (ValueError, TypeError, json.JSONDecodeError) as error:
+                self.send_bytes(json_bytes({"ok": False, "error": str(error)}), "application/json", HTTPStatus.BAD_REQUEST)
+            return
+        if parsed.path == "/api/sync/now":
+            (state_directory() / "sync-now").touch()
+            self.send_bytes(json_bytes({"ok": True}), "application/json")
+            return
         if parsed.path == "/api/media/upload":
             try:
                 length = int(self.headers.get("Content-Length", "0"))
@@ -763,6 +893,52 @@ class Handler(BaseHTTPRequestHandler):
                 self.wfile.write(chunk)
                 remaining -= len(chunk)
 
+    def serve_sync_object(self, digest: str) -> None:
+        found = self.media.get_by_hash(digest)
+        if not found:
+            self.send_error(HTTPStatus.NOT_FOUND)
+            return
+        item, path = found
+        size = path.stat().st_size
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", item["content_type"])
+        self.send_header("Content-Length", str(size))
+        self.send_header("Cache-Control", "private, max-age=31536000, immutable")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.end_headers()
+        with path.open("rb") as handle:
+            shutil.copyfileobj(handle, self.wfile, 1024 * 1024)
+
+
+class SyncHandler(Handler):
+    """Read-only fleet feed, reachable only from localhost or the Tailscale address range."""
+
+    def allowed_client(self) -> bool:
+        try:
+            address = ipaddress.ip_address(self.client_address[0])
+            return address.is_loopback or address in ipaddress.ip_network("100.64.0.0/10")
+        except ValueError:
+            return False
+
+    def do_GET(self) -> None:
+        if not self.allowed_client():
+            self.send_error(HTTPStatus.FORBIDDEN)
+            return
+        path = self.path.split("?", 1)[0]
+        if path == "/api/sync/manifest":
+            self.send_bytes(json_bytes(self.media.sync_manifest(self.store.load())), "application/json")
+            return
+        if path.startswith("/api/sync/objects/"):
+            self.serve_sync_object(path[len("/api/sync/objects/"):])
+            return
+        self.send_error(HTTPStatus.NOT_FOUND)
+
+    def do_POST(self) -> None:
+        self.send_error(HTTPStatus.METHOD_NOT_ALLOWED)
+
+    def do_DELETE(self) -> None:
+        self.send_error(HTTPStatus.METHOD_NOT_ALLOWED)
+
 
 def main() -> None:
     parser = argparse.ArgumentParser()
@@ -771,8 +947,13 @@ def main() -> None:
     args = parser.parse_args()
     Handler.store = StateStore(state_directory() / "state.json")
     Handler.media = MediaStore(state_directory() / "media")
+    SyncHandler.store = Handler.store
+    SyncHandler.media = Handler.media
+    if load_sync_config().get("mode") == "controller":
+        sync_server = ThreadingHTTPServer(("0.0.0.0", 8788), SyncHandler)
+        threading.Thread(target=sync_server.serve_forever, name="fleet-sync-feed", daemon=True).start()
     server = ThreadingHTTPServer((args.host, args.port), Handler)
-    print(f"{APP_NAME} {VERSION} listening on http://{args.host}:{args.port}", flush=True)
+    print(f"{APP_NAME} {VERSION} listening on http://{args.host}:{args.port}; private fleet feed on port 8788", flush=True)
     server.serve_forever()
 
 

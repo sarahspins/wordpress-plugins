@@ -42,6 +42,12 @@ class StateStoreTests(unittest.TestCase):
             self.assertEqual("web", resolved["kind"])
             self.assertEqual("https://example.com/schedule", resolved["source"])
 
+    def test_playback_node_default_can_bind_video_channel(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = StateStore(Path(directory) / "state.json")
+            state = store.assign("HDMI-1", "standby", "", "HDMI-1", "video_for_screens")
+            self.assertEqual("video_for_screens", state["assignments"]["HDMI-1"]["channel"])
+
     def test_updating_channel_increments_revision(self):
         with tempfile.TemporaryDirectory() as directory:
             store = StateStore(Path(directory) / "state.json")

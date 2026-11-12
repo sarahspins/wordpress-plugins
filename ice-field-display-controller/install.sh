@@ -10,9 +10,21 @@ command -v chromium >/dev/null 2>&1 || command -v chromium-browser >/dev/null 2>
 command -v wlr-randr >/dev/null 2>&1 || command -v xrandr >/dev/null 2>&1 || { echo "wlr-randr or xrandr is required." >&2; exit 1; }
 
 mkdir -p "$APP_DIR" "$UNIT_DIR" "$HOME/.local/share/ice-field-display-controller"
+SYNC_CONFIG="$HOME/.local/share/ice-field-display-controller/sync.json"
+if [ ! -e "$SYNC_CONFIG" ]; then
+    SYNC_MODE=node
+    case "$(hostname)" in
+        ice-and-field-display-01) SYNC_MODE=controller ;;
+    esac
+    printf '{\n  "mode": "%s",\n  "interval_seconds": 300,\n  "primary_manifest_url": "http://100.112.216.40:8788/api/sync/manifest",\n  "cloud_manifest_url": "https://shows.iceandfield.com/wp-json/ice-field-display-cloud/v1/manifest",\n  "cloud_api_base": "https://shows.iceandfield.com/wp-json/ice-field-display-cloud/v1",\n  "cloud_username": "",\n  "cloud_application_password": ""\n}\n' "$SYNC_MODE" > "$SYNC_CONFIG"
+    chmod 600 "$SYNC_CONFIG"
+fi
 mkdir -p "$APP_DIR/assets"
 install -m 0755 "$SOURCE_DIR/controller.py" "$APP_DIR/controller.py"
 install -m 0755 "$SOURCE_DIR/agent.py" "$APP_DIR/agent.py"
+install -m 0755 "$SOURCE_DIR/fleet_sync.py" "$APP_DIR/fleet_sync.py"
+install -m 0755 "$SOURCE_DIR/tv_power.py" "$APP_DIR/tv_power.py"
+install -m 0755 "$SOURCE_DIR/configure_sync.py" "$APP_DIR/configure_sync.py"
 install -m 0755 "$SOURCE_DIR/configure-cursor.py" "$APP_DIR/configure-cursor.py"
 install -m 0644 "$SOURCE_DIR/startup.html" "$APP_DIR/startup.html"
 install -m 0644 "$SOURCE_DIR/VERSION" "$APP_DIR/VERSION"
@@ -22,10 +34,21 @@ install -m 0644 "$SOURCE_DIR/assets/ice-and-field-logo.svg" "$APP_DIR/assets/ice
 
 sed "s|@APP_DIR@|$APP_DIR|g" "$SOURCE_DIR/systemd/ice-field-display-controller.service.in" > "$UNIT_DIR/ice-field-display-controller.service"
 sed "s|@APP_DIR@|$APP_DIR|g" "$SOURCE_DIR/systemd/ice-field-display-agent.service.in" > "$UNIT_DIR/ice-field-display-agent.service"
+sed "s|@APP_DIR@|$APP_DIR|g" "$SOURCE_DIR/systemd/ice-field-display-sync.service.in" > "$UNIT_DIR/ice-field-display-sync.service"
+sed "s|@APP_DIR@|$APP_DIR|g" "$SOURCE_DIR/systemd/ice-field-display-tv-power.service.in" > "$UNIT_DIR/ice-field-display-tv-power.service"
 
 systemctl --user daemon-reload
 systemctl --user enable ice-field-display-controller.service
 systemctl --user restart ice-field-display-controller.service
+systemctl --user enable ice-field-display-sync.service
+systemctl --user restart ice-field-display-sync.service
+if command -v cec-ctl >/dev/null 2>&1 && [ -e /dev/cec0 ]; then
+    systemctl --user enable ice-field-display-tv-power.service
+    systemctl --user restart ice-field-display-tv-power.service
+else
+    systemctl --user disable --now ice-field-display-tv-power.service 2>/dev/null || true
+    echo "HDMI-CEC TV power scheduling skipped: cec-ctl or /dev/cec0 is unavailable."
+fi
 if [ "${IFDC_ENABLE_AGENT:-1}" = "1" ]; then
     systemctl --user enable ice-field-display-agent.service
     systemctl --user restart ice-field-display-agent.service

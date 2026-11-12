@@ -1,0 +1,13 @@
+[Unit]
+Description=Ice & Field Display Fleet Synchronization
+After=network-online.target ice-field-display-controller.service
+Wants=network-online.target ice-field-display-controller.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 @APP_DIR@/fleet_sync.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target

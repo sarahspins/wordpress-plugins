@@ -1,5 +1,11 @@
 # Ice & Field Display Controller
 
+### Automatic TV power
+
+When HDMI-CEC is available, each display Pi keeps itself running and controls only the attached TV. It reads the public weekly schedule cache, wakes the TV 15 minutes before the earliest Gold or Silver rink event, and requests standby 15 minutes after the latest event ends. A valid day with no rink events stays off. If the current weekly cache cannot be read, the safe fallback window is 5:30 AM–11:00 PM.
+
+LG TVs must have **SIMPLINK (HDMI-CEC)** enabled. The installer enables `ice-field-display-tv-power.service` automatically when `cec-ctl` and `/dev/cec0` are present. Settings can be overridden inside the `tv_power` object in `~/.local/share/ice-field-display-controller/sync.json`.
+
 Self-contained Raspberry Pi display management for Ice & Field. One physical Pi is a **node** and may drive up to two independently assigned HDMI **screens**. The first Pi can also host the controller.
 
 ## Phase 1 capabilities
@@ -24,6 +30,10 @@ Self-contained Raspberry Pi display management for Ice & Field. One physical Pi 
 - Provides a discreet top-right quick-switch menu on every display for Schedule, Pricing, Public Skating Rules, Video for Screens, and the full Controller.
 - Opens and navigates the quick-switch menu from common remote-control Menu/Context Menu keys, with Up/Down/Enter/Escape keyboard support and a right-click fallback.
 - Keeps controller and node concepts separate so fleet synchronization can be added without changing screen assignments.
+- Treats `ice-and-field-display-01` as the master controller and every other fresh installation as a pull-only playback node. Playback nodes check the master immediately at boot and every five minutes, fall back to the WordPress cloud manifest, and otherwise retain their last verified local content.
+- Synchronizes shared channels and their media while preserving each node's HDMI assignments and friendly screen names. A fresh unassigned playback node defaults its first display to Video for Screens.
+- Exposes the master manifest and checksum-addressed media on read-only port 8788 to localhost and Tailscale's private address range only. Playback nodes do not expose that fleet feed unless explicitly promoted to master and restarted.
+- Keeps retired node-only media in a recoverable `sync-retired` folder rather than deleting it when the active playback library is aligned to the master.
 
 Remote multi-user access and additional-node enrollment are intentionally deferred until local kiosk behavior has been verified on the Raspberry Pi.
 
@@ -35,12 +45,22 @@ Copy this directory to the Pi, open a terminal inside it, and run:
 ./install.sh
 ```
 
-The installer uses only software already present in a standard Raspberry Pi OS Desktop installation. It installs two user services:
+The installer uses only software already present in a standard Raspberry Pi OS Desktop installation. Its user services include:
 
 - `ice-field-display-controller.service` — local control panel and display pages
 - `ice-field-display-agent.service` — HDMI discovery and Chromium kiosk supervision
+- `ice-field-display-sync.service` — controller/cloud content synchronization
+- `ice-field-display-tv-power.service` — schedule-driven HDMI-CEC wake and standby when supported
 
 The control panel is available locally at `http://127.0.0.1:8787/`. It is intentionally not exposed to the network until authenticated remote access is implemented.
+
+Fleet settings are available from the control panel under **Fleet synchronization**, or directly at `http://127.0.0.1:8787/sync-settings`. Enter the WordPress username and application password on Display 01 only. The application password is stored locally with owner-only permissions and is never included in a manifest or sent to another node. **Sync now** requests an immediate check without changing the five-minute schedule.
+
+The same first-time cloud setup can be completed from Display 01's terminal without exposing the application password on screen:
+
+```bash
+python3 ~/.local/lib/ice-field-display-controller/configure_sync.py
+```
 
 ## Install on an Orange Pi Zero 3 with Armbian XFCE
 

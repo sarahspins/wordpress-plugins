@@ -1,0 +1,180 @@
+#!/usr/bin/env python3
+"""Schedule HDMI-CEC TV power from the public weekly rink calendar cache."""
+
+from __future__ import annotations
+
+import json
+import subprocess
+import time
+from datetime import datetime, time as clock_time, timedelta
+from pathlib import Path
+from urllib.request import Request, urlopen
+from zoneinfo import ZoneInfo
+
+from controller import state_directory
+
+
+DEFAULTS = {
+    "enabled": True,
+    "schedule_base_url": "https://iceandfield.com/wp-content/uploads/ice-field-schedule-cache",
+    "timezone": "America/Chicago",
+    "wake_minutes_before": 15,
+    "standby_minutes_after": 15,
+    "fallback_on": "05:30",
+    "fallback_off": "23:00",
+    "cec_device": "/dev/cec0",
+    "poll_seconds": 60,
+}
+
+
+def load_config() -> dict:
+    config = dict(DEFAULTS)
+    try:
+        saved = json.loads((state_directory() / "sync.json").read_text(encoding="utf-8"))
+        if isinstance(saved.get("tv_power"), dict):
+            config.update(saved["tv_power"])
+    except (OSError, json.JSONDecodeError, AttributeError):
+        pass
+    return config
+
+
+def week_start(day: datetime) -> str:
+    return (day.date() - timedelta(days=day.weekday())).isoformat()
+
+
+def schedule_url(config: dict, now: datetime) -> str:
+    return f"{str(config['schedule_base_url']).rstrip('/')}/week-{week_start(now)}.json"
+
+
+def fetch_schedule(config: dict, now: datetime, cache_path: Path) -> dict:
+    request = Request(schedule_url(config, now), headers={
+        "Accept": "application/json",
+        "Cache-Control": "no-cache",
+        "User-Agent": "IceFieldDisplay/0.1",
+    })
+    try:
+        with urlopen(request, timeout=15) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        if not isinstance(payload.get("days"), list):
+            raise ValueError("Weekly schedule has no daily data.")
+        temporary = cache_path.with_suffix(".tmp")
+        temporary.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
+        temporary.replace(cache_path)
+        return payload
+    except Exception:
+        try:
+            payload = json.loads(cache_path.read_text(encoding="utf-8"))
+            if payload.get("weekStart") == week_start(now) and isinstance(payload.get("days"), list):
+                return payload
+        except (OSError, json.JSONDecodeError, AttributeError):
+            pass
+        raise
+
+
+def parse_local(value: str, timezone: ZoneInfo) -> datetime:
+    parsed = datetime.fromisoformat(value)
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone)
+    return parsed.astimezone(timezone)
+
+
+def event_window(payload: dict, now: datetime, config: dict) -> tuple[datetime, datetime] | None:
+    day_key = now.date().isoformat()
+    day = next((item for item in payload.get("days", []) if item.get("date") == day_key), None)
+    if day is None:
+        raise ValueError(f"Weekly schedule does not contain {day_key}.")
+    timezone = ZoneInfo(str(config["timezone"]))
+    events = [
+        event
+        for rink in ("gold", "silver")
+        for event in day.get(rink, [])
+        if isinstance(event, dict) and event.get("start") and event.get("end")
+        # The public calendar can include a synthetic class card at midnight
+        # whose title contains its real daytime meeting time. It is not a
+        # midnight facility event and must not wake the TVs the night before.
+        and not (str(event.get("eventTypeId", "")) == "c" and int(event.get("startMinutes", -1)) == 0)
+    ]
+    if not events:
+        return None
+    starts = [parse_local(str(event["start"]), timezone) for event in events]
+    ends = [parse_local(str(event["end"]), timezone) for event in events]
+    return (
+        min(starts) - timedelta(minutes=int(config["wake_minutes_before"])),
+        max(ends) + timedelta(minutes=int(config["standby_minutes_after"])),
+    )
+
+
+def fallback_window(now: datetime, config: dict) -> tuple[datetime, datetime]:
+    def parse_clock(value: str) -> clock_time:
+        return datetime.strptime(value, "%H:%M").time()
+
+    return (
+        datetime.combine(now.date(), parse_clock(str(config["fallback_on"])), tzinfo=now.tzinfo),
+        datetime.combine(now.date(), parse_clock(str(config["fallback_off"])), tzinfo=now.tzinfo),
+    )
+
+
+def desired_state(now: datetime, window: tuple[datetime, datetime] | None) -> str:
+    return "on" if window is not None and window[0] <= now < window[1] else "standby"
+
+
+def send_cec(state: str, config: dict) -> None:
+    device = str(config["cec_device"])
+    subprocess.run(
+        ["cec-ctl", "-d", device, "--playback", "--osd-name", "Ice & Field Display"],
+        check=True,
+        timeout=10,
+        stdout=subprocess.DEVNULL,
+    )
+    command = "--image-view-on" if state == "on" else "--standby"
+    subprocess.run(
+        ["cec-ctl", "-d", device, "--to", "0", command],
+        check=True,
+        timeout=10,
+        stdout=subprocess.DEVNULL,
+    )
+
+
+def main() -> None:
+    directory = state_directory()
+    cache_path = directory / "weekly-schedule.json"
+    last_state = ""
+    next_fetch = 0.0
+    payload = None
+    while True:
+        config = load_config()
+        if not config.get("enabled", True):
+            time.sleep(60)
+            continue
+        timezone = ZoneInfo(str(config["timezone"]))
+        now = datetime.now(timezone)
+        using_fallback = False
+        if payload is None or time.monotonic() >= next_fetch:
+            try:
+                payload = fetch_schedule(config, now, cache_path)
+            except Exception as error:
+                payload = None
+                using_fallback = True
+                print(f"TV schedule warning: {error}; using fixed fallback hours.", flush=True)
+            next_fetch = time.monotonic() + 300
+        try:
+            window = event_window(payload, now, config) if payload is not None else fallback_window(now, config)
+        except Exception as error:
+            using_fallback = True
+            window = fallback_window(now, config)
+            print(f"TV schedule warning: {error}; using fixed fallback hours.", flush=True)
+        state = desired_state(now, window)
+        if state != last_state:
+            try:
+                send_cec(state, config)
+                detail = "no rink events" if window is None else f"{window[0].isoformat()} to {window[1].isoformat()}"
+                source = "fallback" if using_fallback else "rink schedule"
+                print(f"TV {state} requested from {source}: {detail}", flush=True)
+                last_state = state
+            except (OSError, subprocess.SubprocessError) as error:
+                print(f"HDMI-CEC warning: {error}", flush=True)
+        time.sleep(max(30, int(config.get("poll_seconds", 60))))
+
+
+if __name__ == "__main__":
+    main()

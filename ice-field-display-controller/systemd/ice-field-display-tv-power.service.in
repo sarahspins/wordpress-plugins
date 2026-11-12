@@ -1,0 +1,13 @@
+[Unit]
+Description=Ice & Field Scheduled TV Power
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 @APP_DIR@/tv_power.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target
