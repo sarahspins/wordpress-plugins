@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import time
 from datetime import datetime, time as clock_time, timedelta
@@ -134,6 +135,28 @@ def send_cec(state: str, config: dict) -> None:
         timeout=10,
         stdout=subprocess.DEVNULL,
     )
+    if state == "on":
+        # Waking a television and selecting this HDMI source are distinct CEC
+        # operations. Give slower TV input controllers a moment to initialize,
+        # then announce the Pi's detected connector address as active.
+        time.sleep(2)
+        query = subprocess.run(
+            ["cec-ctl", "-d", device, "--physical-address"],
+            check=True,
+            timeout=10,
+            capture_output=True,
+            text=True,
+        )
+        matches = re.findall(r"(?im)^\s*([0-9a-f]\.[0-9a-f]\.[0-9a-f]\.[0-9a-f])\s*$", query.stdout)
+        if not matches:
+            print("HDMI-CEC warning: physical address could not be detected; TV woke without input selection.", flush=True)
+            return
+        subprocess.run(
+            ["cec-ctl", "-d", device, "--active-source", f"phys-addr={matches[-1]}"],
+            check=True,
+            timeout=10,
+            stdout=subprocess.DEVNULL,
+        )
 
 
 def write_status(directory: Path, state: str, mode: str, message: str, next_transition: datetime | None) -> None:
@@ -221,10 +244,9 @@ def main() -> None:
                 write_status(directory, manual, "manual", "Manual override active until the next scheduled transition.", transition)
             except (OSError, subprocess.SubprocessError) as error:
                 print(f"HDMI-CEC manual-control warning: {error}", flush=True)
-        # Check the tiny local command file frequently so the demonstration
-        # control feels immediate; schedule/media network refreshes remain
-        # independently limited to five-minute intervals above.
-        time.sleep(min(5, max(1, int(config.get("poll_seconds", 60)))))
+        # This only checks a tiny local command file. Network schedule refreshes
+        # remain independently limited to five-minute intervals above.
+        time.sleep(1)
 
 
 if __name__ == "__main__":

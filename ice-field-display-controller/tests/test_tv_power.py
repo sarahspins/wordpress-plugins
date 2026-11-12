@@ -1,8 +1,9 @@
 import datetime as dt
 import unittest
+from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
-from tv_power import desired_state, event_window, fallback_window, next_transition, schedule_url, week_start
+from tv_power import desired_state, event_window, fallback_window, next_transition, schedule_url, send_cec, week_start
 
 
 ZONE = ZoneInfo("America/Chicago")
@@ -17,6 +18,23 @@ CONFIG = {
 
 
 class TvPowerTests(unittest.TestCase):
+    @patch("tv_power.time.sleep")
+    @patch("tv_power.subprocess.run")
+    def test_wake_announces_detected_hdmi_as_active_source(self, run, sleep):
+        run.return_value.stdout = "Physical Address: 1.0.0.0\n1.0.0.0\n"
+        send_cec("on", {"cec_device": "/dev/cec0"})
+        self.assertEqual(4, run.call_count)
+        self.assertEqual(
+            ["cec-ctl", "-d", "/dev/cec0", "--active-source", "phys-addr=1.0.0.0"],
+            run.call_args_list[-1].args[0],
+        )
+        sleep.assert_called_once_with(2)
+
+    @patch("tv_power.subprocess.run")
+    def test_standby_does_not_change_input(self, run):
+        send_cec("standby", {"cec_device": "/dev/cec0"})
+        self.assertEqual(2, run.call_count)
+
     def test_week_uses_monday(self):
         now = dt.datetime(2026, 11, 12, 12, tzinfo=ZONE)
         self.assertEqual(week_start(now), "2026-11-09")

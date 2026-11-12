@@ -4,6 +4,8 @@
 
 When HDMI-CEC is available, each display Pi keeps itself running and controls only the attached TV. It reads the public weekly schedule cache, wakes the TV 15 minutes before the earliest Gold or Silver rink event, and requests standby 15 minutes after the latest event ends. A valid day with no rink events stays off. If the current weekly cache cannot be read, the safe fallback window is 5:30 AM–11:00 PM.
 
+After waking, the Pi detects its own HDMI-CEC physical address and announces itself as the active source. This selects the correct Pi input on TVs that otherwise wake to a home screen or another input, without assuming that every installation uses the same HDMI port.
+
 LG TVs must have **SIMPLINK (HDMI-CEC)** enabled. The installer enables `ice-field-display-tv-power.service` automatically when `cec-ctl` and `/dev/cec0` are present. Settings can be overridden inside the `tv_power` object in `~/.local/share/ice-field-display-controller/sync.json`.
 
 The management page also provides an attached-TV on/off control for demonstrations and manual use. A manual request remains active until the next scheduled wake or standby transition, when normal schedule control resumes automatically.
