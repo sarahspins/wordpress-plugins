@@ -449,6 +449,43 @@ def sync_config_path() -> Path:
     return state_directory() / "sync.json"
 
 
+def tv_power_status() -> dict:
+    config = load_sync_config().get("tv_power", {})
+    device = str(config.get("cec_device", "/dev/cec0")) if isinstance(config, dict) else "/dev/cec0"
+    available = bool(shutil.which("cec-ctl") and Path(device).exists())
+    status = {
+        "available": available,
+        "state": "unknown",
+        "mode": "schedule",
+        "message": "Waiting for the TV power service.",
+        "next_transition": "",
+    }
+    try:
+        saved = json.loads((state_directory() / "tv-power-status.json").read_text(encoding="utf-8"))
+        if isinstance(saved, dict):
+            status.update(saved)
+    except (OSError, json.JSONDecodeError):
+        pass
+    status["available"] = available
+    return status
+
+
+def request_tv_power(action: str) -> None:
+    if action not in {"on", "standby"}:
+        raise ValueError("Choose TV on or TV off.")
+    directory = state_directory()
+    directory.mkdir(parents=True, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(prefix="tv-power-command-", suffix=".json", dir=directory)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump({"action": action, "requested_at": int(time.time())}, handle)
+            handle.write("\n")
+        os.replace(temporary, directory / "tv-power-command.json")
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+
+
 def load_sync_config(public: bool = False) -> dict:
     try:
         config = json.loads(sync_config_path().read_text(encoding="utf-8"))
@@ -531,6 +568,7 @@ def admin_page() -> bytes:
 <section class="wide"><h2>Display Content</h2><p class="muted">Define each familiar Ice &amp; Field display once, then choose its name on any connected screen.</p><div id="channels" class="grid"></div></section>
 <h2>Connected Screens</h2>
 <div id="screens" class="grid"></div>
+<section class="card wide" style="margin-top:24px"><h2>Attached TV power</h2><p class="muted" id="tv-power-detail">Checking HDMI-CEC…</p><button id="tv-power-toggle" type="button" class="secondary" disabled>Checking TV…</button><div id="tv-power-result" class="status" aria-live="polite"></div></section>
 <section class="card wide" style="margin-top:24px"><h2>Fleet synchronization</h2><p class="muted">Display 01 is the master. Other nodes pull shared channels and media every five minutes, with WordPress as their recovery source.</p><a class="return" href="/sync-settings">Open synchronization settings</a></section>
 <noscript><div class="card">JavaScript is required to manage screen assignments.</div></noscript>
 """
@@ -544,8 +582,10 @@ async function loadStatus(){
   document.querySelector('#node').textContent = `${data.state.node.name} · ${data.state.node.id}`;
   document.querySelector('#health').textContent = `${data.outputs.length} connected screen${data.outputs.length === 1 ? '' : 's'}`;
   document.querySelector('#storage').textContent=`Local storage: ${size(data.storage.free)} free of ${size(data.storage.total)}`;
-  renderMedia(data); renderChannels(data); renderScreens(data);
+  renderMedia(data); renderChannels(data); renderScreens(data); renderTvPower(data.tv_power||{});
 }
+function renderTvPower(power){const button=document.querySelector('#tv-power-toggle'),detail=document.querySelector('#tv-power-detail');if(!power.available){button.disabled=true;button.textContent='HDMI-CEC unavailable';detail.textContent=power.message||'This Pi does not currently have an HDMI-CEC connection.';return;}button.disabled=false;button.dataset.action=power.state==='on'?'standby':'on';button.textContent=power.state==='on'?'Turn TV off':'Turn TV on';const mode=power.mode==='manual'?'Manual override active':'Following rink schedule';const next=power.next_transition?` Next automatic transition: ${new Date(power.next_transition).toLocaleString()}.`:'';detail.textContent=`${mode}. Last requested state: ${power.state==='standby'?'off':power.state}.${next}`;}
+async function toggleTvPower(){const button=document.querySelector('#tv-power-toggle'),result=document.querySelector('#tv-power-result'),action=button.dataset.action;button.disabled=true;result.className='status';result.textContent=action==='on'?'Requesting TV power on…':'Requesting TV standby…';try{const response=await fetch('/api/tv-power',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action})}),data=await response.json();if(!response.ok)throw new Error(data.error||'Could not control the TV.');result.classList.add('success');result.textContent=action==='on'?'TV power-on requested.':'TV standby requested.';setTimeout(loadStatus,5500);}catch(error){result.classList.add('error');result.textContent=error.message;button.disabled=false;}}
 function renderMedia(data){
   const root=document.querySelector('#media-items');root.innerHTML='';
   if(!data.media.length){root.innerHTML='<p class="muted">No local media has been uploaded yet.</p>';return;}
@@ -596,6 +636,7 @@ async function uploadMedia(){const input=document.querySelector('#media-file'),f
 async function assignAll(item,card){const status=card.querySelector('.status');status.className='status';status.textContent='Applying…';try{for(const output of currentData.outputs){const saved=currentData.state.assignments[output.name]||{};const response=await fetch('/api/assign',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({output:output.name,kind:item.kind,source:item.url,label:saved.label||output.name})});if(!response.ok){const data=await response.json();throw new Error(data.error||'Could not update every screen.');}}status.classList.add('success');status.textContent='Assigned to all connected screens.';setTimeout(loadStatus,900);}catch(error){status.classList.add('error');status.textContent=error.message;}}
 async function removeMedia(item,card){if(!confirm(`Remove “${item.name}” from this node?`))return;const status=card.querySelector('.status');status.textContent='Removing…';const response=await fetch(`/api/media/${item.id}`,{method:'DELETE'});const data=await response.json();if(!response.ok){status.classList.add('error');status.textContent=data.error||'Could not remove this file.';return;}await loadStatus();}
 document.querySelector('#media-upload').addEventListener('click',uploadMedia);
+document.querySelector('#tv-power-toggle').addEventListener('click',toggleTvPower);
 loadStatus().catch(error=>{document.querySelector('#health').textContent='Controller unavailable'; document.querySelector('#screens').innerHTML=`<section class="card error">${esc(error.message)}</section>`;});
 """
     return page_shell(APP_NAME, body, script)
@@ -693,7 +734,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/api/status":
             storage = shutil.disk_usage(self.media.directory)
-            self.send_bytes(json_bytes({"version": VERSION, "state": self.store.load(), "outputs": detect_outputs(), "media": self.media.list(), "storage": {"total": storage.total, "used": storage.used, "free": storage.free}}), "application/json")
+            self.send_bytes(json_bytes({"version": VERSION, "state": self.store.load(), "outputs": detect_outputs(), "media": self.media.list(), "tv_power": tv_power_status(), "storage": {"total": storage.total, "used": storage.used, "free": storage.free}}), "application/json")
             return
         if path == "/api/revision":
             self.send_bytes(json_bytes({"revision": self.store.load().get("revision", 0)}), "application/json")
@@ -748,6 +789,15 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == "/api/sync/now":
             (state_directory() / "sync-now").touch()
             self.send_bytes(json_bytes({"ok": True}), "application/json")
+            return
+        if parsed.path == "/api/tv-power":
+            try:
+                length = min(int(self.headers.get("Content-Length", "0")), 4096)
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                request_tv_power(str(payload.get("action", "")))
+                self.send_bytes(json_bytes({"ok": True}), "application/json", HTTPStatus.ACCEPTED)
+            except (ValueError, TypeError, json.JSONDecodeError, OSError) as error:
+                self.send_bytes(json_bytes({"ok": False, "error": str(error)}), "application/json", HTTPStatus.BAD_REQUEST)
             return
         if parsed.path == "/api/media/upload":
             try:

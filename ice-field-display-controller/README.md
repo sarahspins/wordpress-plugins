@@ -6,6 +6,8 @@ When HDMI-CEC is available, each display Pi keeps itself running and controls on
 
 LG TVs must have **SIMPLINK (HDMI-CEC)** enabled. The installer enables `ice-field-display-tv-power.service` automatically when `cec-ctl` and `/dev/cec0` are present. Settings can be overridden inside the `tv_power` object in `~/.local/share/ice-field-display-controller/sync.json`.
 
+The management page also provides an attached-TV on/off control for demonstrations and manual use. A manual request remains active until the next scheduled wake or standby transition, when normal schedule control resumes automatically.
+
 Self-contained Raspberry Pi display management for Ice & Field. One physical Pi is a **node** and may drive up to two independently assigned HDMI **screens**. The first Pi can also host the controller.
 
 ## Phase 1 capabilities

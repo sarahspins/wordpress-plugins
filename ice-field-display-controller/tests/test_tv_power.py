@@ -2,7 +2,7 @@ import datetime as dt
 import unittest
 from zoneinfo import ZoneInfo
 
-from tv_power import desired_state, event_window, fallback_window, schedule_url, week_start
+from tv_power import desired_state, event_window, fallback_window, next_transition, schedule_url, week_start
 
 
 ZONE = ZoneInfo("America/Chicago")
@@ -58,6 +58,8 @@ class TvPowerTests(unittest.TestCase):
         )
         self.assertEqual(desired_state(window[0], window), "on")
         self.assertEqual(desired_state(window[1], window), "standby")
+        self.assertEqual(next_transition(window[0], window), window[1])
+        self.assertIsNone(next_transition(window[1], window))
 
     def test_fallback_hours(self):
         now = dt.datetime(2026, 11, 12, 12, tzinfo=ZONE)

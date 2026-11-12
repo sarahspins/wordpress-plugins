@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import time
 from datetime import datetime, time as clock_time, timedelta
@@ -135,10 +136,47 @@ def send_cec(state: str, config: dict) -> None:
     )
 
 
+def write_status(directory: Path, state: str, mode: str, message: str, next_transition: datetime | None) -> None:
+    path = directory / "tv-power-status.json"
+    temporary = path.with_suffix(".tmp")
+    payload = {
+        "available": True,
+        "state": state,
+        "mode": mode,
+        "message": message,
+        "next_transition": next_transition.isoformat() if next_transition else "",
+        "updated_at": int(time.time()),
+    }
+    temporary.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
+    os.replace(temporary, path)
+
+
+def next_transition(now: datetime, window: tuple[datetime, datetime] | None) -> datetime | None:
+    if window is None:
+        return None
+    if now < window[0]:
+        return window[0]
+    if now < window[1]:
+        return window[1]
+    return None
+
+
+def read_manual_command(directory: Path) -> str:
+    path = directory / "tv-power-command.json"
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        action = str(payload.get("action", ""))
+        return action if action in {"on", "standby"} else ""
+    except (OSError, json.JSONDecodeError, AttributeError):
+        return ""
+    finally:
+        path.unlink(missing_ok=True)
+
+
 def main() -> None:
     directory = state_directory()
     cache_path = directory / "weekly-schedule.json"
-    last_state = ""
+    last_scheduled_state = ""
     next_fetch = 0.0
     payload = None
     while True:
@@ -164,16 +202,29 @@ def main() -> None:
             window = fallback_window(now, config)
             print(f"TV schedule warning: {error}; using fixed fallback hours.", flush=True)
         state = desired_state(now, window)
-        if state != last_state:
+        transition = next_transition(now, window)
+        if state != last_scheduled_state:
             try:
                 send_cec(state, config)
                 detail = "no rink events" if window is None else f"{window[0].isoformat()} to {window[1].isoformat()}"
                 source = "fallback" if using_fallback else "rink schedule"
                 print(f"TV {state} requested from {source}: {detail}", flush=True)
-                last_state = state
+                write_status(directory, state, "schedule", f"Following {source}.", transition)
+                last_scheduled_state = state
             except (OSError, subprocess.SubprocessError) as error:
                 print(f"HDMI-CEC warning: {error}", flush=True)
-        time.sleep(max(30, int(config.get("poll_seconds", 60))))
+        manual = read_manual_command(directory)
+        if manual:
+            try:
+                send_cec(manual, config)
+                print(f"TV {manual} requested manually from the management page.", flush=True)
+                write_status(directory, manual, "manual", "Manual override active until the next scheduled transition.", transition)
+            except (OSError, subprocess.SubprocessError) as error:
+                print(f"HDMI-CEC manual-control warning: {error}", flush=True)
+        # Check the tiny local command file frequently so the demonstration
+        # control feels immediate; schedule/media network refreshes remain
+        # independently limited to five-minute intervals above.
+        time.sleep(min(5, max(1, int(config.get("poll_seconds", 60)))))
 
 
 if __name__ == "__main__":

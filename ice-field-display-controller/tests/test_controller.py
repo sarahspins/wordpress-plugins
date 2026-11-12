@@ -8,7 +8,7 @@ from unittest.mock import patch
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from controller import MediaStore, StateStore, detect_outputs, detect_x11_outputs, display_page, valid_media_signature
+from controller import MediaStore, StateStore, admin_page, detect_outputs, detect_x11_outputs, display_page, valid_media_signature
 
 
 class StateStoreTests(unittest.TestCase):
@@ -143,6 +143,11 @@ class DisplayPageTests(unittest.TestCase):
         self.assertIn("width:calc(100% + 24px)", page)
         self.assertIn("cursor:none!important", page)
         self.assertIn("pointer-events:none", page)
+
+    def test_management_page_has_manual_tv_power_control(self):
+        page = admin_page().decode("utf-8")
+        self.assertIn('id="tv-power-toggle"', page)
+        self.assertIn("/api/tv-power", page)
 
     def test_display_has_quick_channel_menu(self):
         page = display_page("HDMI-A-1", {"kind": "standby", "source": "", "label": "Lobby", "channel": "schedule"}, 2).decode()
