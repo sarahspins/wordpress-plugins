@@ -19,6 +19,7 @@ Self-contained Raspberry Pi display management for Ice & Field. One physical Pi 
 - Uses the locally bundled official vector Ice & Field logos, preferring the white SVG on the branded standby screen with a PNG fallback and no website dependency.
 - Stores assignments locally and restores them after a reboot.
 - Runs one isolated Chromium kiosk instance per connected output.
+- Requests 1920×1080 at 30 Hz on Raspberry Pi OS/Wayland before launching Chromium, avoiding unreliable 4K kiosk rendering on large TVs while falling back safely when that exact refresh rate is unavailable.
 - Waits for the local Controller, paints a fully local branded startup page, and only then transitions to the assigned display so Chromium never needs to expose a prolonged white loading screen.
 - Uses Chromium's local basic password store for kiosk profiles so desktop keyring prompts cannot block unattended startup.
 - Provides a local, beginner-friendly control panel.

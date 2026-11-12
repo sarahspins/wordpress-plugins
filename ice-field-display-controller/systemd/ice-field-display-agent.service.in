@@ -9,6 +9,8 @@ Environment=DISPLAY=:0
 Environment=XAUTHORITY=%h/.Xauthority
 Environment=WAYLAND_DISPLAY=wayland-0
 Environment=XDG_RUNTIME_DIR=%t
+Environment=IFDC_WAYLAND_MODE=1920x1080
+Environment=IFDC_WAYLAND_RATE=30
 ExecStart=/usr/bin/python3 @APP_DIR@/agent.py
 Restart=always
 RestartSec=3

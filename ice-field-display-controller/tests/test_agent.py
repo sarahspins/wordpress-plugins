@@ -67,5 +67,39 @@ class X11ConfigurationTests(unittest.TestCase):
         self.assertTrue(agent.configure_x11_signage())
 
 
+class WaylandConfigurationTests(unittest.TestCase):
+    @patch.dict("agent.os.environ", {"IFDC_WAYLAND_MODE": "1920x1080", "IFDC_WAYLAND_RATE": "30"})
+    @patch("agent.subprocess.run")
+    def test_supported_1080p30_mode_is_applied(self, run):
+        run.side_effect = [
+            Result(stdout='''HDMI-A-1 "TV"
+  Enabled: yes
+  Modes:
+    3840x2160 px, 30.000000 Hz (preferred, current)
+    1920x1080 px, 60.000000 Hz
+    1920x1080 px, 30.000000 Hz
+'''),
+            Result(),
+        ]
+        self.assertTrue(agent.configure_wayland_signage())
+        self.assertEqual(
+            ["wlr-randr", "--output", "HDMI-A-1", "--mode", "1920x1080@30.000000Hz", "--pos", "0,0"],
+            run.call_args_list[-1].args[0],
+        )
+
+    @patch.dict("agent.os.environ", {"IFDC_WAYLAND_MODE": "1920x1080", "IFDC_WAYLAND_RATE": "30"})
+    @patch("agent.subprocess.run")
+    def test_dual_outputs_are_arranged_side_by_side(self, run):
+        run.side_effect = [
+            Result(stdout='''HDMI-A-1 "TV 1"\n  Modes:\n    1920x1080 px, 30.000000 Hz\nHDMI-A-2 "TV 2"\n  Modes:\n    1920x1080 px, 30.000000 Hz\n'''),
+            Result(),
+        ]
+        self.assertTrue(agent.configure_wayland_signage())
+        self.assertEqual(
+            ["wlr-randr", "--output", "HDMI-A-1", "--mode", "1920x1080@30.000000Hz", "--pos", "0,0", "--output", "HDMI-A-2", "--mode", "1920x1080@30.000000Hz", "--pos", "1920,0"],
+            run.call_args_list[-1].args[0],
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

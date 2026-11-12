@@ -34,7 +34,7 @@
         }
 
         function clock() {
-            root.querySelector('[data-time]').textContent = new Date().toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'});
+            root.querySelector('[data-time]').textContent = new Date().toLocaleTimeString([], {hour: 'numeric', minute: '2-digit', hour12: true});
             root.querySelector('[data-date]').textContent = new Date().toLocaleDateString([], {weekday: 'long', month: 'long', day: 'numeric'});
         }
 

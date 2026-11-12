@@ -1,4 +1,6 @@
-Ice & Field Rink Displays v2.8.25
+Ice & Field Rink Displays v2.8.26
+
+Version 2.8.26 restores uncropped Schedule Display banners. Single images and slideshow images are exactly 100% of the display width with automatic proportional height; no fixed-height box or cover sizing can crop the artwork. The subtle border and rounded corners remain. The large TV clock is explicitly rendered in 12-hour AM/PM format regardless of the kiosk browser's locale preference.
 
 Version 2.8.25 makes the Schedule Display's 180px lower banner span the entire screen width. Single banner images and image slideshows use cover sizing inside a polished frame with subtly rounded corners and a translucent border, while the schedule content above remains unchanged.
 

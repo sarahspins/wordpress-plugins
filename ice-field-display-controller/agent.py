@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -20,6 +21,50 @@ POLL_SECONDS = 5
 processes: dict[str, tuple[subprocess.Popen, tuple]] = {}
 last_revision: int | None = None
 hide_cursor_at = 0.0
+
+
+def configure_wayland_signage() -> bool:
+    mode = os.environ.get("IFDC_WAYLAND_MODE", "").strip()
+    rate = os.environ.get("IFDC_WAYLAND_RATE", "").strip()
+    if not mode:
+        return True
+    try:
+        query = subprocess.run(
+            ["wlr-randr"], capture_output=True, text=True, timeout=5, check=True,
+        )
+        outputs: list[tuple[str, list[str]]] = []
+        current_name = ""
+        available: list[str] = []
+        for line in query.stdout.splitlines():
+            if line and not line[0].isspace():
+                if current_name:
+                    outputs.append((current_name, available))
+                current_name = line.split(" ", 1)[0]
+                available = []
+                continue
+            match = re.match(r"^\s+(\d+x\d+) px, ([0-9.]+) Hz", line)
+            if match and match.group(1) == mode:
+                available.append(match.group(2))
+        if current_name:
+            outputs.append((current_name, available))
+        if not outputs or any(not rates for _name, rates in outputs):
+            return False
+        width = int(mode.split("x", 1)[0])
+        command = ["wlr-randr"]
+        x = 0
+        for output, rates in outputs:
+            chosen = rates[0]
+            if rate:
+                chosen = min(rates, key=lambda item: abs(float(item) - float(rate)))
+            command.extend(["--output", output, "--mode", f"{mode}@{chosen}Hz", "--pos", f"{x},0"])
+            x += width
+        requested = subprocess.run(command, timeout=12, check=False)
+        if requested.returncode != 0:
+            print(f"Could not apply the requested Wayland signage layout; retaining the active layout.", file=sys.stderr, flush=True)
+        print(f"Wayland signage configuration completed for {len(outputs)} output(s).", flush=True)
+        return True
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return False
 
 
 def configure_x11_signage() -> bool:
@@ -117,7 +162,7 @@ def hide_cursor() -> None:
             pass
 
 
-def launch(output: dict) -> subprocess.Popen:
+def launch(output: dict, force_x11: bool = False) -> subprocess.Popen:
     profile = Path.home() / ".local/share/ice-field-display-controller/chromium" / output["name"]
     profile.mkdir(parents=True, exist_ok=True)
     target = f"{CONTROLLER}/display/{quote(output['name'])}"
@@ -143,6 +188,8 @@ def launch(output: dict) -> subprocess.Popen:
         f"--window-position={output['x']},{output['y']}",
         f"--window-size={output['width']},{output['height']}",
     ]
+    if force_x11:
+        command.append("--ozone-platform=x11")
     if os.environ.get("IFDC_CONSERVATIVE_CHROMIUM") == "1":
         command.append("--disable-features=Vulkan")
     command.append(url)
@@ -174,7 +221,7 @@ def stop_all(*_args: object) -> None:
 
 def main() -> None:
     global last_revision, hide_cursor_at
-    x11_configured = False
+    display_configured = False
     signal.signal(signal.SIGTERM, stop_all)
     signal.signal(signal.SIGINT, stop_all)
     while True:
@@ -182,15 +229,30 @@ def main() -> None:
         if revision is None:
             time.sleep(POLL_SECONDS)
             continue
-        if not x11_configured:
-            x11_configured = configure_x11_signage()
-            if not x11_configured:
+        if not display_configured:
+            if os.environ.get("WAYLAND_DISPLAY") and shutil.which("wlr-randr"):
+                display_configured = configure_wayland_signage()
+            else:
+                display_configured = configure_x11_signage()
+            if not display_configured:
                 time.sleep(POLL_SECONDS)
                 continue
         if revision != last_revision:
             last_revision = revision
             hide_cursor_at = time.monotonic() + 8
         outputs = detect_outputs()
+        desired_mode = os.environ.get("IFDC_WAYLAND_MODE", "").strip()
+        if os.environ.get("WAYLAND_DISPLAY") and desired_mode and outputs:
+            desired_width, desired_height = (int(value) for value in desired_mode.split("x", 1))
+            expected_x = 0
+            layout_wrong = False
+            for output in outputs:
+                if (output["width"], output["height"], output["x"], output["y"]) != (desired_width, desired_height, expected_x, 0):
+                    layout_wrong = True
+                expected_x += desired_width
+            if layout_wrong and configure_wayland_signage():
+                outputs = detect_outputs()
+        force_x11 = bool(os.environ.get("WAYLAND_DISPLAY") and os.environ.get("DISPLAY") and len(outputs) > 1)
         active_names = {output["name"] for output in outputs}
         for name in list(processes):
             process, _signature = processes[name]
@@ -212,7 +274,7 @@ def main() -> None:
             if existing and existing[0].poll() is None:
                 existing[0].terminate()
             try:
-                processes[output["name"]] = (launch(output), signature)
+                processes[output["name"]] = (launch(output, force_x11=force_x11), signature)
                 hide_cursor_at = max(hide_cursor_at, time.monotonic() + 8)
             except RuntimeError as error:
                 print(error, file=sys.stderr, flush=True)
