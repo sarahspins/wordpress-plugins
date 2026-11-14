@@ -1,9 +1,10 @@
 import datetime as dt
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
-from tv_power import desired_state, event_window, fallback_window, next_transition, schedule_url, send_cec, week_start
+from tv_power import cec_devices, desired_state, event_window, fallback_window, next_transition, schedule_url, send_cec, week_start
 
 
 ZONE = ZoneInfo("America/Chicago")
@@ -21,19 +22,37 @@ class TvPowerTests(unittest.TestCase):
     @patch("tv_power.time.sleep")
     @patch("tv_power.subprocess.run")
     def test_wake_announces_detected_hdmi_as_active_source(self, run, sleep):
-        run.return_value.stdout = "Physical Address: 1.0.0.0\n1.0.0.0\n"
-        send_cec("on", {"cec_device": "/dev/cec0"})
-        self.assertEqual(4, run.call_count)
+        run.side_effect = [
+            unittest.mock.Mock(stdout=""),
+            unittest.mock.Mock(stdout=""),
+            unittest.mock.Mock(stdout="Physical Address: 1.0.0.0\n1.0.0.0\n"),
+            unittest.mock.Mock(stdout=""),
+            unittest.mock.Mock(stdout="pwr-state: on\n"),
+        ]
+        result = send_cec("on", {"cec_device": "/dev/cec0"})
+        self.assertEqual({"/dev/cec0": "on"}, result)
+        self.assertEqual(5, run.call_count)
         self.assertEqual(
             ["cec-ctl", "-d", "/dev/cec0", "--active-source", "phys-addr=1.0.0.0"],
-            run.call_args_list[-1].args[0],
+            run.call_args_list[-2].args[0],
         )
         sleep.assert_called_once_with(2)
 
     @patch("tv_power.subprocess.run")
     def test_standby_does_not_change_input(self, run):
-        send_cec("standby", {"cec_device": "/dev/cec0"})
-        self.assertEqual(2, run.call_count)
+        run.side_effect = [
+            unittest.mock.Mock(stdout=""),
+            unittest.mock.Mock(stdout=""),
+            unittest.mock.Mock(stdout="pwr-state: standby\n"),
+        ]
+        result = send_cec("standby", {"cec_device": "/dev/cec0"})
+        self.assertEqual({"/dev/cec0": "standby"}, result)
+        self.assertEqual(3, run.call_count)
+
+    @patch("tv_power.Path.glob")
+    def test_auto_discovers_every_cec_adapter(self, glob):
+        glob.return_value = [Path("/dev/cec1"), Path("/dev/cec0")]
+        self.assertEqual(["/dev/cec0", "/dev/cec1"], cec_devices({"cec_devices": "auto"}))
 
     def test_week_uses_monday(self):
         now = dt.datetime(2026, 11, 12, 12, tzinfo=ZONE)

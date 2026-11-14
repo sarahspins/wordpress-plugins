@@ -24,6 +24,7 @@ DEFAULTS = {
     "standby_minutes_after": 15,
     "fallback_on": "05:30",
     "fallback_off": "23:00",
+    "cec_devices": "auto",
     "cec_device": "/dev/cec0",
     "poll_seconds": 60,
 }
@@ -120,8 +121,30 @@ def desired_state(now: datetime, window: tuple[datetime, datetime] | None) -> st
     return "on" if window is not None and window[0] <= now < window[1] else "standby"
 
 
-def send_cec(state: str, config: dict) -> None:
-    device = str(config["cec_device"])
+def cec_devices(config: dict) -> list[str]:
+    configured = config.get("cec_devices")
+    if isinstance(configured, list):
+        return [str(device) for device in configured if str(device)]
+    if configured and str(configured).lower() != "auto":
+        return [device.strip() for device in str(configured).split(",") if device.strip()]
+    if "cec_devices" not in config and config.get("cec_device"):
+        return [str(config["cec_device"])]
+    return sorted(str(device) for device in Path("/dev").glob("cec[0-9]*"))
+
+
+def cec_power_status(device: str) -> str:
+    query = subprocess.run(
+        ["cec-ctl", "-d", device, "--to", "0", "--give-device-power-status", "-v"],
+        check=True,
+        timeout=10,
+        capture_output=True,
+        text=True,
+    )
+    match = re.search(r"pwr-state:\s*([a-z-]+)", query.stdout, re.IGNORECASE)
+    return match.group(1).lower() if match else "unknown"
+
+
+def send_cec_device(state: str, device: str) -> str:
     subprocess.run(
         ["cec-ctl", "-d", device, "--playback", "--osd-name", "Ice & Field Display"],
         check=True,
@@ -150,16 +173,45 @@ def send_cec(state: str, config: dict) -> None:
         matches = re.findall(r"(?im)^\s*([0-9a-f]\.[0-9a-f]\.[0-9a-f]\.[0-9a-f])\s*$", query.stdout)
         if not matches:
             print("HDMI-CEC warning: physical address could not be detected; TV woke without input selection.", flush=True)
-            return
-        subprocess.run(
-            ["cec-ctl", "-d", device, "--active-source", f"phys-addr={matches[-1]}"],
-            check=True,
-            timeout=10,
-            stdout=subprocess.DEVNULL,
-        )
+        else:
+            subprocess.run(
+                ["cec-ctl", "-d", device, "--active-source", f"phys-addr={matches[-1]}"],
+                check=True,
+                timeout=10,
+                stdout=subprocess.DEVNULL,
+            )
+    return cec_power_status(device)
 
 
-def write_status(directory: Path, state: str, mode: str, message: str, next_transition: datetime | None) -> None:
+def send_cec(state: str, config: dict) -> dict[str, str]:
+    devices = cec_devices(config)
+    if not devices:
+        raise OSError("No HDMI-CEC adapters were found.")
+    expected = {"on", "to-on"} if state == "on" else {"standby", "to-standby"}
+    attempts = 3 if state == "on" else 2
+    results = {}
+    for device in devices:
+        for attempt in range(attempts):
+            try:
+                status = send_cec_device(state, device)
+                results[device] = status
+                if status in expected:
+                    break
+            except (OSError, subprocess.SubprocessError) as error:
+                results[device] = f"error: {error}"
+            if attempt + 1 < attempts:
+                time.sleep(5)
+    return results
+
+
+def write_status(
+    directory: Path,
+    state: str,
+    mode: str,
+    message: str,
+    next_transition: datetime | None,
+    cec_results: dict[str, str] | None = None,
+) -> None:
     path = directory / "tv-power-status.json"
     temporary = path.with_suffix(".tmp")
     payload = {
@@ -168,6 +220,7 @@ def write_status(directory: Path, state: str, mode: str, message: str, next_tran
         "mode": mode,
         "message": message,
         "next_transition": next_transition.isoformat() if next_transition else "",
+        "cec_results": cec_results or {},
         "updated_at": int(time.time()),
     }
     temporary.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
@@ -228,20 +281,20 @@ def main() -> None:
         transition = next_transition(now, window)
         if state != last_scheduled_state:
             try:
-                send_cec(state, config)
+                results = send_cec(state, config)
                 detail = "no rink events" if window is None else f"{window[0].isoformat()} to {window[1].isoformat()}"
                 source = "fallback" if using_fallback else "rink schedule"
-                print(f"TV {state} requested from {source}: {detail}", flush=True)
-                write_status(directory, state, "schedule", f"Following {source}.", transition)
+                print(f"TV {state} requested from {source}: {detail}; CEC results: {results}", flush=True)
+                write_status(directory, state, "schedule", f"Following {source}.", transition, results)
                 last_scheduled_state = state
             except (OSError, subprocess.SubprocessError) as error:
                 print(f"HDMI-CEC warning: {error}", flush=True)
         manual = read_manual_command(directory)
         if manual:
             try:
-                send_cec(manual, config)
-                print(f"TV {manual} requested manually from the management page.", flush=True)
-                write_status(directory, manual, "manual", "Manual override active until the next scheduled transition.", transition)
+                results = send_cec(manual, config)
+                print(f"TV {manual} requested manually from the management page; CEC results: {results}", flush=True)
+                write_status(directory, manual, "manual", "Manual override active until the next scheduled transition.", transition, results)
             except (OSError, subprocess.SubprocessError) as error:
                 print(f"HDMI-CEC manual-control warning: {error}", flush=True)
         # This only checks a tiny local command file. Network schedule refreshes
