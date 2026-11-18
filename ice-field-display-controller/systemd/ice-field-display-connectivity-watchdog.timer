@@ -1,0 +1,11 @@
+[Unit]
+Description=Check Ice & Field display connectivity
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=2min
+RandomizedDelaySec=15s
+AccuracySec=15s
+
+[Install]
+WantedBy=timers.target

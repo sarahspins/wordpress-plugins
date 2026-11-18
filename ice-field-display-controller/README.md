@@ -8,6 +8,12 @@ After waking, the Pi detects its own HDMI-CEC physical address and announces its
 
 LG TVs must have **SIMPLINK (HDMI-CEC)** enabled. The installer enables `ice-field-display-tv-power.service` automatically when `cec-ctl` and `/dev/cec0` are present. Settings can be overridden inside the `tv_power` object in `~/.local/share/ice-field-display-controller/sync.json`.
 
+### Unattended connectivity recovery
+
+Run `sudo ./install-recovery.sh` once on every display Pi. This enables NetworkManager, SSH, and Tailscale at boot; checks the local gateway and Tailscale every two minutes; restarts only the failed networking layer after two consecutive failures; and repeats recovery without making local playback depend on the network. It does not reboot merely because Wi-Fi or the building internet is unavailable.
+
+The recovery installer also keeps up to 14 days of system logs with a 200 MB cap so the previous boot can be diagnosed. When `/dev/watchdog` is available, systemd's hardware watchdog is enabled to recover a completely frozen board. A reboot after installation is recommended to validate the full boot and watchdog path.
+
 The management page also provides an attached-TV on/off control for demonstrations and manual use. A manual request remains active until the next scheduled wake or standby transition, when normal schedule control resumes automatically.
 
 Self-contained Raspberry Pi display management for Ice & Field. One physical Pi is a **node** and may drive up to two independently assigned HDMI **screens**. The first Pi can also host the controller.

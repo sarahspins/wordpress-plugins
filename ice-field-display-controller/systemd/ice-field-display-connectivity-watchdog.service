@@ -1,0 +1,7 @@
+[Unit]
+Description=Ice & Field Display Connectivity Recovery
+After=NetworkManager.service tailscaled.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/local/lib/ice-field-display-controller/connectivity_watchdog.py
