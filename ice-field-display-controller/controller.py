@@ -711,19 +711,27 @@ button:hover{{filter:brightness(.95)}} .return{{display:inline-block;margin:16px
 .media-grid{{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px;margin-top:18px}} .media-item{{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#f8fafb}}
 .media-preview{{height:130px;background:#031f31;display:grid;place-items:center}} .media-preview img,.media-preview video{{width:100%;height:100%;object-fit:contain}} .media-info{{padding:12px}} .media-name{{font-weight:800;overflow-wrap:anywhere}}
 .media-actions{{display:flex;gap:8px;flex-wrap:wrap}} .media-actions button{{margin-top:10px;padding:8px 10px;font-size:13px}}
-.node-list{{display:grid;gap:9px;margin-top:14px}} .node-row{{display:grid;grid-template-columns:minmax(180px,1fr) auto;gap:8px 18px;padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:#f8fafb}} .node-row strong{{color:var(--navy)}} .node-meta{{color:var(--muted);font-size:14px}} .node-age{{text-align:right}}
+.node-list{{display:grid;gap:9px;margin-top:14px}} .node-row{{display:grid;grid-template-columns:minmax(180px,1fr) auto;gap:8px 18px;padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:#f8fafb}} .node-row.current{{background:#fff8d8;border-color:#e6d58a}} .node-row strong{{color:var(--navy)}} .node-meta{{color:var(--muted);font-size:14px}} .node-age{{text-align:right}} .current-node{{display:inline-block;margin-left:7px;padding:2px 7px;border-radius:999px;background:#f3df83;color:#604f00;font-size:12px;font-weight:800;vertical-align:1px}}
 code{{font-size:.9em;background:#eef3f6;padding:2px 5px;border-radius:5px}}
+.settings-group>summary{{cursor:pointer;color:var(--navy);font-size:23px;font-weight:800;list-style-position:outside;margin-left:20px}} .settings-group>summary::marker{{color:var(--orange)}} .settings-group[open]>summary{{margin-bottom:8px}} .settings-group-content{{margin-top:8px}} .master-control-note{{margin:4px 0 12px;padding:9px 12px;border-left:4px solid var(--orange);background:#fff5ec;color:#68422d;border-radius:4px}}
 @media(max-width:620px){{.upload-row{{grid-template-columns:1fr}}.node-row{{grid-template-columns:1fr}}.node-age{{text-align:left}}}}
 </style></head><body><header><h1>{html.escape(title)}</h1><p>Controller and Node 1</p></header><main>{body}</main><script>{script}</script></body></html>""".encode("utf-8")
 
 
-def admin_page() -> bytes:
-    body = """
+def admin_page(sync_mode: str | None = None) -> bytes:
+    if sync_mode is None:
+        sync_mode = str(load_sync_config().get("mode", "node"))
+    is_master = sync_mode == "controller"
+    expanded = " open" if is_master else ""
+    media_title = "Local Media Library" if is_master else "Local Media Library — Controlled by Display 01"
+    content_title = "Display Content" if is_master else "Display Content — Controlled by Display 01"
+    control_note = "" if is_master else '<p class="master-control-note"><strong>Shared content is synchronized from Display 01.</strong> Expand this section only when a local change or troubleshooting step is required.</p>'
+    body = f"""
 <div class="summary"><span class="pill" id="node">Loading node…</span><span class="pill" id="health">Checking screens…</span></div>
-<section class="card wide"><h2>Local Media Library</h2><p class="muted">Upload once and play directly from this Pi, even if the website is unavailable. Supported: MP4, WebM, PNG, JPEG, WebP, and SVG.</p>
+<details id="local-media-settings" class="card wide settings-group"{expanded}><summary>{media_title}</summary><div class="settings-group-content">{control_note}<p class="muted">Upload once and play directly from this Pi, even if the website is unavailable. Supported: MP4, WebM, PNG, JPEG, WebP, and SVG.</p>
 <div class="upload-row"><input id="media-file" type="file" multiple accept=".mp4,.webm,.png,.jpg,.jpeg,.webp,.svg"><button id="media-upload" type="button">Upload to this node</button></div>
-<progress id="upload-progress" max="100" value="0" hidden></progress><div id="upload-status" class="status" aria-live="polite"></div><p class="muted" id="storage"></p><div id="media-items" class="media-grid"></div></section>
-<section class="wide"><h2>Display Content</h2><p class="muted">Define each familiar Ice &amp; Field display once, then choose its name on any connected screen.</p><div id="channels" class="grid"></div></section>
+<progress id="upload-progress" max="100" value="0" hidden></progress><div id="upload-status" class="status" aria-live="polite"></div><p class="muted" id="storage"></p><div id="media-items" class="media-grid"></div></div></details>
+<details id="display-content-settings" class="card wide settings-group"{expanded}><summary>{content_title}</summary><div class="settings-group-content">{control_note}<p class="muted">Define each familiar Ice &amp; Field display once, then choose its name on any connected screen.</p><div id="channels" class="grid"></div></div></details>
 <h2>Connected Screens</h2>
 <div id="screens" class="grid"></div>
 <section class="card wide" style="margin-top:24px"><h2>Attached TV power</h2><p class="muted" id="tv-power-detail">Checking HDMI-CEC…</p><button id="tv-power-toggle" type="button" class="secondary" disabled>Checking TV…</button><div id="tv-power-result" class="status" aria-live="polite"></div></section>
@@ -742,7 +750,7 @@ async function loadStatus(){
   document.querySelector('#storage').textContent=`Local storage: ${size(data.storage.free)} free of ${size(data.storage.total)}`;
   renderMedia(data); renderChannels(data); renderScreens(data); renderTvPower(data.tv_power||{}); document.querySelector('#fleet-push').hidden=data.sync_mode!=='controller'; loadFleetNodes();
 }
-async function loadFleetNodes(){const root=document.querySelector('#fleet-nodes');try{const response=await fetch('/api/sync/nodes',{cache:'no-store'}),data=await response.json();if(!response.ok)throw new Error(data.error||'Could not read attached nodes.');if(!data.nodes.length){root.innerHTML='<p class="muted">No display nodes are registered yet.</p>';return;}const now=Date.now();root.innerHTML=data.nodes.map(node=>{const updated=new Date(Number(node.last_updated)*1000),age=Math.max(0,now-updated.getTime()),master=node.role==='master',state=master?'Master controller':age>15*60*1000?'Check-in overdue':'Recently synced',dateLabel=master?'Content updated':'Last synced',screens=(node.screens||[]).map(screen=>screen.name).filter(Boolean),screenText=screens.length?`Screens: ${screens.map(esc).join(' · ')}`:'Screens: Not named yet';return `<div class="node-row"><div><strong>${esc(node.hostname)}</strong><div class="node-meta">${master?'Master':'Playback node'} · Revision ${Number(node.revision)||0} · ${esc(node.address||'Private network')}</div><div class="node-meta">${screenText}</div></div><div class="node-age"><strong>${state}</strong><div class="node-meta">${dateLabel} ${updated.toLocaleString()}</div></div></div>`;}).join('');}catch(error){root.innerHTML=`<p class="error">${esc(error.message)}</p>`;}}
+async function loadFleetNodes(){const root=document.querySelector('#fleet-nodes');try{const response=await fetch('/api/sync/nodes',{cache:'no-store'}),data=await response.json();if(!response.ok)throw new Error(data.error||'Could not read attached nodes.');if(!data.nodes.length){root.innerHTML='<p class="muted">No display nodes are registered yet.</p>';return;}const now=Date.now();root.innerHTML=data.nodes.map(node=>{const updated=new Date(Number(node.last_updated)*1000),age=Math.max(0,now-updated.getTime()),master=node.role==='master',current=node.hostname===data.current_hostname,state=master?'Master controller':age>15*60*1000?'Check-in overdue':'Recently synced',dateLabel=master?'Content updated':'Last synced',screens=(node.screens||[]).map(screen=>screen.name).filter(Boolean),screenText=screens.length?`Screens: ${screens.map(esc).join(' · ')}`:'Screens: Not named yet';return `<div class="node-row${current?' current':''}"><div><strong>${esc(node.hostname)}</strong>${current?'<span class="current-node">Current node</span>':''}<div class="node-meta">${master?'Master':'Playback node'} · Revision ${Number(node.revision)||0} · ${esc(node.address||'Private network')}</div><div class="node-meta">${screenText}</div></div><div class="node-age"><strong>${state}</strong><div class="node-meta">${dateLabel} ${updated.toLocaleString()}</div></div></div>`;}).join('');}catch(error){root.innerHTML=`<p class="error">${esc(error.message)}</p>`;}}
 async function pushFleetSync(){const button=document.querySelector('#fleet-push'),result=document.querySelector('#fleet-push-result');button.disabled=true;result.className='status';result.textContent='Requesting updates…';try{const response=await fetch('/api/sync/push',{method:'POST'}),data=await response.json();if(!response.ok)throw new Error(data.error||'Could not request node updates.');const successful=(data.results||[]).filter(item=>item.ok).length,failed=(data.results||[]).length-successful;result.classList.add(failed?'error':'success');result.textContent=`Update requested on ${successful} node${successful===1?'':'s'}${failed?`; ${failed} could not be reached`:''}.`;setTimeout(loadFleetNodes,2500);}catch(error){result.classList.add('error');result.textContent=error.message;}finally{button.disabled=false;}}
 function renderTvPower(power){const button=document.querySelector('#tv-power-toggle'),detail=document.querySelector('#tv-power-detail');if(!power.available){button.disabled=true;button.textContent='HDMI-CEC unavailable';detail.textContent=power.message||'This Pi does not currently have an HDMI-CEC connection.';return;}button.disabled=false;button.dataset.action=power.state==='on'?'standby':'on';button.textContent=power.state==='on'?'Turn TV off':'Turn TV on';const mode=power.mode==='manual'?'Manual override active':'Following rink schedule';const next=power.next_transition?` Next automatic transition: ${new Date(power.next_transition).toLocaleString()}.`:'';detail.textContent=`${mode}. Last requested state: ${power.state==='standby'?'off':power.state}.${next}`;}
 async function toggleTvPower(){const button=document.querySelector('#tv-power-toggle'),result=document.querySelector('#tv-power-result'),action=button.dataset.action;button.disabled=true;result.className='status';result.textContent=action==='on'?'Requesting TV power on…':'Requesting TV standby…';try{const response=await fetch('/api/tv-power',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action})}),data=await response.json();if(!response.ok)throw new Error(data.error||'Could not control the TV.');result.classList.add('success');result.textContent=action==='on'?'TV power-on requested.':'TV standby requested.';setTimeout(loadStatus,1800);}catch(error){result.classList.add('error');result.textContent=error.message;button.disabled=false;}}
@@ -902,7 +910,7 @@ class Handler(BaseHTTPRequestHandler):
                     nodes = master_fleet_nodes(config)
                 except (OSError, ValueError, json.JSONDecodeError):
                     nodes = [local_fleet_node(self.store, config)]
-            self.send_bytes(json_bytes({"nodes": nodes}), "application/json")
+            self.send_bytes(json_bytes({"nodes": nodes, "current_hostname": socket.gethostname()}), "application/json")
             return
         if path == "/api/status":
             storage = shutil.disk_usage(self.media.directory)
@@ -1158,7 +1166,7 @@ class SyncHandler(Handler):
             self.send_bytes(json_bytes(self.media.sync_manifest(self.store.load())), "application/json")
             return
         if path == "/api/sync/nodes" and load_sync_config().get("mode") == "controller":
-            self.send_bytes(json_bytes({"nodes": [master_fleet_node(self.store), *load_fleet_nodes()]}), "application/json")
+            self.send_bytes(json_bytes({"nodes": [master_fleet_node(self.store), *load_fleet_nodes()], "current_hostname": socket.gethostname()}), "application/json")
             return
         if path.startswith("/api/sync/objects/"):
             self.serve_sync_object(path[len("/api/sync/objects/"):])

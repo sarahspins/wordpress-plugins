@@ -218,6 +218,18 @@ HDMI-1 connected primary 2560x1440+0+0 (normal left inverted right x axis y axis
 
 
 class DisplayPageTests(unittest.TestCase):
+    def test_master_content_settings_are_expanded(self):
+        page = admin_page("controller").decode()
+        self.assertIn('id="local-media-settings" class="card wide settings-group" open', page)
+        self.assertIn('id="display-content-settings" class="card wide settings-group" open', page)
+        self.assertNotIn("Controlled by Display 01", page)
+
+    def test_playback_content_settings_are_collapsed_and_explain_master_control(self):
+        page = admin_page("node").decode()
+        self.assertIn('id="local-media-settings" class="card wide settings-group"><summary>Local Media Library — Controlled by Display 01', page)
+        self.assertIn('id="display-content-settings" class="card wide settings-group"><summary>Display Content — Controlled by Display 01', page)
+        self.assertIn("Expand this section only when a local change", page)
+
     def test_web_display_clips_remote_scrollbar(self):
         page = display_page("HDMI-A-1", {"kind": "web", "source": "https://example.com/schedule", "label": "Lobby"}, 1).decode()
         self.assertIn('class="web-frame"', page)
@@ -237,6 +249,8 @@ class DisplayPageTests(unittest.TestCase):
         self.assertIn("Master controller", page)
         self.assertIn("Last synced", page)
         self.assertIn("Screens:", page)
+        self.assertIn("Current node", page)
+        self.assertIn("current_hostname", page)
         self.assertIn("Push updates to playback nodes", page)
         self.assertIn("/api/sync/push", page)
 
