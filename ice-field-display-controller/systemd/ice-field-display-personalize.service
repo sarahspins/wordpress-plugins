@@ -6,7 +6,13 @@ Before=network-pre.target NetworkManager.service systemd-networkd.service ssh.se
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/sbin/ice-field-personalize-node --apply-pending
+ExecStart=/usr/local/sbin/ice-field-personalize-node --first-boot
+StandardInput=tty-force
+StandardOutput=tty
+StandardError=tty
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
 
 [Install]
 WantedBy=sysinit.target

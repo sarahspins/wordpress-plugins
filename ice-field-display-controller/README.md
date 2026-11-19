@@ -89,23 +89,52 @@ The Armbian installer adds Chromium, X11 display discovery, and the small `xdoto
 
 Armbian nodes use a balanced Chromium profile that retains GPU compositing and hardware video decoding but disables Vulkan. The installer protects 1 GB nodes from 4K-TV framebuffer allocation failures by adding a 1920×1080 kernel boot override and an Xorg 1080p preferred mode; the original `armbianEnv.txt` is retained once with an `.ice-field-backup` suffix. The Armbian service waits 15 seconds after the user service starts so X11 and the graphics driver can settle before Chromium launches. Connected X11 outputs are then set to the hardware-tested 1920×1080 at 30 Hz profile. If a TV rejects exactly 30 Hz, the agent retries 1080p at a supported refresh rate; a mode-setting failure is logged but no longer prevents Chromium from launching. Screen blanking and DPMS are disabled, and the installer's user-level autostart override prevents Light Locker from covering unattended signage. Browser output is retained under `~/.local/state/ice-field-display-controller/chromium-HDMI-1.log` (with the actual output name substituted). For recovery work, `./install-armbian.sh --safe` installs every update while leaving the display agent disabled; start it once for testing with `systemctl --user start ice-field-display-agent.service`, and enable it at boot only after the hardware proves stable.
 
-## Clone an Orange Pi SD card safely
+## Create and use an Orange Pi golden image
 
-The Armbian installer includes an early-boot personalization service so one tested SD card can become a golden image without giving every clone the same network identity. After writing the image to a new card and booting it, connect by local-network SSH and run:
+The Armbian installer includes an early-boot setup wizard so one fully tested SD card can become a reusable golden image without making the original Orange Pi reconfigure itself. On the source node, run:
 
 ```bash
-sudo ice-field-personalize-node 03
+./install-personalization.sh
 ```
 
-Replace `03` for each node. The command stages `ice-and-field-display-03` and reboots. During that boot, before networking, SSH, Tailscale, or the desktop starts, the service sets the hostname, creates a fresh Linux machine ID and SSH host keys, removes the copied Tailscale identity, and reboots once more. The changed SSH host fingerprint is expected. When the node returns, enroll it as a new Tailscale device:
+This focused installer updates only the golden-image service and requires the local administrator password. Then arm and shut down the source card:
+
+```bash
+sudo ice-field-personalize-node --prepare-image
+```
+
+The command records the source Orange Pi's stable hardware serial number, arms first-boot setup for different hardware, syncs the card, and powers the Pi off. Remove the SD card only after shutdown. Image the entire card with a trusted disk-imaging tool. A raw macOS workflow is:
+
+```bash
+diskutil list
+diskutil unmountDisk /dev/diskN
+sudo dd if=/dev/rdiskN of="$HOME/Desktop/ice-field-display-golden.img" bs=4m
+diskutil eject /dev/diskN
+```
+
+Replace `diskN` with the SD card identified by its exact size. Choosing the wrong disk can overwrite or copy the wrong device. Press `Ctrl+T` while `dd` runs to display progress. Cards restored from the image must be at least as large as the source card.
+
+When the original card returns to the same Orange Pi, its hardware serial matches and it boots normally. When a copied card first boots in a different Orange Pi, a local full-screen setup prompt appears before networking and asks for:
+
+1. The display number, producing a hostname such as `ice-and-field-display-04`.
+2. The friendly screen/location name, such as `Warm Room 1`.
+
+The wizard creates a fresh Linux machine ID and SSH host keys, removes the copied Tailscale identity and stale Chromium locks, updates the controller's local node/screen name, and reboots. Synced media and shared channel content remain available. The clone retains the source Wi-Fi profile and remains a playback node pointed at display 01.
+
+Tailscale authorization is intentionally not embedded in the image. After the personalized clone returns, authorize it and restore its private management address:
 
 ```bash
 sudo tailscale up
+sudo tailscale serve --bg --yes 8787
 ```
 
-If the SD card exposes a writable boot partition on another computer, the same process can start automatically: create a plain-text file named `node-number` containing only the desired number in `/boot` (or `/boot/firmware`) before first boot. Armbian images commonly use a Linux-only partition that macOS cannot edit, so the SSH command is the reliable default.
+The changed SSH host fingerprint is expected. The original numbered command remains available for a manually installed or previously cloned node:
 
-Do not boot multiple unpersonalized copies of the golden image at the same time. They initially share the source card's hostname, SSH keys, machine ID, and Tailscale state until personalization runs.
+```bash
+sudo ice-field-personalize-node 04
+```
+
+If the SD card exposes a writable boot partition on another computer, a plain-text `/boot/node-number` (or `/boot/firmware/node-number`) containing the desired number also starts noninteractive personalization.
 
 Uploaded media is streamed directly to local storage rather than held in memory. Completed uploads are committed atomically, playback supports browser range requests, and an interrupted or invalid upload cannot replace the content currently shown on a screen. The controller preserves at least 1 GB of free storage and refuses to remove a file while a screen is using it.
 
