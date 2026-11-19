@@ -206,11 +206,17 @@ apply_request() {
         set_system_hostname "$hostname"
     fi
 
-    # Remove browser process locks copied from a running source system.
-    for chromium_dir in \
-        /home/*/.config/chromium \
-        /home/*/.config/chromium-* \
-        /home/*/.local/share/ice-field-display-controller/chromium/*; do
+    # The kiosk profiles contain no operator data that belongs on a clone.
+    # Recreate them from scratch so Chromium cannot reject copied profile
+    # metadata or locks as belonging to another computer.
+    for kiosk_profile_root in /home/*/.local/share/ice-field-display-controller/chromium; do
+        [ -d "$kiosk_profile_root" ] || continue
+        rm -rf "$kiosk_profile_root"
+    done
+
+    # Retain any ordinary interactive Chromium profile, but discard only its
+    # copied process locks.
+    for chromium_dir in /home/*/.config/chromium /home/*/.config/chromium-*; do
         [ -d "$chromium_dir" ] || continue
         rm -f "$chromium_dir"/SingletonCookie "$chromium_dir"/SingletonLock "$chromium_dir"/SingletonSocket
     done
