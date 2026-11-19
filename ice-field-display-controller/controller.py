@@ -93,6 +93,7 @@ def record_fleet_node(payload: dict, address: str, path: Path | None = None) -> 
             "address": str(address),
             "revision": revision,
             "last_updated": int(time.time()),
+            "role": "node",
         }
         nodes[hostname] = node
         fd, temporary = tempfile.mkstemp(prefix="fleet-nodes-", suffix=".json", dir=target.parent)
@@ -105,6 +106,23 @@ def record_fleet_node(payload: dict, address: str, path: Path | None = None) -> 
             if os.path.exists(temporary):
                 os.unlink(temporary)
     return node
+
+
+def master_fleet_node(store: "StateStore", primary_url: str = "") -> dict:
+    state = store.load()
+    if not primary_url:
+        primary_url = str(load_sync_config().get("primary_manifest_url", ""))
+    try:
+        updated = int(store.path.stat().st_mtime)
+    except OSError:
+        updated = int(time.time())
+    return {
+        "hostname": socket.gethostname(),
+        "address": urlparse(primary_url).hostname or "This device",
+        "revision": int(state.get("revision", 0)),
+        "last_updated": updated,
+        "role": "master",
+    }
 
 
 class StateStore:
@@ -641,7 +659,7 @@ async function loadStatus(){
   document.querySelector('#storage').textContent=`Local storage: ${size(data.storage.free)} free of ${size(data.storage.total)}`;
   renderMedia(data); renderChannels(data); renderScreens(data); renderTvPower(data.tv_power||{}); loadFleetNodes();
 }
-async function loadFleetNodes(){const root=document.querySelector('#fleet-nodes');try{const response=await fetch('/api/sync/nodes',{cache:'no-store'}),data=await response.json();if(!response.ok)throw new Error(data.error||'Could not read attached nodes.');if(!data.nodes.length){root.innerHTML='<p class="muted">No playback nodes have checked in with this master yet.</p>';return;}const now=Date.now();root.innerHTML=data.nodes.map(node=>{const updated=new Date(Number(node.last_updated)*1000),age=Math.max(0,now-updated.getTime()),state=age>15*60*1000?'Check-in overdue':'Recently synced';return `<div class="node-row"><div><strong>${esc(node.hostname)}</strong><div class="node-meta">Revision ${Number(node.revision)||0} · ${esc(node.address||'Private network')}</div></div><div class="node-age"><strong>${state}</strong><div class="node-meta">Last updated ${updated.toLocaleString()}</div></div></div>`;}).join('');}catch(error){root.innerHTML=`<p class="error">${esc(error.message)}</p>`;}}
+async function loadFleetNodes(){const root=document.querySelector('#fleet-nodes');try{const response=await fetch('/api/sync/nodes',{cache:'no-store'}),data=await response.json();if(!response.ok)throw new Error(data.error||'Could not read attached nodes.');if(!data.nodes.length){root.innerHTML='<p class="muted">No display nodes are registered yet.</p>';return;}const now=Date.now();root.innerHTML=data.nodes.map(node=>{const updated=new Date(Number(node.last_updated)*1000),age=Math.max(0,now-updated.getTime()),master=node.role==='master',state=master?'Master controller':age>15*60*1000?'Check-in overdue':'Recently synced',dateLabel=master?'Content updated':'Last synced';return `<div class="node-row"><div><strong>${esc(node.hostname)}</strong><div class="node-meta">${master?'Master':'Playback node'} · Revision ${Number(node.revision)||0} · ${esc(node.address||'Private network')}</div></div><div class="node-age"><strong>${state}</strong><div class="node-meta">${dateLabel} ${updated.toLocaleString()}</div></div></div>`;}).join('');}catch(error){root.innerHTML=`<p class="error">${esc(error.message)}</p>`;}}
 function renderTvPower(power){const button=document.querySelector('#tv-power-toggle'),detail=document.querySelector('#tv-power-detail');if(!power.available){button.disabled=true;button.textContent='HDMI-CEC unavailable';detail.textContent=power.message||'This Pi does not currently have an HDMI-CEC connection.';return;}button.disabled=false;button.dataset.action=power.state==='on'?'standby':'on';button.textContent=power.state==='on'?'Turn TV off':'Turn TV on';const mode=power.mode==='manual'?'Manual override active':'Following rink schedule';const next=power.next_transition?` Next automatic transition: ${new Date(power.next_transition).toLocaleString()}.`:'';detail.textContent=`${mode}. Last requested state: ${power.state==='standby'?'off':power.state}.${next}`;}
 async function toggleTvPower(){const button=document.querySelector('#tv-power-toggle'),result=document.querySelector('#tv-power-result'),action=button.dataset.action;button.disabled=true;result.className='status';result.textContent=action==='on'?'Requesting TV power on…':'Requesting TV standby…';try{const response=await fetch('/api/tv-power',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action})}),data=await response.json();if(!response.ok)throw new Error(data.error||'Could not control the TV.');result.classList.add('success');result.textContent=action==='on'?'TV power-on requested.':'TV standby requested.';setTimeout(loadStatus,1800);}catch(error){result.classList.add('error');result.textContent=error.message;button.disabled=false;}}
 function renderMedia(data){
@@ -791,7 +809,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_bytes(json_bytes(load_sync_config(public=True)), "application/json")
             return
         if path == "/api/sync/nodes":
-            self.send_bytes(json_bytes({"nodes": load_fleet_nodes()}), "application/json")
+            self.send_bytes(json_bytes({"nodes": [master_fleet_node(self.store), *load_fleet_nodes()]}), "application/json")
             return
         if path == "/api/status":
             storage = shutil.disk_usage(self.media.directory)

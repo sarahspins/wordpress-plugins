@@ -14,7 +14,7 @@ Run `sudo ./install-recovery.sh` once on every display Pi. This enables NetworkM
 
 The recovery installer also keeps up to 14 days of system logs with a 200 MB cap so the previous boot can be diagnosed. When `/dev/watchdog` is available, systemd's hardware watchdog is enabled to recover a completely frozen board. A reboot after installation is recommended to validate the full boot and watchdog path.
 
-Playback nodes check in with the master after every successful direct synchronization. Display 01 lists each attached node in Fleet Synchronization with its private address, applied content revision, and last-updated time. This is status-only: it does not expose remote-control access to the node. A node becomes visibly overdue after 15 minutes without a successful direct check-in; cloud-only fallback synchronization does not impersonate a master check-in.
+Playback nodes check in with the master after every successful direct synchronization. Fleet Synchronization lists display 01 first as the master, followed by each attached playback node with its private address, applied content revision, and last-updated time. This is status-only: it does not expose remote-control access to a node. A playback node becomes visibly overdue after 15 minutes without a successful direct check-in; cloud-only fallback synchronization does not impersonate a master check-in.
 
 The management page also provides an attached-TV on/off control for demonstrations and manual use. A manual request remains active until the next scheduled wake or standby transition, when normal schedule control resumes automatically.
 

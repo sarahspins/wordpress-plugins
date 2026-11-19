@@ -8,7 +8,7 @@ from unittest.mock import patch
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from controller import MediaStore, StateStore, admin_page, detect_outputs, detect_x11_outputs, display_page, load_fleet_nodes, record_fleet_node, valid_media_signature
+from controller import MediaStore, StateStore, admin_page, detect_outputs, detect_x11_outputs, display_page, load_fleet_nodes, master_fleet_node, record_fleet_node, valid_media_signature
 
 
 class StateStoreTests(unittest.TestCase):
@@ -77,6 +77,19 @@ class StateStoreTests(unittest.TestCase):
 
 
 class FleetNodeTests(unittest.TestCase):
+    @patch("controller.socket.gethostname", return_value="ice-and-field-display-01")
+    def test_master_is_listed_with_current_revision(self, _hostname):
+        with tempfile.TemporaryDirectory() as directory:
+            store = StateStore(Path(directory) / "state.json")
+            state = store.load()
+            state["revision"] = 44
+            store.save(state)
+            node = master_fleet_node(store, "http://100.112.216.40:8788/api/sync/manifest")
+            self.assertEqual("ice-and-field-display-01", node["hostname"])
+            self.assertEqual("master", node["role"])
+            self.assertEqual("100.112.216.40", node["address"])
+            self.assertEqual(44, node["revision"])
+
     @patch("controller.time.time", return_value=1_794_995_200)
     def test_node_check_in_is_persisted_and_updated(self, _time):
         with tempfile.TemporaryDirectory() as directory:
@@ -171,7 +184,8 @@ class DisplayPageTests(unittest.TestCase):
         page = admin_page().decode("utf-8")
         self.assertIn('id="fleet-nodes"', page)
         self.assertIn("/api/sync/nodes", page)
-        self.assertIn("Last updated", page)
+        self.assertIn("Master controller", page)
+        self.assertIn("Last synced", page)
 
     def test_display_has_quick_channel_menu(self):
         page = display_page("HDMI-A-1", {"kind": "standby", "source": "", "label": "Lobby", "channel": "schedule"}, 2).decode()
