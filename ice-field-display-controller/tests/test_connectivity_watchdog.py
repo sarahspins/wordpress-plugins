@@ -19,11 +19,33 @@ class ConnectivityWatchdogTests(unittest.TestCase):
 
     def test_tailscale_requires_running_and_online(self):
         with patch("connectivity_watchdog.run") as run:
-            run.return_value.returncode = 0
-            run.return_value.stdout = json.dumps({"BackendState": "Running", "Self": {"Online": True}})
-            self.assertTrue(watchdog.tailscale_online())
-            run.return_value.stdout = json.dumps({"BackendState": "Running", "Self": {"Online": False}})
-            self.assertFalse(watchdog.tailscale_online())
+            status = unittest.mock.Mock(
+                returncode=0,
+                stdout=json.dumps({"BackendState": "Running", "Self": {"Online": True}}),
+            )
+            failed_ping = unittest.mock.Mock(returncode=1, stdout="")
+            successful_ping = unittest.mock.Mock(returncode=0, stdout="")
+            run.side_effect = [status, failed_ping, successful_ping]
+            self.assertTrue(watchdog.tailscale_online("ice-and-field-display-03"))
+
+    def test_tailscale_rejects_stale_online_self_status(self):
+        with patch("connectivity_watchdog.run") as run:
+            status = unittest.mock.Mock(
+                returncode=0,
+                stdout=json.dumps({"BackendState": "Running", "Self": {"Online": True}}),
+            )
+            failed_ping = unittest.mock.Mock(returncode=1, stdout="")
+            run.side_effect = [status, failed_ping, failed_ping]
+            self.assertFalse(watchdog.tailscale_online("ice-and-field-display-03"))
+
+    def test_tailscale_rejects_offline_self_status_without_peer_probe(self):
+        with patch("connectivity_watchdog.run") as run:
+            run.return_value = unittest.mock.Mock(
+                returncode=0,
+                stdout=json.dumps({"BackendState": "Running", "Self": {"Online": False}}),
+            )
+            self.assertFalse(watchdog.tailscale_online("ice-and-field-display-03"))
+            self.assertEqual(1, run.call_count)
 
     def test_network_recovery_waits_for_two_failures(self):
         with patch("connectivity_watchdog.run") as run:

@@ -33,6 +33,7 @@ CHANNELS = {
     "video_for_screens": "Video for Screens",
 }
 MEDIA_ID_RE = re.compile(r"^[a-f0-9]{32}$")
+FLEET_NODE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$")
 MEDIA_TYPES = {
     ".mp4": ("video", "video/mp4"),
     ".webm": ("video", "video/webm"),
@@ -44,11 +45,66 @@ MEDIA_TYPES = {
 }
 MAX_UPLOAD_BYTES = 8 * 1024 * 1024 * 1024
 STORAGE_RESERVE_BYTES = 1024 * 1024 * 1024
+FLEET_NODES_LOCK = threading.RLock()
 
 
 def state_directory() -> Path:
     configured = os.environ.get("IFDC_STATE_DIR")
     return Path(configured).expanduser() if configured else Path.home() / ".local/share/ice-field-display-controller"
+
+
+def fleet_nodes_path() -> Path:
+    return state_directory() / "fleet-nodes.json"
+
+
+def load_fleet_nodes(path: Path | None = None) -> list[dict]:
+    target = path or fleet_nodes_path()
+    with FLEET_NODES_LOCK:
+        try:
+            payload = json.loads(target.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            payload = {"nodes": {}}
+        nodes = payload.get("nodes", {}) if isinstance(payload, dict) else {}
+        if not isinstance(nodes, dict):
+            return []
+        return sorted(
+            (dict(item) for item in nodes.values() if isinstance(item, dict)),
+            key=lambda item: str(item.get("hostname", "")),
+        )
+
+
+def record_fleet_node(payload: dict, address: str, path: Path | None = None) -> dict:
+    hostname = str(payload.get("hostname", "")).strip()
+    if not FLEET_NODE_RE.fullmatch(hostname):
+        raise ValueError("Invalid display node hostname.")
+    revision = max(0, int(payload.get("revision", 0)))
+    target = path or fleet_nodes_path()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with FLEET_NODES_LOCK:
+        try:
+            saved = json.loads(target.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            saved = {"schema": 1, "nodes": {}}
+        nodes = saved.setdefault("nodes", {})
+        if not isinstance(nodes, dict):
+            nodes = saved["nodes"] = {}
+        node = {
+            "hostname": hostname,
+            "address": str(address),
+            "revision": revision,
+            "last_updated": int(time.time()),
+        }
+        nodes[hostname] = node
+        fd, temporary = tempfile.mkstemp(prefix="fleet-nodes-", suffix=".json", dir=target.parent)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                json.dump(saved, handle, separators=(",", ":"), sort_keys=True)
+                handle.write("\n")
+            os.replace(temporary, target)
+        finally:
+            if os.path.exists(temporary):
+                os.unlink(temporary)
+    return node
 
 
 class StateStore:
@@ -554,8 +610,9 @@ button:hover{{filter:brightness(.95)}} .return{{display:inline-block;margin:16px
 .media-grid{{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px;margin-top:18px}} .media-item{{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#f8fafb}}
 .media-preview{{height:130px;background:#031f31;display:grid;place-items:center}} .media-preview img,.media-preview video{{width:100%;height:100%;object-fit:contain}} .media-info{{padding:12px}} .media-name{{font-weight:800;overflow-wrap:anywhere}}
 .media-actions{{display:flex;gap:8px;flex-wrap:wrap}} .media-actions button{{margin-top:10px;padding:8px 10px;font-size:13px}}
+.node-list{{display:grid;gap:9px;margin-top:14px}} .node-row{{display:grid;grid-template-columns:minmax(180px,1fr) auto;gap:8px 18px;padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:#f8fafb}} .node-row strong{{color:var(--navy)}} .node-meta{{color:var(--muted);font-size:14px}} .node-age{{text-align:right}}
 code{{font-size:.9em;background:#eef3f6;padding:2px 5px;border-radius:5px}}
-@media(max-width:620px){{.upload-row{{grid-template-columns:1fr}}}}
+@media(max-width:620px){{.upload-row{{grid-template-columns:1fr}}.node-row{{grid-template-columns:1fr}}.node-age{{text-align:left}}}}
 </style></head><body><header><h1>{html.escape(title)}</h1><p>Controller and Node 1</p></header><main>{body}</main><script>{script}</script></body></html>""".encode("utf-8")
 
 
@@ -569,7 +626,7 @@ def admin_page() -> bytes:
 <h2>Connected Screens</h2>
 <div id="screens" class="grid"></div>
 <section class="card wide" style="margin-top:24px"><h2>Attached TV power</h2><p class="muted" id="tv-power-detail">Checking HDMI-CEC…</p><button id="tv-power-toggle" type="button" class="secondary" disabled>Checking TV…</button><div id="tv-power-result" class="status" aria-live="polite"></div></section>
-<section class="card wide" style="margin-top:24px"><h2>Fleet synchronization</h2><p class="muted">Display 01 is the master. Other nodes pull shared channels and media every five minutes, with WordPress as their recovery source.</p><a class="return" href="/sync-settings">Open synchronization settings</a></section>
+<section class="card wide" style="margin-top:24px"><h2>Fleet synchronization</h2><p class="muted">Display 01 is the master. Other nodes pull shared channels and media every five minutes, with WordPress as their recovery source.</p><div id="fleet-nodes" class="node-list"><p class="muted">Checking attached nodes…</p></div><a class="return" href="/sync-settings">Open synchronization settings</a></section>
 <noscript><div class="card">JavaScript is required to manage screen assignments.</div></noscript>
 """
     script = r"""
@@ -582,8 +639,9 @@ async function loadStatus(){
   document.querySelector('#node').textContent = `${data.state.node.name} · ${data.state.node.id}`;
   document.querySelector('#health').textContent = `${data.outputs.length} connected screen${data.outputs.length === 1 ? '' : 's'}`;
   document.querySelector('#storage').textContent=`Local storage: ${size(data.storage.free)} free of ${size(data.storage.total)}`;
-  renderMedia(data); renderChannels(data); renderScreens(data); renderTvPower(data.tv_power||{});
+  renderMedia(data); renderChannels(data); renderScreens(data); renderTvPower(data.tv_power||{}); loadFleetNodes();
 }
+async function loadFleetNodes(){const root=document.querySelector('#fleet-nodes');try{const response=await fetch('/api/sync/nodes',{cache:'no-store'}),data=await response.json();if(!response.ok)throw new Error(data.error||'Could not read attached nodes.');if(!data.nodes.length){root.innerHTML='<p class="muted">No playback nodes have checked in with this master yet.</p>';return;}const now=Date.now();root.innerHTML=data.nodes.map(node=>{const updated=new Date(Number(node.last_updated)*1000),age=Math.max(0,now-updated.getTime()),state=age>15*60*1000?'Check-in overdue':'Recently synced';return `<div class="node-row"><div><strong>${esc(node.hostname)}</strong><div class="node-meta">Revision ${Number(node.revision)||0} · ${esc(node.address||'Private network')}</div></div><div class="node-age"><strong>${state}</strong><div class="node-meta">Last updated ${updated.toLocaleString()}</div></div></div>`;}).join('');}catch(error){root.innerHTML=`<p class="error">${esc(error.message)}</p>`;}}
 function renderTvPower(power){const button=document.querySelector('#tv-power-toggle'),detail=document.querySelector('#tv-power-detail');if(!power.available){button.disabled=true;button.textContent='HDMI-CEC unavailable';detail.textContent=power.message||'This Pi does not currently have an HDMI-CEC connection.';return;}button.disabled=false;button.dataset.action=power.state==='on'?'standby':'on';button.textContent=power.state==='on'?'Turn TV off':'Turn TV on';const mode=power.mode==='manual'?'Manual override active':'Following rink schedule';const next=power.next_transition?` Next automatic transition: ${new Date(power.next_transition).toLocaleString()}.`:'';detail.textContent=`${mode}. Last requested state: ${power.state==='standby'?'off':power.state}.${next}`;}
 async function toggleTvPower(){const button=document.querySelector('#tv-power-toggle'),result=document.querySelector('#tv-power-result'),action=button.dataset.action;button.disabled=true;result.className='status';result.textContent=action==='on'?'Requesting TV power on…':'Requesting TV standby…';try{const response=await fetch('/api/tv-power',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action})}),data=await response.json();if(!response.ok)throw new Error(data.error||'Could not control the TV.');result.classList.add('success');result.textContent=action==='on'?'TV power-on requested.':'TV standby requested.';setTimeout(loadStatus,1800);}catch(error){result.classList.add('error');result.textContent=error.message;button.disabled=false;}}
 function renderMedia(data){
@@ -731,6 +789,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/api/sync/settings":
             self.send_bytes(json_bytes(load_sync_config(public=True)), "application/json")
+            return
+        if path == "/api/sync/nodes":
+            self.send_bytes(json_bytes({"nodes": load_fleet_nodes()}), "application/json")
             return
         if path == "/api/status":
             storage = shutil.disk_usage(self.media.directory)
@@ -984,7 +1045,20 @@ class SyncHandler(Handler):
         self.send_error(HTTPStatus.NOT_FOUND)
 
     def do_POST(self) -> None:
-        self.send_error(HTTPStatus.METHOD_NOT_ALLOWED)
+        if not self.allowed_client():
+            self.send_error(HTTPStatus.FORBIDDEN)
+            return
+        path = self.path.split("?", 1)[0]
+        if path != "/api/sync/heartbeat":
+            self.send_error(HTTPStatus.METHOD_NOT_ALLOWED)
+            return
+        try:
+            length = min(int(self.headers.get("Content-Length", "0")), 4096)
+            payload = json.loads(self.rfile.read(length).decode("utf-8"))
+            node = record_fleet_node(payload, self.client_address[0])
+            self.send_bytes(json_bytes({"ok": True, "node": node}), "application/json")
+        except (ValueError, TypeError, json.JSONDecodeError, OSError) as error:
+            self.send_bytes(json_bytes({"ok": False, "error": str(error)}), "application/json", HTTPStatus.BAD_REQUEST)
 
     def do_DELETE(self) -> None:
         self.send_error(HTTPStatus.METHOD_NOT_ALLOWED)

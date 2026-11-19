@@ -9,10 +9,15 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from controller import MediaStore, StateStore
-from fleet_sync import apply_manifest
+from fleet_sync import apply_manifest, heartbeat_url
 
 
 class FleetSyncTests(unittest.TestCase):
+    def test_heartbeat_uses_master_private_feed(self):
+        self.assertEqual(
+            "http://100.112.216.40:8788/api/sync/heartbeat",
+            heartbeat_url("http://100.112.216.40:8788/api/sync/manifest"),
+        )
     def test_manifest_updates_channels_but_preserves_assignments(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

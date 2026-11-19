@@ -8,6 +8,7 @@ import hashlib
 import http.client
 import json
 import os
+import socket
 import tempfile
 import time
 import uuid
@@ -43,6 +44,21 @@ def fetch_json(url: str, timeout: int = 15) -> dict:
     request = Request(url, headers={"Accept": "application/json", "User-Agent": "IceFieldDisplay/0.1"})
     with urlopen(request, timeout=timeout) as response:
         return json.loads(response.read().decode("utf-8"))
+
+
+def heartbeat_url(manifest_url: str) -> str:
+    parsed = urlparse(manifest_url)
+    return f"{parsed.scheme}://{parsed.netloc}/api/sync/heartbeat"
+
+
+def report_heartbeat(manifest_url: str, revision: int) -> None:
+    payload = json.dumps({"hostname": socket.gethostname(), "revision": int(revision)}, separators=(",", ":")).encode()
+    request = Request(heartbeat_url(manifest_url), data=payload, method="POST", headers={
+        "Content-Type": "application/json", "User-Agent": "IceFieldDisplay/0.1",
+    })
+    with urlopen(request, timeout=15) as response:
+        if response.status not in (200, 201):
+            raise RuntimeError(f"Master check-in failed ({response.status}).")
 
 
 def file_hash(path: Path) -> str:
@@ -154,7 +170,13 @@ def sync_node(config: dict, store: StateStore, media: MediaStore) -> str:
         if not url:
             continue
         try:
-            apply_manifest(url, fetch_json(url), store, media)
+            manifest = fetch_json(url)
+            apply_manifest(url, manifest, store, media)
+            if url == config.get("primary_manifest_url"):
+                try:
+                    report_heartbeat(url, int(manifest.get("revision", 0)))
+                except Exception as error:
+                    print(f"Master node check-in warning: {error}", flush=True)
             return url
         except Exception as error:
             errors.append(f"{url}: {error}")

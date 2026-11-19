@@ -5,11 +5,17 @@ from __future__ import annotations
 
 import json
 import re
+import socket
 import subprocess
 from pathlib import Path
 
 
 STATE_PATH = Path("/run/ice-field-display-connectivity-watchdog.json")
+DISPLAY_PEERS = {
+    "ice-and-field-display-01": "100.112.216.40",
+    "ice-and-field-display-02": "100.73.25.2",
+    "ice-and-field-display-03": "100.65.185.108",
+}
 
 
 def run(command: list[str]) -> subprocess.CompletedProcess:
@@ -26,7 +32,7 @@ def gateway_online(gateway: str) -> bool:
     return bool(gateway) and run(["ping", "-c", "1", "-W", "3", gateway]).returncode == 0
 
 
-def tailscale_online() -> bool:
+def tailscale_online(hostname: str | None = None) -> bool:
     result = run(["tailscale", "status", "--json"])
     if result.returncode != 0:
         return False
@@ -34,7 +40,18 @@ def tailscale_online() -> bool:
         payload = json.loads(result.stdout)
     except json.JSONDecodeError:
         return False
-    return payload.get("BackendState") == "Running" and bool(payload.get("Self", {}).get("Online"))
+    if payload.get("BackendState") != "Running" or not payload.get("Self", {}).get("Online"):
+        return False
+
+    # Tailscale can retain a stale local "Online" state after Wi-Fi briefly
+    # disconnects even though no other tailnet device can reach this node.
+    # Require one real peer response before considering the overlay healthy.
+    local_hostname = hostname or socket.gethostname()
+    probes = [address for name, address in DISPLAY_PEERS.items() if name != local_hostname]
+    return any(
+        run(["tailscale", "ping", "-c", "1", "--timeout", "5s", address]).returncode == 0
+        for address in probes
+    )
 
 
 def load_state(path: Path = STATE_PATH) -> dict[str, int]:

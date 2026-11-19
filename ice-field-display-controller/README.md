@@ -10,9 +10,11 @@ LG TVs must have **SIMPLINK (HDMI-CEC)** enabled. The installer enables `ice-fie
 
 ### Unattended connectivity recovery
 
-Run `sudo ./install-recovery.sh` once on every display Pi. This enables NetworkManager, SSH, and Tailscale at boot; checks the local gateway and Tailscale every two minutes; restarts only the failed networking layer after two consecutive failures; and repeats recovery without making local playback depend on the network. It does not reboot merely because Wi-Fi or the building internet is unavailable.
+Run `sudo ./install-recovery.sh` once on every display Pi. This enables NetworkManager, SSH, and Tailscale at boot; checks the local gateway and Tailscale every two minutes; restarts only the failed networking layer after two consecutive failures; and repeats recovery without making local playback depend on the network. Tailscale health requires an actual response from another display node rather than trusting its occasionally stale local “Online” status. It does not reboot merely because Wi-Fi or the building internet is unavailable.
 
 The recovery installer also keeps up to 14 days of system logs with a 200 MB cap so the previous boot can be diagnosed. When `/dev/watchdog` is available, systemd's hardware watchdog is enabled to recover a completely frozen board. A reboot after installation is recommended to validate the full boot and watchdog path.
+
+Playback nodes check in with the master after every successful direct synchronization. Display 01 lists each attached node in Fleet Synchronization with its private address, applied content revision, and last-updated time. This is status-only: it does not expose remote-control access to the node. A node becomes visibly overdue after 15 minutes without a successful direct check-in; cloud-only fallback synchronization does not impersonate a master check-in.
 
 The management page also provides an attached-TV on/off control for demonstrations and manual use. A manual request remains active until the next scheduled wake or standby transition, when normal schedule control resumes automatically.
 

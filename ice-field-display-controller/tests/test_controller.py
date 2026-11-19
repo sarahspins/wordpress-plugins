@@ -8,7 +8,7 @@ from unittest.mock import patch
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from controller import MediaStore, StateStore, admin_page, detect_outputs, detect_x11_outputs, display_page, valid_media_signature
+from controller import MediaStore, StateStore, admin_page, detect_outputs, detect_x11_outputs, display_page, load_fleet_nodes, record_fleet_node, valid_media_signature
 
 
 class StateStoreTests(unittest.TestCase):
@@ -74,6 +74,24 @@ class StateStoreTests(unittest.TestCase):
             ]
             state = store.save_channel("video_for_screens", "slideshow", json.dumps({"slides": slides, "seconds": 8}))
             self.assertEqual(slides, json.loads(state["channels"]["video_for_screens"]["source"])["slides"])
+
+
+class FleetNodeTests(unittest.TestCase):
+    @patch("controller.time.time", return_value=1_794_995_200)
+    def test_node_check_in_is_persisted_and_updated(self, _time):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "fleet-nodes.json"
+            record_fleet_node({"hostname": "ice-and-field-display-03", "revision": 41}, "100.65.185.108", path)
+            record_fleet_node({"hostname": "ice-and-field-display-03", "revision": 42}, "100.65.185.108", path)
+            nodes = load_fleet_nodes(path)
+            self.assertEqual(1, len(nodes))
+            self.assertEqual(42, nodes[0]["revision"])
+            self.assertEqual(1_794_995_200, nodes[0]["last_updated"])
+
+    def test_invalid_node_name_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(ValueError, "hostname"):
+                record_fleet_node({"hostname": "bad node!", "revision": 1}, "100.64.0.1", Path(directory) / "nodes.json")
 
 
 class MediaStoreTests(unittest.TestCase):
@@ -148,6 +166,12 @@ class DisplayPageTests(unittest.TestCase):
         page = admin_page().decode("utf-8")
         self.assertIn('id="tv-power-toggle"', page)
         self.assertIn("/api/tv-power", page)
+
+    def test_management_page_lists_attached_nodes(self):
+        page = admin_page().decode("utf-8")
+        self.assertIn('id="fleet-nodes"', page)
+        self.assertIn("/api/sync/nodes", page)
+        self.assertIn("Last updated", page)
 
     def test_display_has_quick_channel_menu(self):
         page = display_page("HDMI-A-1", {"kind": "standby", "source": "", "label": "Lobby", "channel": "schedule"}, 2).decode()
