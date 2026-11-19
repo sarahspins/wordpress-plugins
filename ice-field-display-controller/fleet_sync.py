@@ -51,8 +51,12 @@ def heartbeat_url(manifest_url: str) -> str:
     return f"{parsed.scheme}://{parsed.netloc}/api/sync/heartbeat"
 
 
-def report_heartbeat(manifest_url: str, revision: int) -> None:
-    payload = json.dumps({"hostname": socket.gethostname(), "revision": int(revision)}, separators=(",", ":")).encode()
+def report_heartbeat(manifest_url: str, revision: int, screens: list[dict] | None = None) -> None:
+    payload = json.dumps({
+        "hostname": socket.gethostname(),
+        "revision": int(revision),
+        "screens": screens or [],
+    }, separators=(",", ":")).encode()
     request = Request(heartbeat_url(manifest_url), data=payload, method="POST", headers={
         "Content-Type": "application/json", "User-Agent": "IceFieldDisplay/0.1",
     })
@@ -174,7 +178,13 @@ def sync_node(config: dict, store: StateStore, media: MediaStore) -> str:
             apply_manifest(url, manifest, store, media)
             if url == config.get("primary_manifest_url"):
                 try:
-                    report_heartbeat(url, int(manifest.get("revision", 0)))
+                    state = store.load()
+                    screens = [
+                        {"output": str(output), "name": str(assignment.get("label", output))}
+                        for output, assignment in state.get("assignments", {}).items()
+                        if isinstance(assignment, dict)
+                    ]
+                    report_heartbeat(url, int(manifest.get("revision", 0)), screens)
                 except Exception as error:
                     print(f"Master node check-in warning: {error}", flush=True)
             return url

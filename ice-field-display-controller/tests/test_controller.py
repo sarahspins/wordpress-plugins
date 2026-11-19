@@ -89,17 +89,19 @@ class FleetNodeTests(unittest.TestCase):
             self.assertEqual("master", node["role"])
             self.assertEqual("100.112.216.40", node["address"])
             self.assertEqual(44, node["revision"])
+            self.assertEqual([], node["screens"])
 
     @patch("controller.time.time", return_value=1_794_995_200)
     def test_node_check_in_is_persisted_and_updated(self, _time):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "fleet-nodes.json"
             record_fleet_node({"hostname": "ice-and-field-display-03", "revision": 41}, "100.65.185.108", path)
-            record_fleet_node({"hostname": "ice-and-field-display-03", "revision": 42}, "100.65.185.108", path)
+            record_fleet_node({"hostname": "ice-and-field-display-03", "revision": 42, "screens": [{"output": "HDMI-1", "name": "Lobby 3"}]}, "100.65.185.108", path)
             nodes = load_fleet_nodes(path)
             self.assertEqual(1, len(nodes))
             self.assertEqual(42, nodes[0]["revision"])
             self.assertEqual(1_794_995_200, nodes[0]["last_updated"])
+            self.assertEqual([{"output": "HDMI-1", "name": "Lobby 3"}], nodes[0]["screens"])
 
     def test_invalid_node_name_is_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -186,6 +188,7 @@ class DisplayPageTests(unittest.TestCase):
         self.assertIn("/api/sync/nodes", page)
         self.assertIn("Master controller", page)
         self.assertIn("Last synced", page)
+        self.assertIn("Screens:", page)
 
     def test_display_has_quick_channel_menu(self):
         page = display_page("HDMI-A-1", {"kind": "standby", "source": "", "label": "Lobby", "channel": "schedule"}, 2).decode()
