@@ -207,7 +207,10 @@ apply_request() {
     fi
 
     # Remove browser process locks copied from a running source system.
-    for chromium_dir in /home/*/.config/chromium /home/*/.config/chromium-*; do
+    for chromium_dir in \
+        /home/*/.config/chromium \
+        /home/*/.config/chromium-* \
+        /home/*/.local/share/ice-field-display-controller/chromium/*; do
         [ -d "$chromium_dir" ] || continue
         rm -f "$chromium_dir"/SingletonCookie "$chromium_dir"/SingletonLock "$chromium_dir"/SingletonSocket
     done
