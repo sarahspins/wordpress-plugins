@@ -21,6 +21,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
+from urllib.request import Request, urlopen
 
 APP_NAME = "Ice & Field Display Controller"
 VERSION = "0.1.0-dev"
@@ -139,6 +140,72 @@ def master_fleet_node(store: "StateStore", primary_url: str = "") -> dict:
             if isinstance(assignment, dict)
         ],
     }
+
+
+def local_fleet_node(store: "StateStore", config: dict | None = None) -> dict:
+    """Describe this device accurately when its controller UI runs in node mode."""
+    state = store.load()
+    config = config or load_sync_config()
+    last_sync = state.get("last_sync", {}) if isinstance(state.get("last_sync"), dict) else {}
+    try:
+        updated = int(last_sync.get("at") or store.path.stat().st_mtime)
+    except OSError:
+        updated = int(time.time())
+    return {
+        "hostname": socket.gethostname(),
+        "address": "This device",
+        "revision": int(last_sync.get("revision", state.get("revision", 0))),
+        "last_updated": updated,
+        "role": "node",
+        "master_address": urlparse(str(config.get("primary_manifest_url", ""))).hostname or "Display 01",
+        "screens": [
+            {"output": str(output), "name": str(assignment.get("label", output))}
+            for output, assignment in state.get("assignments", {}).items()
+            if isinstance(assignment, dict)
+        ],
+    }
+
+
+def master_fleet_nodes(config: dict, timeout: int = 4) -> list[dict]:
+    """Read the master's fleet view for display on a playback node."""
+    parsed = urlparse(str(config.get("primary_manifest_url", "")))
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ValueError("The master manifest address is not configured.")
+    url = f"{parsed.scheme}://{parsed.netloc}/api/sync/nodes"
+    request = Request(url, headers={"Accept": "application/json", "User-Agent": "IceFieldDisplay/0.1"})
+    with urlopen(request, timeout=timeout) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+    nodes = payload.get("nodes", []) if isinstance(payload, dict) else []
+    if not isinstance(nodes, list):
+        raise ValueError("The master returned an invalid fleet list.")
+    return [node for node in nodes if isinstance(node, dict)]
+
+
+def request_node_sync(nodes: list[dict], timeout: int = 5) -> list[dict]:
+    """Ask attached playback nodes to run their normal verified pull immediately."""
+    results = []
+    for node in nodes:
+        if node.get("role") != "node":
+            continue
+        hostname = str(node.get("hostname", "Playback node"))
+        address = str(node.get("address", ""))
+        try:
+            ip = ipaddress.ip_address(address)
+            if ip not in ipaddress.ip_network("100.64.0.0/10"):
+                raise ValueError("not a private Tailscale address")
+            request = Request(
+                f"http://{address}:8788/api/sync/now",
+                data=b"{}",
+                method="POST",
+                headers={"Content-Type": "application/json", "User-Agent": "IceFieldDisplay/0.1"},
+            )
+            with urlopen(request, timeout=timeout) as response:
+                if response.status not in (200, 202):
+                    raise OSError(f"HTTP {response.status}")
+            results.append({"hostname": hostname, "ok": True})
+        except (OSError, ValueError) as error:
+            results.append({"hostname": hostname, "ok": False, "error": str(error)})
+    return results
 
 
 class StateStore:
@@ -660,7 +727,7 @@ def admin_page() -> bytes:
 <h2>Connected Screens</h2>
 <div id="screens" class="grid"></div>
 <section class="card wide" style="margin-top:24px"><h2>Attached TV power</h2><p class="muted" id="tv-power-detail">Checking HDMI-CEC…</p><button id="tv-power-toggle" type="button" class="secondary" disabled>Checking TV…</button><div id="tv-power-result" class="status" aria-live="polite"></div></section>
-<section class="card wide" style="margin-top:24px"><h2>Fleet synchronization</h2><p class="muted">Display 01 is the master. Other nodes pull shared channels and media every five minutes, with WordPress as their recovery source.</p><div id="fleet-nodes" class="node-list"><p class="muted">Checking attached nodes…</p></div><a class="return" href="/sync-settings">Open synchronization settings</a></section>
+<section class="card wide" style="margin-top:24px"><h2>Fleet synchronization</h2><p class="muted">Display 01 is the master. Other nodes pull shared channels and media every five minutes, with WordPress as their recovery source.</p><div id="fleet-nodes" class="node-list"><p class="muted">Checking attached nodes…</p></div><button id="fleet-push" type="button" class="secondary" hidden>Push updates to playback nodes</button><div id="fleet-push-result" class="status" aria-live="polite"></div><a class="return" href="/sync-settings">Open synchronization settings</a></section>
 <noscript><div class="card">JavaScript is required to manage screen assignments.</div></noscript>
 """
     script = r"""
@@ -673,9 +740,10 @@ async function loadStatus(){
   document.querySelector('#node').textContent = `${data.state.node.name} · ${data.state.node.id}`;
   document.querySelector('#health').textContent = `${data.outputs.length} connected screen${data.outputs.length === 1 ? '' : 's'}`;
   document.querySelector('#storage').textContent=`Local storage: ${size(data.storage.free)} free of ${size(data.storage.total)}`;
-  renderMedia(data); renderChannels(data); renderScreens(data); renderTvPower(data.tv_power||{}); loadFleetNodes();
+  renderMedia(data); renderChannels(data); renderScreens(data); renderTvPower(data.tv_power||{}); document.querySelector('#fleet-push').hidden=data.sync_mode!=='controller'; loadFleetNodes();
 }
 async function loadFleetNodes(){const root=document.querySelector('#fleet-nodes');try{const response=await fetch('/api/sync/nodes',{cache:'no-store'}),data=await response.json();if(!response.ok)throw new Error(data.error||'Could not read attached nodes.');if(!data.nodes.length){root.innerHTML='<p class="muted">No display nodes are registered yet.</p>';return;}const now=Date.now();root.innerHTML=data.nodes.map(node=>{const updated=new Date(Number(node.last_updated)*1000),age=Math.max(0,now-updated.getTime()),master=node.role==='master',state=master?'Master controller':age>15*60*1000?'Check-in overdue':'Recently synced',dateLabel=master?'Content updated':'Last synced',screens=(node.screens||[]).map(screen=>screen.name).filter(Boolean),screenText=screens.length?`Screens: ${screens.map(esc).join(' · ')}`:'Screens: Not named yet';return `<div class="node-row"><div><strong>${esc(node.hostname)}</strong><div class="node-meta">${master?'Master':'Playback node'} · Revision ${Number(node.revision)||0} · ${esc(node.address||'Private network')}</div><div class="node-meta">${screenText}</div></div><div class="node-age"><strong>${state}</strong><div class="node-meta">${dateLabel} ${updated.toLocaleString()}</div></div></div>`;}).join('');}catch(error){root.innerHTML=`<p class="error">${esc(error.message)}</p>`;}}
+async function pushFleetSync(){const button=document.querySelector('#fleet-push'),result=document.querySelector('#fleet-push-result');button.disabled=true;result.className='status';result.textContent='Requesting updates…';try{const response=await fetch('/api/sync/push',{method:'POST'}),data=await response.json();if(!response.ok)throw new Error(data.error||'Could not request node updates.');const successful=(data.results||[]).filter(item=>item.ok).length,failed=(data.results||[]).length-successful;result.classList.add(failed?'error':'success');result.textContent=`Update requested on ${successful} node${successful===1?'':'s'}${failed?`; ${failed} could not be reached`:''}.`;setTimeout(loadFleetNodes,2500);}catch(error){result.classList.add('error');result.textContent=error.message;}finally{button.disabled=false;}}
 function renderTvPower(power){const button=document.querySelector('#tv-power-toggle'),detail=document.querySelector('#tv-power-detail');if(!power.available){button.disabled=true;button.textContent='HDMI-CEC unavailable';detail.textContent=power.message||'This Pi does not currently have an HDMI-CEC connection.';return;}button.disabled=false;button.dataset.action=power.state==='on'?'standby':'on';button.textContent=power.state==='on'?'Turn TV off':'Turn TV on';const mode=power.mode==='manual'?'Manual override active':'Following rink schedule';const next=power.next_transition?` Next automatic transition: ${new Date(power.next_transition).toLocaleString()}.`:'';detail.textContent=`${mode}. Last requested state: ${power.state==='standby'?'off':power.state}.${next}`;}
 async function toggleTvPower(){const button=document.querySelector('#tv-power-toggle'),result=document.querySelector('#tv-power-result'),action=button.dataset.action;button.disabled=true;result.className='status';result.textContent=action==='on'?'Requesting TV power on…':'Requesting TV standby…';try{const response=await fetch('/api/tv-power',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action})}),data=await response.json();if(!response.ok)throw new Error(data.error||'Could not control the TV.');result.classList.add('success');result.textContent=action==='on'?'TV power-on requested.':'TV standby requested.';setTimeout(loadStatus,1800);}catch(error){result.classList.add('error');result.textContent=error.message;button.disabled=false;}}
 function renderMedia(data){
@@ -729,6 +797,7 @@ async function assignAll(item,card){const status=card.querySelector('.status');s
 async function removeMedia(item,card){if(!confirm(`Remove “${item.name}” from this node?`))return;const status=card.querySelector('.status');status.textContent='Removing…';const response=await fetch(`/api/media/${item.id}`,{method:'DELETE'});const data=await response.json();if(!response.ok){status.classList.add('error');status.textContent=data.error||'Could not remove this file.';return;}await loadStatus();}
 document.querySelector('#media-upload').addEventListener('click',uploadMedia);
 document.querySelector('#tv-power-toggle').addEventListener('click',toggleTvPower);
+document.querySelector('#fleet-push').addEventListener('click',pushFleetSync);
 loadStatus().catch(error=>{document.querySelector('#health').textContent='Controller unavailable'; document.querySelector('#screens').innerHTML=`<section class="card error">${esc(error.message)}</section>`;});
 """
     return page_shell(APP_NAME, body, script)
@@ -825,11 +894,19 @@ class Handler(BaseHTTPRequestHandler):
             self.send_bytes(json_bytes(load_sync_config(public=True)), "application/json")
             return
         if path == "/api/sync/nodes":
-            self.send_bytes(json_bytes({"nodes": [master_fleet_node(self.store), *load_fleet_nodes()]}), "application/json")
+            config = load_sync_config()
+            if config.get("mode") == "controller":
+                nodes = [master_fleet_node(self.store), *load_fleet_nodes()]
+            else:
+                try:
+                    nodes = master_fleet_nodes(config)
+                except (OSError, ValueError, json.JSONDecodeError):
+                    nodes = [local_fleet_node(self.store, config)]
+            self.send_bytes(json_bytes({"nodes": nodes}), "application/json")
             return
         if path == "/api/status":
             storage = shutil.disk_usage(self.media.directory)
-            self.send_bytes(json_bytes({"version": VERSION, "state": self.store.load(), "outputs": detect_outputs(), "media": self.media.list(), "tv_power": tv_power_status(), "storage": {"total": storage.total, "used": storage.used, "free": storage.free}}), "application/json")
+            self.send_bytes(json_bytes({"version": VERSION, "sync_mode": load_sync_config().get("mode", "node"), "state": self.store.load(), "outputs": detect_outputs(), "media": self.media.list(), "tv_power": tv_power_status(), "storage": {"total": storage.total, "used": storage.used, "free": storage.free}}), "application/json")
             return
         if path == "/api/revision":
             self.send_bytes(json_bytes({"revision": self.store.load().get("revision", 0)}), "application/json")
@@ -884,6 +961,13 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == "/api/sync/now":
             (state_directory() / "sync-now").touch()
             self.send_bytes(json_bytes({"ok": True}), "application/json")
+            return
+        if parsed.path == "/api/sync/push":
+            if load_sync_config().get("mode") != "controller":
+                self.send_bytes(json_bytes({"ok": False, "error": "Only the master controller can push fleet updates."}), "application/json", HTTPStatus.CONFLICT)
+                return
+            results = request_node_sync(load_fleet_nodes())
+            self.send_bytes(json_bytes({"ok": True, "results": results}), "application/json", HTTPStatus.ACCEPTED)
             return
         if parsed.path == "/api/tv-power":
             try:
@@ -1073,6 +1157,9 @@ class SyncHandler(Handler):
         if path == "/api/sync/manifest":
             self.send_bytes(json_bytes(self.media.sync_manifest(self.store.load())), "application/json")
             return
+        if path == "/api/sync/nodes" and load_sync_config().get("mode") == "controller":
+            self.send_bytes(json_bytes({"nodes": [master_fleet_node(self.store), *load_fleet_nodes()]}), "application/json")
+            return
         if path.startswith("/api/sync/objects/"):
             self.serve_sync_object(path[len("/api/sync/objects/"):])
             return
@@ -1083,7 +1170,11 @@ class SyncHandler(Handler):
             self.send_error(HTTPStatus.FORBIDDEN)
             return
         path = self.path.split("?", 1)[0]
-        if path != "/api/sync/heartbeat":
+        if path == "/api/sync/now" and load_sync_config().get("mode") == "node":
+            (state_directory() / "sync-now").touch()
+            self.send_bytes(json_bytes({"ok": True}), "application/json", HTTPStatus.ACCEPTED)
+            return
+        if path != "/api/sync/heartbeat" or load_sync_config().get("mode") != "controller":
             self.send_error(HTTPStatus.METHOD_NOT_ALLOWED)
             return
         try:
@@ -1107,9 +1198,8 @@ def main() -> None:
     Handler.media = MediaStore(state_directory() / "media")
     SyncHandler.store = Handler.store
     SyncHandler.media = Handler.media
-    if load_sync_config().get("mode") == "controller":
-        sync_server = ThreadingHTTPServer(("0.0.0.0", 8788), SyncHandler)
-        threading.Thread(target=sync_server.serve_forever, name="fleet-sync-feed", daemon=True).start()
+    sync_server = ThreadingHTTPServer(("0.0.0.0", 8788), SyncHandler)
+    threading.Thread(target=sync_server.serve_forever, name="fleet-sync-feed", daemon=True).start()
     server = ThreadingHTTPServer((args.host, args.port), Handler)
     print(f"{APP_NAME} {VERSION} listening on http://{args.host}:{args.port}; private fleet feed on port 8788", flush=True)
     server.serve_forever()

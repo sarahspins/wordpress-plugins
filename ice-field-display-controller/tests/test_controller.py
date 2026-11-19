@@ -8,7 +8,7 @@ from unittest.mock import patch
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from controller import MediaStore, StateStore, admin_page, detect_outputs, detect_x11_outputs, display_page, load_fleet_nodes, master_fleet_node, record_fleet_node, valid_media_signature
+from controller import MediaStore, StateStore, admin_page, detect_outputs, detect_x11_outputs, display_page, load_fleet_nodes, local_fleet_node, master_fleet_node, master_fleet_nodes, record_fleet_node, request_node_sync, valid_media_signature
 
 
 class StateStoreTests(unittest.TestCase):
@@ -90,6 +90,54 @@ class FleetNodeTests(unittest.TestCase):
             self.assertEqual("100.112.216.40", node["address"])
             self.assertEqual(44, node["revision"])
             self.assertEqual([], node["screens"])
+
+    @patch("controller.socket.gethostname", return_value="ice-and-field-display-02")
+    def test_local_playback_node_is_not_presented_as_master(self, _hostname):
+        with tempfile.TemporaryDirectory() as directory:
+            store = StateStore(Path(directory) / "state.json")
+            state = store.load()
+            state["assignments"] = {"HDMI-1": {"label": "Lobby - Office Wall"}}
+            state["last_sync"] = {"source": "master", "at": 1_795_000_000, "revision": 40}
+            store.save(state)
+            node = local_fleet_node(store, {
+                "mode": "node",
+                "primary_manifest_url": "http://100.112.216.40:8788/api/sync/manifest",
+            })
+            self.assertEqual("ice-and-field-display-02", node["hostname"])
+            self.assertEqual("node", node["role"])
+            self.assertEqual("This device", node["address"])
+            self.assertEqual("100.112.216.40", node["master_address"])
+            self.assertEqual(40, node["revision"])
+            self.assertEqual(1_795_000_000, node["last_updated"])
+            self.assertEqual([{"output": "HDMI-1", "name": "Lobby - Office Wall"}], node["screens"])
+
+    @patch("controller.urlopen")
+    def test_playback_node_reads_the_masters_full_fleet_list(self, mocked_urlopen):
+        response = mocked_urlopen.return_value.__enter__.return_value
+        response.read.return_value = json.dumps({"nodes": [
+            {"hostname": "ice-and-field-display-01", "role": "master"},
+            {"hostname": "ice-and-field-display-02", "role": "node"},
+            {"hostname": "ice-and-field-display-03", "role": "node"},
+        ]}).encode()
+        nodes = master_fleet_nodes({
+            "primary_manifest_url": "http://100.112.216.40:8788/api/sync/manifest",
+        })
+        self.assertEqual(3, len(nodes))
+        self.assertEqual("ice-and-field-display-02", nodes[1]["hostname"])
+        self.assertEqual("http://100.112.216.40:8788/api/sync/nodes", mocked_urlopen.call_args.args[0].full_url)
+
+    @patch("controller.urlopen")
+    def test_master_can_request_immediate_verified_node_sync(self, mocked_urlopen):
+        response = mocked_urlopen.return_value.__enter__.return_value
+        response.status = 202
+        results = request_node_sync([
+            {"hostname": "ice-and-field-display-01", "role": "master", "address": "100.112.216.40"},
+            {"hostname": "ice-and-field-display-02", "role": "node", "address": "100.73.25.2"},
+        ])
+        self.assertEqual([{"hostname": "ice-and-field-display-02", "ok": True}], results)
+        request = mocked_urlopen.call_args.args[0]
+        self.assertEqual("http://100.73.25.2:8788/api/sync/now", request.full_url)
+        self.assertEqual("POST", request.method)
 
     @patch("controller.time.time", return_value=1_794_995_200)
     def test_node_check_in_is_persisted_and_updated(self, _time):
@@ -189,6 +237,8 @@ class DisplayPageTests(unittest.TestCase):
         self.assertIn("Master controller", page)
         self.assertIn("Last synced", page)
         self.assertIn("Screens:", page)
+        self.assertIn("Push updates to playback nodes", page)
+        self.assertIn("/api/sync/push", page)
 
     def test_display_has_quick_channel_menu(self):
         page = display_page("HDMI-A-1", {"kind": "standby", "source": "", "label": "Lobby", "channel": "schedule"}, 2).decode()
