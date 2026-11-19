@@ -13,6 +13,7 @@ StandardError=tty
 TTYPath=/dev/tty1
 TTYReset=yes
 TTYVHangup=yes
+TimeoutStartSec=5min
 
 [Install]
 WantedBy=sysinit.target

@@ -7,6 +7,7 @@ SCREEN_NAME_FILE=$PENDING_DIR/pending-screen-name
 COMPLETE_FILE=$PENDING_DIR/node-identity
 GOLDEN_MARKER=$PENDING_DIR/golden-image
 SOURCE_HARDWARE_FILE=$PENDING_DIR/golden-source-hardware
+CLONE_RESET_FILE=$PENDING_DIR/clone-identity-reset
 STATE_HELPER=/usr/local/lib/ice-field-display-controller/personalize_state.py
 
 usage() {
@@ -45,6 +46,38 @@ hardware_identity() {
         address=$(cat "$interface/address" 2>/dev/null || true)
         [ -n "$address" ] && [ "$address" != "00:00:00:00:00:00" ] && printf '%s:%s\n' "$name" "$address"
     done | sort
+}
+
+set_system_hostname() {
+    new_hostname=$1
+    printf '%s\n' "$new_hostname" > /etc/hostname
+    if grep -q '^127\.0\.1\.1[[:space:]]' /etc/hosts 2>/dev/null; then
+        sed "s/^127\.0\.1\.1[[:space:]].*/127.0.1.1\t$new_hostname/" /etc/hosts > "$PENDING_DIR/hosts.new"
+        install -m 0644 "$PENDING_DIR/hosts.new" /etc/hosts
+        rm -f "$PENDING_DIR/hosts.new"
+    else
+        printf '127.0.1.1\t%s\n' "$new_hostname" >> /etc/hosts
+    fi
+    hostname "$new_hostname" 2>/dev/null || true
+}
+
+reset_cloned_system_identity() {
+    [ -f "$CLONE_RESET_FILE" ] && return 0
+    current_identity=$(hardware_identity)
+    suffix=$(printf '%s' "$current_identity" | sha256sum | cut -c1-6)
+    temporary_hostname="ice-and-field-display-setup-$suffix"
+    install -d -m 0700 "$PENDING_DIR"
+    set_system_hostname "$temporary_hostname"
+    : > /etc/machine-id
+    rm -f /var/lib/dbus/machine-id
+    systemd-machine-id-setup
+    rm -f /etc/ssh/ssh_host_*
+    ssh-keygen -A
+    systemctl stop tailscaled.service 2>/dev/null || true
+    rm -f /var/lib/tailscale/tailscaled.state
+    printf '%s\n' "$temporary_hostname" > "$CLONE_RESET_FILE"
+    chmod 0600 "$CLONE_RESET_FILE"
+    sync
 }
 
 normalize_node_number() {
@@ -109,6 +142,14 @@ prompt_for_clone_identity() {
         return 1
     fi
 
+    # Make the clone safe to boot even if nobody completes the prompt, then
+    # explicitly remove Plymouth so the questions cannot hide behind a splash.
+    reset_cloned_system_identity
+    if command -v plymouth >/dev/null 2>&1; then
+        plymouth quit 2>/dev/null || true
+    fi
+    chvt 1 2>/dev/null || true
+    setterm --term linux --blank 0 --clear all < /dev/tty1 > /dev/tty1 2>/dev/null || true
     printf '\033c'
     echo "============================================================"
     echo "          ICE & FIELD DISPLAY — FIRST-BOOT SETUP"
@@ -157,24 +198,13 @@ apply_request() {
     [ -n "$screen_name" ] || screen_name="Display $node_number"
 
     install -d -m 0700 "$PENDING_DIR"
-    printf '%s\n' "$hostname" > /etc/hostname
-    if grep -q '^127\.0\.1\.1[[:space:]]' /etc/hosts 2>/dev/null; then
-        sed "s/^127\.0\.1\.1[[:space:]].*/127.0.1.1\t$hostname/" /etc/hosts > "$PENDING_DIR/hosts.new"
-        install -m 0644 "$PENDING_DIR/hosts.new" /etc/hosts
-        rm -f "$PENDING_DIR/hosts.new"
-    else
-        printf '127.0.1.1\t%s\n' "$hostname" >> /etc/hosts
-    fi
-    hostname "$hostname" 2>/dev/null || true
+    set_system_hostname "$hostname"
 
     # A cloned system must not retain machine, SSH, or Tailscale identities.
-    : > /etc/machine-id
-    rm -f /var/lib/dbus/machine-id
-    systemd-machine-id-setup
-    rm -f /etc/ssh/ssh_host_*
-    ssh-keygen -A
-    systemctl stop tailscaled.service 2>/dev/null || true
-    rm -f /var/lib/tailscale/tailscaled.state
+    if [ ! -f "$CLONE_RESET_FILE" ]; then
+        reset_cloned_system_identity
+        set_system_hostname "$hostname"
+    fi
 
     # Remove browser process locks copied from a running source system.
     for chromium_dir in /home/*/.config/chromium /home/*/.config/chromium-*; do
@@ -194,7 +224,7 @@ apply_request() {
 
     printf '%s\n' "$hostname" > "$COMPLETE_FILE"
     chmod 0600 "$COMPLETE_FILE"
-    rm -f "$PENDING_FILE" "$SCREEN_NAME_FILE" "$GOLDEN_MARKER" "$SOURCE_HARDWARE_FILE"
+    rm -f "$PENDING_FILE" "$SCREEN_NAME_FILE" "$GOLDEN_MARKER" "$SOURCE_HARDWARE_FILE" "$CLONE_RESET_FILE"
     case "$request_file" in
         /boot/node-number|/boot/firmware/node-number) rm -f "$request_file" ;;
     esac

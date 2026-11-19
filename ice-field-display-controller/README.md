@@ -119,7 +119,7 @@ When the original card returns to the same Orange Pi, its hardware serial matche
 1. The display number, producing a hostname such as `ice-and-field-display-04`.
 2. The friendly screen/location name, such as `Warm Room 1`.
 
-The wizard creates a fresh Linux machine ID and SSH host keys, removes the copied Tailscale identity and stale Chromium locks, updates the controller's local node/screen name, and reboots. Synced media and shared channel content remain available. The clone retains the source Wi-Fi profile and remains a playback node pointed at display 01.
+Before waiting for answers, the wizard closes Plymouth, switches to the setup console, and gives the clone a temporary hardware-derived hostname plus fresh Linux, SSH, and Tailscale identities. This makes an unanswered setup safe to boot and remotely distinguishable. The prompt has a five-minute safety timeout; if it is not completed, normal boot continues and the setup prompt returns on the next reboot. Once answered, it updates the controller's local node/screen name and reboots. Synced media and shared channel content remain available. The clone retains the source Wi-Fi profile and remains a playback node pointed at display 01.
 
 Tailscale authorization is intentionally not embedded in the image. After the personalized clone returns, authorize it and restore its private management address:
 
