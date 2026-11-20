@@ -74,6 +74,8 @@ Fleet settings are available from the control panel under **Fleet synchronizatio
 
 When Ice & Field Display Cloud 0.2.0 or newer is active, Display 01 also polls its authenticated Video for Screens slideshow feed during that five-minute check. A new WordPress slideshow revision is downloaded into Display 01's local media library, converted to the local Ice & Field wipe playlist, and included in the normal master manifest. Playback nodes still pull only from Display 01 or its published recovery manifest; they never need WordPress credentials. If WordPress is unavailable, every display continues using its last verified local slideshow.
 
+Display 01 also publishes a compact read-only fleet snapshot during its five-minute cloud update. WordPress receives only each node's hostname, last check-in time, friendly screen names, and assigned content; remote controls and private credentials remain on the master controller.
+
 The same first-time cloud setup can be completed from Display 01's terminal without exposing the application password on screen:
 
 ```bash

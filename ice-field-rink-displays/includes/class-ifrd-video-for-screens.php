@@ -230,6 +230,7 @@ class IFRD_Video_For_Screens {
             </form>
 
             <?php $this->render_master_slideshow(); ?>
+            <?php $this->render_fleet_status(); ?>
 
             <hr>
             <h2>Remote Refresh</h2>
@@ -277,6 +278,42 @@ class IFRD_Video_For_Screens {
             <?php else : ?>
                 <p>Display 01 is not currently publishing an image slideshow for this channel.</p>
             <?php endif; ?>
+        <?php endif; ?>
+        <?php
+    }
+
+    private function render_fleet_status() {
+        if (!class_exists('Ice_Field_Display_Cloud') || !method_exists('Ice_Field_Display_Cloud', 'fleet_status_data')) {
+            return;
+        }
+        $fleet = Ice_Field_Display_Cloud::fleet_status_data();
+        $labels = array('schedule' => 'Schedule', 'pricing' => 'Pricing', 'rules' => 'Public Skating Rules', 'video_for_screens' => 'Video for Screens');
+        ?>
+        <hr>
+        <h2>Fleet Status</h2>
+        <?php if (is_wp_error($fleet)) : ?>
+            <p><?php echo esc_html($fleet->get_error_message()); ?></p>
+        <?php else : ?>
+            <div class="ifrd-wp-fleet">
+                <?php foreach ((array) $fleet['nodes'] as $node) :
+                    $last_seen = max(0, (int) ($node['last_updated'] ?? 0));
+                    $online = $last_seen > 0 && (time() - $last_seen) <= 900;
+                    ?>
+                    <div class="ifrd-wp-fleet-node">
+                        <div><strong><?php echo esc_html((string) ($node['hostname'] ?? 'Display node')); ?></strong><?php if (($node['role'] ?? '') === 'master') : ?> <span class="ifrd-wp-fleet-master">Master</span><?php endif; ?></div>
+                        <div class="ifrd-wp-fleet-state <?php echo $online ? 'is-online' : 'is-offline'; ?>"><?php echo $online ? 'Online' : ($last_seen ? 'Last seen ' . esc_html(human_time_diff($last_seen, time())) . ' ago' : 'Never seen'); ?></div>
+                        <div class="ifrd-wp-fleet-screens">
+                            <?php foreach ((array) ($node['screens'] ?? array()) as $screen) :
+                                $channel = sanitize_key((string) ($screen['channel'] ?? ''));
+                                $content = $labels[$channel] ?? ucwords(str_replace(array('_', '-'), ' ', (string) ($screen['kind'] ?? 'Standby')));
+                                ?>
+                                <span><strong><?php echo esc_html((string) ($screen['name'] ?? 'Screen')); ?>:</strong> <?php echo esc_html($content); ?></span>
+                            <?php endforeach; ?>
+                        </div>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+            <style>.ifrd-wp-fleet{display:grid;gap:9px;max-width:900px}.ifrd-wp-fleet-node{display:grid;grid-template-columns:minmax(220px,1fr) auto;gap:4px 18px;padding:12px 14px;border:1px solid #dcdcde;border-radius:8px;background:#fff}.ifrd-wp-fleet-state{font-weight:700}.ifrd-wp-fleet-state.is-online{color:#16803c}.ifrd-wp-fleet-state.is-offline{color:#646970}.ifrd-wp-fleet-master{display:inline-block;margin-left:5px;padding:1px 6px;border-radius:999px;background:#e4f1f8;color:#064b75;font-size:11px}.ifrd-wp-fleet-screens{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:5px 16px;color:#50575e}@media(max-width:782px){.ifrd-wp-fleet-node{grid-template-columns:1fr}}</style>
         <?php endif; ?>
         <?php
     }

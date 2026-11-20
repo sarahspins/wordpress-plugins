@@ -10,7 +10,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from controller import MediaStore, StateStore
-from fleet_sync import apply_manifest, heartbeat_url, slideshow_feed_url, sync_wordpress_slideshow
+from fleet_sync import apply_manifest, heartbeat_url, publish_fleet_status, slideshow_feed_url, sync_wordpress_slideshow
 
 
 class FleetSyncTests(unittest.TestCase):
@@ -88,6 +88,28 @@ class FleetSyncTests(unittest.TestCase):
             "https://shows.example/api/slideshow",
             slideshow_feed_url({"cloud_api_base": "https://shows.example/api/"}),
         )
+
+    def test_controller_publishes_compact_fleet_status(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = StateStore(Path(directory) / "state.json")
+            config = {
+                "cloud_api_base": "https://shows.example/api",
+                "cloud_username": "display",
+                "cloud_application_password": "secret",
+                "primary_manifest_url": "http://100.1.2.3:8788/api/sync/manifest",
+            }
+            master = {"hostname": "ice-and-field-display-01", "role": "master", "last_updated": 1, "screens": []}
+            node = {"hostname": "ice-and-field-display-02", "role": "node", "last_updated": 2, "screens": [{"name": "Lobby", "channel": "schedule"}]}
+            with patch("fleet_sync.master_fleet_node", return_value=master), patch(
+                "fleet_sync.load_fleet_nodes", return_value=[node]
+            ), patch("fleet_sync.urlopen") as opener:
+                opener.return_value.__enter__.return_value.status = 201
+                publish_fleet_status(config, store)
+            request = opener.call_args.args[0]
+            payload = json.loads(request.data.decode())
+            self.assertEqual("https://shows.example/api/fleet", request.full_url)
+            self.assertEqual(2, len(payload["nodes"]))
+            self.assertEqual("Lobby", payload["nodes"][1]["screens"][0]["name"])
 
 
 if __name__ == "__main__":

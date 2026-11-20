@@ -2,7 +2,7 @@
 /*
 Plugin Name: Ice & Field Display Cloud
 Description: Authenticated cloud backup storage for Ice & Field Pi display content.
-Version: 0.2.1
+Version: 0.3.0
 Author: Ice & Field
 Requires at least: 6.4
 Requires PHP: 7.4
@@ -14,7 +14,7 @@ if (!defined('ABSPATH')) {
 }
 
 final class Ice_Field_Display_Cloud {
-    const VERSION = '0.2.1';
+    const VERSION = '0.3.0';
     const REST_NAMESPACE = 'ice-field-display-cloud/v1';
     const MENU_SLUG = 'ifdc-cloud-storage';
     const MAX_MANIFEST_BYTES = 1048576;
@@ -101,6 +101,19 @@ final class Ice_Field_Display_Cloud {
             'callback' => array(__CLASS__, 'rest_get_master_slideshow'),
             'permission_callback' => array(__CLASS__, 'can_publish'),
         ));
+
+        register_rest_route(self::REST_NAMESPACE, '/fleet', array(
+            array(
+                'methods' => WP_REST_Server::READABLE,
+                'callback' => array(__CLASS__, 'rest_get_fleet'),
+                'permission_callback' => array(__CLASS__, 'can_publish'),
+            ),
+            array(
+                'methods' => WP_REST_Server::CREATABLE,
+                'callback' => array(__CLASS__, 'rest_publish_fleet'),
+                'permission_callback' => array(__CLASS__, 'can_publish'),
+            ),
+        ));
     }
 
     public static function can_publish() {
@@ -119,6 +132,7 @@ final class Ice_Field_Display_Cloud {
             'objects' => $base . '/objects',
             'manifest' => $base . '/manifest.json',
             'previous' => $base . '/manifest.previous.json',
+            'fleet' => $base . '/fleet.json',
             'url' => trailingslashit($uploads['baseurl']) . 'ice-field-display-cloud',
         );
     }
@@ -369,6 +383,84 @@ final class Ice_Field_Display_Cloud {
         return $response;
     }
 
+    public static function fleet_status_data() {
+        $paths = self::paths();
+        if (!is_file($paths['fleet'])) {
+            return new WP_Error('ifdc_no_fleet', 'Display 01 has not published fleet status yet.', array('status' => 404));
+        }
+        $fleet = json_decode((string) file_get_contents($paths['fleet']), true);
+        if (!is_array($fleet) || (int) ($fleet['schema'] ?? 0) !== 1 || !is_array($fleet['nodes'] ?? null)) {
+            return new WP_Error('ifdc_fleet_broken', 'The stored fleet status is invalid.', array('status' => 500));
+        }
+        return $fleet;
+    }
+
+    public static function rest_get_fleet() {
+        $data = self::fleet_status_data();
+        if (is_wp_error($data)) {
+            return $data;
+        }
+        $response = new WP_REST_Response($data, 200);
+        $response->header('Cache-Control', 'no-cache, must-revalidate');
+        return $response;
+    }
+
+    public static function rest_publish_fleet(WP_REST_Request $request) {
+        $paths = self::ensure_directories();
+        if (is_wp_error($paths)) {
+            return $paths;
+        }
+        $body = $request->get_body();
+        if (strlen($body) > 65536) {
+            return new WP_Error('ifdc_fleet_size', 'The fleet status is too large.', array('status' => 413));
+        }
+        $payload = json_decode($body, true);
+        if (!is_array($payload) || (int) ($payload['schema'] ?? 0) !== 1 || !is_array($payload['nodes'] ?? null)) {
+            return new WP_Error('ifdc_fleet_schema', 'The fleet status is invalid.', array('status' => 400));
+        }
+        $nodes = array();
+        foreach (array_slice($payload['nodes'], 0, 50) as $node) {
+            if (!is_array($node)) continue;
+            $hostname = sanitize_text_field((string) ($node['hostname'] ?? ''));
+            if ($hostname === '') continue;
+            $screens = array();
+            foreach (array_slice((array) ($node['screens'] ?? array()), 0, 8) as $screen) {
+                if (!is_array($screen)) continue;
+                $name = sanitize_text_field((string) ($screen['name'] ?? ''));
+                if ($name === '') continue;
+                $screens[] = array(
+                    'name' => $name,
+                    'channel' => sanitize_key((string) ($screen['channel'] ?? '')),
+                    'kind' => sanitize_key((string) ($screen['kind'] ?? 'standby')),
+                );
+            }
+            $nodes[] = array(
+                'hostname' => $hostname,
+                'role' => (($node['role'] ?? '') === 'master') ? 'master' : 'node',
+                'last_updated' => max(0, (int) ($node['last_updated'] ?? 0)),
+                'screens' => $screens,
+            );
+        }
+        $fleet = array(
+            'schema' => 1,
+            'generated_at' => max(0, (int) ($payload['generated_at'] ?? time())),
+            'nodes' => $nodes,
+        );
+        if (!function_exists('wp_tempnam')) {
+            require_once ABSPATH . 'wp-admin/includes/file.php';
+        }
+        $temporary = wp_tempnam('ifdc-fleet');
+        if (!$temporary || false === file_put_contents($temporary, wp_json_encode($fleet, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n", LOCK_EX)) {
+            return new WP_Error('ifdc_fleet_write', 'WordPress could not prepare the fleet status.', array('status' => 500));
+        }
+        if (!@rename($temporary, $paths['fleet'])) {
+            @unlink($temporary);
+            return new WP_Error('ifdc_fleet_publish', 'WordPress could not publish the fleet status.', array('status' => 500));
+        }
+        @chmod($paths['fleet'], 0644);
+        return new WP_REST_Response(array('ok' => true, 'nodes' => count($nodes)), 201);
+    }
+
     public static function rest_status() {
         $paths = self::ensure_directories();
         if (is_wp_error($paths)) {
@@ -414,6 +506,7 @@ final class Ice_Field_Display_Cloud {
                         <tr><th>Public manifest</th><td><code><?php echo esc_html($status['manifest_url']); ?></code></td></tr>
                         <tr><th>Authenticated slideshow feed</th><td><code><?php echo esc_html(rest_url(self::REST_NAMESPACE . '/slideshow')); ?></code></td></tr>
                         <tr><th>Display 01 slideshow</th><td><code><?php echo esc_html(rest_url(self::REST_NAMESPACE . '/master-slideshow')); ?></code></td></tr>
+                        <tr><th>Fleet status feed</th><td><code><?php echo esc_html(rest_url(self::REST_NAMESPACE . '/fleet')); ?></code></td></tr>
                         <tr><th>Storage folder</th><td><code><?php echo esc_html($paths['base']); ?></code></td></tr>
                         <tr><th>WordPress upload limit</th><td><?php echo esc_html((string) ini_get('upload_max_filesize')); ?> per file; <?php echo esc_html((string) ini_get('post_max_size')); ?> per request</td></tr>
                     </tbody>

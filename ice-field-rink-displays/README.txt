@@ -1,4 +1,6 @@
-Ice & Field Rink Displays v2.8.29
+Ice & Field Rink Displays v2.8.30
+
+Version 2.8.30 adds a compact Fleet Status panel to Video for Screens. It shows each reported Pi as Online or Last seen, followed by its friendly screen name and assigned content. Display 01 publishes this read-only snapshot through Display Cloud, so the WordPress host does not need direct Tailscale access.
 
 Version 2.8.29 adds drag-and-drop ordering to the visual slideshow cards. The `[video_for_screens]` WordPress shortcode now uses the same approximately 0.3-second randomized right-to-left Ice & Field color wipe as the Pi fleet, including the same navy, blue, orange, and gold palette and varied band widths.
 

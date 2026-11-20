@@ -16,7 +16,7 @@ from pathlib import Path
 from urllib.parse import urljoin, urlparse
 from urllib.request import Request, urlopen
 
-from controller import CHANNELS, MediaStore, StateStore, state_directory
+from controller import CHANNELS, MediaStore, StateStore, load_fleet_nodes, master_fleet_node, state_directory
 
 DEFAULTS = {
     "mode": "node",
@@ -345,6 +345,23 @@ def publish_cloud(config: dict, store: StateStore, media: MediaStore) -> int:
     return manifest["revision"]
 
 
+def publish_fleet_status(config: dict, store: StateStore) -> None:
+    api_base = str(config.get("cloud_api_base", "")).rstrip("/")
+    master = master_fleet_node(store, str(config.get("primary_manifest_url", "")))
+    master["last_updated"] = int(time.time())
+    payload = json.dumps({
+        "schema": 1,
+        "generated_at": int(time.time()),
+        "nodes": [master, *load_fleet_nodes()],
+    }, separators=(",", ":")).encode()
+    request = Request(f"{api_base}/fleet", data=payload, method="POST", headers={
+        "Authorization": authorization(config), "Content-Type": "application/json", "User-Agent": "IceFieldDisplay/0.1",
+    })
+    with urlopen(request, timeout=30) as response:
+        if response.status not in (200, 201):
+            raise RuntimeError(f"Cloud fleet status publish failed ({response.status}).")
+
+
 def main() -> None:
     directory = state_directory()
     store = StateStore(directory / "state.json")
@@ -365,7 +382,12 @@ def main() -> None:
                             print("Video for Screens updated from WordPress", flush=True)
                     except Exception as error:
                         print(f"WordPress slideshow warning: {error}", flush=True)
-                    print(f"Cloud backup is current at revision {publish_cloud(config, store, media)}", flush=True)
+                    revision = publish_cloud(config, store, media)
+                    try:
+                        publish_fleet_status(config, store)
+                    except Exception as error:
+                        print(f"Cloud fleet status warning: {error}", flush=True)
+                    print(f"Cloud backup is current at revision {revision}", flush=True)
             except Exception as error:
                 print(f"Fleet synchronization warning: {error}", flush=True)
             next_run = time.monotonic() + max(60, int(config.get("interval_seconds", 300)))

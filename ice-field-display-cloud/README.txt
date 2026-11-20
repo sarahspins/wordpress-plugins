@@ -4,7 +4,7 @@ Tags: digital signage, cloud backup, displays
 Requires at least: 6.4
 Tested up to: 6.8
 Requires PHP: 7.4
-Stable tag: 0.2.1
+Stable tag: 0.3.0
 License: GPLv2 or later
 
 Authenticated WordPress backup storage for Ice & Field Pi display content.
@@ -31,6 +31,10 @@ This plugin is intentionally outside the five-component Ice & Field updater whil
 4. Enter the site address, username, and application password on the main display-controller Pi when its cloud publishing settings are available.
 
 == Changelog ==
+
+= 0.3.0 =
+* Accept a compact fleet-status snapshot from display 01 for WordPress administration pages.
+* Store only node names, online/last-seen timestamps, friendly screen names, and their assigned content.
 
 = 0.2.1 =
 * Carry optional slide begin times through the WordPress-to-master and master-to-WordPress feeds.
