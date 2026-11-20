@@ -86,7 +86,14 @@ def record_fleet_node(payload: dict, address: str, path: Path | None = None) -> 
         output = str(item.get("output", "")).strip()[:64]
         name = str(item.get("name", "")).strip()[:80]
         if output and name:
-            screens.append({"output": output, "name": name})
+            channel = str(item.get("channel", "")).strip()
+            kind = str(item.get("kind", "standby")).strip()
+            screens.append({
+                "output": output,
+                "name": name,
+                "channel": channel if channel in CHANNELS else "",
+                "kind": kind if kind in KINDS else "standby",
+            })
         if len(screens) >= 8:
             break
     target = path or fleet_nodes_path()
@@ -135,7 +142,8 @@ def master_fleet_node(store: "StateStore", primary_url: str = "") -> dict:
         "last_updated": updated,
         "role": "master",
         "screens": [
-            {"output": str(output), "name": str(assignment.get("label", output))}
+            {"output": str(output), "name": str(assignment.get("label", output)),
+             "channel": str(assignment.get("channel", "")), "kind": str(assignment.get("kind", "standby"))}
             for output, assignment in state.get("assignments", {}).items()
             if isinstance(assignment, dict)
         ],
@@ -159,7 +167,8 @@ def local_fleet_node(store: "StateStore", config: dict | None = None) -> dict:
         "role": "node",
         "master_address": urlparse(str(config.get("primary_manifest_url", ""))).hostname or "Display 01",
         "screens": [
-            {"output": str(output), "name": str(assignment.get("label", output))}
+            {"output": str(output), "name": str(assignment.get("label", output)),
+             "channel": str(assignment.get("channel", "")), "kind": str(assignment.get("kind", "standby"))}
             for output, assignment in state.get("assignments", {}).items()
             if isinstance(assignment, dict)
         ],
@@ -206,6 +215,55 @@ def request_node_sync(nodes: list[dict], timeout: int = 5) -> list[dict]:
         except (OSError, ValueError) as error:
             results.append({"hostname": hostname, "ok": False, "error": str(error)})
     return results
+
+
+def fleet_node(hostname: str) -> dict | None:
+    return next((node for node in load_fleet_nodes() if node.get("hostname") == hostname), None)
+
+
+def update_fleet_screen_assignment(hostname: str, output: str, channel: str, path: Path | None = None) -> None:
+    target = path or fleet_nodes_path()
+    with FLEET_NODES_LOCK:
+        try:
+            saved = json.loads(target.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return
+        node = saved.get("nodes", {}).get(hostname)
+        if not isinstance(node, dict):
+            return
+        for screen in node.get("screens", []):
+            if isinstance(screen, dict) and screen.get("output") == output:
+                screen["channel"] = channel
+                screen["kind"] = "standby"
+                break
+        fd, temporary = tempfile.mkstemp(prefix="fleet-nodes-", suffix=".json", dir=target.parent)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                json.dump(saved, handle, separators=(",", ":"), sort_keys=True)
+                handle.write("\n")
+            os.replace(temporary, target)
+        finally:
+            if os.path.exists(temporary):
+                os.unlink(temporary)
+
+
+def request_node_assignment(node: dict, output: str, channel: str, timeout: int = 5) -> None:
+    if not OUTPUT_RE.fullmatch(output) or (channel and channel not in CHANNELS):
+        raise ValueError("Invalid screen assignment.")
+    address = str(node.get("address", ""))
+    ip = ipaddress.ip_address(address)
+    if ip not in ipaddress.ip_network("100.64.0.0/10"):
+        raise ValueError("The playback node does not have a private Tailscale address.")
+    payload = json.dumps({"output": output, "channel": channel}).encode("utf-8")
+    request = Request(
+        f"http://{address}:8788/api/sync/assignment",
+        data=payload,
+        method="POST",
+        headers={"Content-Type": "application/json", "User-Agent": "IceFieldDisplay/0.1"},
+    )
+    with urlopen(request, timeout=timeout) as response:
+        if response.status not in (200, 202):
+            raise OSError(f"HTTP {response.status}")
 
 
 class StateStore:
@@ -711,10 +769,10 @@ button:hover{{filter:brightness(.95)}} .return{{display:inline-block;margin:16px
 .media-grid{{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px;margin-top:18px}} .media-item{{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#f8fafb}}
 .media-preview{{height:130px;background:#031f31;display:grid;place-items:center}} .media-preview img,.media-preview video{{width:100%;height:100%;object-fit:contain}} .media-info{{padding:12px}} .media-name{{font-weight:800;overflow-wrap:anywhere}}
 .media-actions{{display:flex;gap:8px;flex-wrap:wrap}} .media-actions button{{margin-top:10px;padding:8px 10px;font-size:13px}}
-.node-list{{display:grid;gap:9px;margin-top:14px}} .node-row{{display:grid;grid-template-columns:minmax(180px,1fr) auto;gap:8px 18px;padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:#f8fafb}} .node-row.current{{background:#fff8d8;border-color:#e6d58a}} .node-row strong{{color:var(--navy)}} .node-meta{{color:var(--muted);font-size:14px}} .node-age{{text-align:right}} .current-node{{display:inline-block;margin-left:7px;padding:2px 7px;border-radius:999px;background:#f3df83;color:#604f00;font-size:12px;font-weight:800;vertical-align:1px}}
+.node-list{{display:grid;gap:9px;margin-top:14px}} .node-row{{display:grid;grid-template-columns:minmax(180px,1fr) auto;gap:8px 18px;padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:#f8fafb}} .node-row.current{{background:#fff8d8;border-color:#e6d58a}} .node-row strong{{color:var(--navy)}} .node-meta{{color:var(--muted);font-size:14px}} .node-age{{text-align:right}} .current-node{{display:inline-block;margin-left:7px;padding:2px 7px;border-radius:999px;background:#f3df83;color:#604f00;font-size:12px;font-weight:800;vertical-align:1px}} .fleet-screens{{display:grid;gap:7px;margin-top:8px}} .fleet-screen{{display:grid;grid-template-columns:minmax(180px,1fr) minmax(180px,260px);gap:8px;align-items:center}} .fleet-screen select{{padding:7px;font-size:14px}} .fleet-screen-status{{grid-column:1/-1;min-height:0;margin:0;font-size:13px}}
 code{{font-size:.9em;background:#eef3f6;padding:2px 5px;border-radius:5px}}
 .settings-group>summary{{cursor:pointer;color:var(--navy);font-size:23px;font-weight:800;list-style-position:outside;margin-left:20px}} .settings-group>summary::marker{{color:var(--orange)}} .settings-group[open]>summary{{margin-bottom:8px}} .settings-group-content{{margin-top:8px}} .master-control-note{{margin:4px 0 12px;padding:9px 12px;border-left:4px solid var(--orange);background:#fff5ec;color:#68422d;border-radius:4px}}
-@media(max-width:620px){{.upload-row{{grid-template-columns:1fr}}.node-row{{grid-template-columns:1fr}}.node-age{{text-align:left}}}}
+@media(max-width:620px){{.upload-row{{grid-template-columns:1fr}}.node-row{{grid-template-columns:1fr}}.node-age{{text-align:left}}.fleet-screen{{grid-template-columns:1fr}}}}
 </style></head><body><header><h1>{html.escape(title)}</h1><p>Controller and Node 1</p></header><main>{body}</main><script>{script}</script></body></html>""".encode("utf-8")
 
 
@@ -750,7 +808,9 @@ async function loadStatus(){
   document.querySelector('#storage').textContent=`Local storage: ${size(data.storage.free)} free of ${size(data.storage.total)}`;
   renderMedia(data); renderChannels(data); renderScreens(data); renderTvPower(data.tv_power||{}); document.querySelector('#fleet-push').hidden=data.sync_mode!=='controller'; loadFleetNodes();
 }
-async function loadFleetNodes(){const root=document.querySelector('#fleet-nodes');try{const response=await fetch('/api/sync/nodes',{cache:'no-store'}),data=await response.json();if(!response.ok)throw new Error(data.error||'Could not read attached nodes.');if(!data.nodes.length){root.innerHTML='<p class="muted">No display nodes are registered yet.</p>';return;}const now=Date.now();root.innerHTML=data.nodes.map(node=>{const updated=new Date(Number(node.last_updated)*1000),age=Math.max(0,now-updated.getTime()),master=node.role==='master',current=node.hostname===data.current_hostname,state=master?'Master controller':age>15*60*1000?'Check-in overdue':'Recently synced',dateLabel=master?'Content updated':'Last synced',screens=(node.screens||[]).map(screen=>screen.name).filter(Boolean),screenText=screens.length?`Screens: ${screens.map(esc).join(' · ')}`:'Screens: Not named yet';return `<div class="node-row${current?' current':''}"><div><strong>${esc(node.hostname)}</strong>${current?'<span class="current-node">Current node</span>':''}<div class="node-meta">${master?'Master':'Playback node'} · Revision ${Number(node.revision)||0} · ${esc(node.address||'Private network')}</div><div class="node-meta">${screenText}</div></div><div class="node-age"><strong>${state}</strong><div class="node-meta">${dateLabel} ${updated.toLocaleString()}</div></div></div>`;}).join('');}catch(error){root.innerHTML=`<p class="error">${esc(error.message)}</p>`;}}
+function fleetScreenMarkup(node,screen,canManage){const labels={schedule:'Schedule',pricing:'Pricing',rules:'Public Skating Rules',video_for_screens:'Video for Screens'},channel=screen.channel||'',custom=!channel&&screen.kind&&screen.kind!=='standby',display=labels[channel]||(custom?'Custom content':'Standby'),customOption=custom?'<option value="__custom" selected disabled>Custom content</option>':'',options=customOption+[['','Standby'],...Object.entries(labels)].map(([value,label])=>`<option value="${value}"${!custom&&value===channel?' selected':''}>${label}</option>`).join('');return `<div class="fleet-screen"><div><strong>${esc(screen.name||screen.output)}</strong><div class="node-meta">${esc(screen.output)} · Showing: ${esc(display)}</div></div>${canManage?`<select data-fleet-host="${esc(node.hostname)}" data-fleet-output="${esc(screen.output)}" data-saved="${esc(custom?'__custom':channel)}" aria-label="Content shown on ${esc(screen.name||screen.output)}">${options}</select>`:''}<div class="status fleet-screen-status" aria-live="polite"></div></div>`;}
+async function loadFleetNodes(){const root=document.querySelector('#fleet-nodes');try{const response=await fetch('/api/sync/nodes',{cache:'no-store'}),data=await response.json();if(!response.ok)throw new Error(data.error||'Could not read attached nodes.');if(!data.nodes.length){root.innerHTML='<p class="muted">No display nodes are registered yet.</p>';return;}const now=Date.now();root.innerHTML=data.nodes.map(node=>{const updated=new Date(Number(node.last_updated)*1000),age=Math.max(0,now-updated.getTime()),master=node.role==='master',current=node.hostname===data.current_hostname,state=master?'Master controller':age>15*60*1000?'Check-in overdue':'Recently synced',dateLabel=master?'Content updated':'Last synced',screens=node.screens||[],screenText=screens.length?`<div class="fleet-screens">${screens.map(screen=>fleetScreenMarkup(node,screen,data.can_manage)).join('')}</div>`:'<div class="node-meta">Screens: Not named yet</div>';return `<div class="node-row${current?' current':''}"><div><strong>${esc(node.hostname)}</strong>${current?'<span class="current-node">Current node</span>':''}<div class="node-meta">${master?'Master':'Playback node'} · Revision ${Number(node.revision)||0} · ${esc(node.address||'Private network')}</div>${screenText}</div><div class="node-age"><strong>${state}</strong><div class="node-meta">${dateLabel} ${updated.toLocaleString()}</div></div></div>`;}).join('');root.querySelectorAll('[data-fleet-host]').forEach(select=>select.addEventListener('change',saveFleetAssignment));}catch(error){root.innerHTML=`<p class="error">${esc(error.message)}</p>`;}}
+async function saveFleetAssignment(event){const select=event.currentTarget,status=select.closest('.fleet-screen').querySelector('.fleet-screen-status'),previous=select.dataset.saved||'';select.disabled=true;status.className='status fleet-screen-status';status.textContent='Updating screen…';try{const response=await fetch('/api/sync/assignment',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({hostname:select.dataset.fleetHost,output:select.dataset.fleetOutput,channel:select.value})}),data=await response.json();if(!response.ok)throw new Error(data.error||'Could not change this screen.');select.dataset.saved=select.value;status.classList.add('success');status.textContent='Screen updated.';setTimeout(loadFleetNodes,1500);}catch(error){select.value=previous;status.classList.add('error');status.textContent=error.message;}finally{select.disabled=false;}}
 async function pushFleetSync(){const button=document.querySelector('#fleet-push'),result=document.querySelector('#fleet-push-result');button.disabled=true;result.className='status';result.textContent='Requesting updates…';try{const response=await fetch('/api/sync/push',{method:'POST'}),data=await response.json();if(!response.ok)throw new Error(data.error||'Could not request node updates.');const successful=(data.results||[]).filter(item=>item.ok).length,failed=(data.results||[]).length-successful;result.classList.add(failed?'error':'success');result.textContent=`Update requested on ${successful} node${successful===1?'':'s'}${failed?`; ${failed} could not be reached`:''}.`;setTimeout(loadFleetNodes,2500);}catch(error){result.classList.add('error');result.textContent=error.message;}finally{button.disabled=false;}}
 function renderTvPower(power){const button=document.querySelector('#tv-power-toggle'),detail=document.querySelector('#tv-power-detail');if(!power.available){button.disabled=true;button.textContent='HDMI-CEC unavailable';detail.textContent=power.message||'This Pi does not currently have an HDMI-CEC connection.';return;}button.disabled=false;button.dataset.action=power.state==='on'?'standby':'on';button.textContent=power.state==='on'?'Turn TV off':'Turn TV on';const mode=power.mode==='manual'?'Manual override active':'Following rink schedule';const next=power.next_transition?` Next automatic transition: ${new Date(power.next_transition).toLocaleString()}.`:'';detail.textContent=`${mode}. Last requested state: ${power.state==='standby'?'off':power.state}.${next}`;}
 async function toggleTvPower(){const button=document.querySelector('#tv-power-toggle'),result=document.querySelector('#tv-power-result'),action=button.dataset.action;button.disabled=true;result.className='status';result.textContent=action==='on'?'Requesting TV power on…':'Requesting TV standby…';try{const response=await fetch('/api/tv-power',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action})}),data=await response.json();if(!response.ok)throw new Error(data.error||'Could not control the TV.');result.classList.add('success');result.textContent=action==='on'?'TV power-on requested.':'TV standby requested.';setTimeout(loadStatus,1800);}catch(error){result.classList.add('error');result.textContent=error.message;button.disabled=false;}}
@@ -910,7 +970,7 @@ class Handler(BaseHTTPRequestHandler):
                     nodes = master_fleet_nodes(config)
                 except (OSError, ValueError, json.JSONDecodeError):
                     nodes = [local_fleet_node(self.store, config)]
-            self.send_bytes(json_bytes({"nodes": nodes, "current_hostname": socket.gethostname()}), "application/json")
+            self.send_bytes(json_bytes({"nodes": nodes, "current_hostname": socket.gethostname(), "can_manage": config.get("mode") == "controller"}), "application/json")
             return
         if path == "/api/status":
             storage = shutil.disk_usage(self.media.directory)
@@ -976,6 +1036,32 @@ class Handler(BaseHTTPRequestHandler):
                 return
             results = request_node_sync(load_fleet_nodes())
             self.send_bytes(json_bytes({"ok": True, "results": results}), "application/json", HTTPStatus.ACCEPTED)
+            return
+        if parsed.path == "/api/sync/assignment":
+            if load_sync_config().get("mode") != "controller":
+                self.send_bytes(json_bytes({"ok": False, "error": "Screen assignments can only be changed from the master controller."}), "application/json", HTTPStatus.CONFLICT)
+                return
+            try:
+                length = min(int(self.headers.get("Content-Length", "0")), 4096)
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                hostname = str(payload.get("hostname", "")).strip()
+                output = str(payload.get("output", "")).strip()
+                channel = str(payload.get("channel", "")).strip()
+                if not FLEET_NODE_RE.fullmatch(hostname):
+                    raise ValueError("Invalid display node.")
+                if hostname == socket.gethostname():
+                    state = self.store.load()
+                    assignment = state.get("assignments", {}).get(output, {})
+                    self.store.assign(output, "standby", "", str(assignment.get("label", output)), channel)
+                else:
+                    node = fleet_node(hostname)
+                    if not node:
+                        raise ValueError("That playback node is not registered with the master.")
+                    request_node_assignment(node, output, channel)
+                    update_fleet_screen_assignment(hostname, output, channel)
+                self.send_bytes(json_bytes({"ok": True, "hostname": hostname, "output": output, "channel": channel}), "application/json", HTTPStatus.ACCEPTED)
+            except (ValueError, TypeError, json.JSONDecodeError, OSError) as error:
+                self.send_bytes(json_bytes({"ok": False, "error": str(error)}), "application/json", HTTPStatus.BAD_REQUEST)
             return
         if parsed.path == "/api/tv-power":
             try:
@@ -1157,6 +1243,10 @@ class SyncHandler(Handler):
         except ValueError:
             return False
 
+    def allowed_master_client(self) -> bool:
+        master = urlparse(str(load_sync_config().get("primary_manifest_url", ""))).hostname
+        return bool(master and self.client_address[0] == master)
+
     def do_GET(self) -> None:
         if not self.allowed_client():
             self.send_error(HTTPStatus.FORBIDDEN)
@@ -1178,6 +1268,24 @@ class SyncHandler(Handler):
             self.send_error(HTTPStatus.FORBIDDEN)
             return
         path = self.path.split("?", 1)[0]
+        if path == "/api/sync/assignment" and load_sync_config().get("mode") == "node":
+            if not self.allowed_master_client():
+                self.send_error(HTTPStatus.FORBIDDEN)
+                return
+            try:
+                length = min(int(self.headers.get("Content-Length", "0")), 4096)
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                output = str(payload.get("output", "")).strip()
+                channel = str(payload.get("channel", "")).strip()
+                state = self.store.load()
+                assignment = state.get("assignments", {}).get(output, {})
+                if output not in state.get("assignments", {}):
+                    raise ValueError("That screen is not registered on this playback node.")
+                updated = self.store.assign(output, "standby", "", str(assignment.get("label", output)), channel)
+                self.send_bytes(json_bytes({"ok": True, "revision": updated.get("revision", 0)}), "application/json", HTTPStatus.ACCEPTED)
+            except (ValueError, TypeError, json.JSONDecodeError, OSError) as error:
+                self.send_bytes(json_bytes({"ok": False, "error": str(error)}), "application/json", HTTPStatus.BAD_REQUEST)
+            return
         if path == "/api/sync/now" and load_sync_config().get("mode") == "node":
             (state_directory() / "sync-now").touch()
             self.send_bytes(json_bytes({"ok": True}), "application/json", HTTPStatus.ACCEPTED)

@@ -8,7 +8,7 @@ from unittest.mock import patch
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from controller import MediaStore, StateStore, admin_page, detect_outputs, detect_x11_outputs, display_page, load_fleet_nodes, local_fleet_node, master_fleet_node, master_fleet_nodes, record_fleet_node, request_node_sync, valid_media_signature
+from controller import MediaStore, StateStore, admin_page, detect_outputs, detect_x11_outputs, display_page, load_fleet_nodes, local_fleet_node, master_fleet_node, master_fleet_nodes, record_fleet_node, request_node_assignment, request_node_sync, update_fleet_screen_assignment, valid_media_signature
 
 
 class StateStoreTests(unittest.TestCase):
@@ -109,7 +109,8 @@ class FleetNodeTests(unittest.TestCase):
             self.assertEqual("100.112.216.40", node["master_address"])
             self.assertEqual(40, node["revision"])
             self.assertEqual(1_795_000_000, node["last_updated"])
-            self.assertEqual([{"output": "HDMI-1", "name": "Lobby - Office Wall"}], node["screens"])
+            self.assertEqual("Lobby - Office Wall", node["screens"][0]["name"])
+            self.assertEqual("standby", node["screens"][0]["kind"])
 
     @patch("controller.urlopen")
     def test_playback_node_reads_the_masters_full_fleet_list(self, mocked_urlopen):
@@ -139,6 +140,24 @@ class FleetNodeTests(unittest.TestCase):
         self.assertEqual("http://100.73.25.2:8788/api/sync/now", request.full_url)
         self.assertEqual("POST", request.method)
 
+    @patch("controller.urlopen")
+    def test_master_can_assign_a_channel_to_a_private_node(self, mocked_urlopen):
+        mocked_urlopen.return_value.__enter__.return_value.status = 202
+        request_node_assignment({"address": "100.73.25.2"}, "HDMI-1", "schedule")
+        request = mocked_urlopen.call_args.args[0]
+        self.assertEqual("http://100.73.25.2:8788/api/sync/assignment", request.full_url)
+        self.assertEqual({"output": "HDMI-1", "channel": "schedule"}, json.loads(request.data))
+
+    def test_master_records_the_new_screen_assignment_without_changing_check_in(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "fleet-nodes.json"
+            record_fleet_node({"hostname": "ice-and-field-display-03", "revision": 42, "screens": [{"output": "HDMI-1", "name": "Lobby 3", "channel": "pricing"}]}, "100.65.185.108", path)
+            before = load_fleet_nodes(path)[0]["last_updated"]
+            update_fleet_screen_assignment("ice-and-field-display-03", "HDMI-1", "schedule", path)
+            node = load_fleet_nodes(path)[0]
+            self.assertEqual("schedule", node["screens"][0]["channel"])
+            self.assertEqual(before, node["last_updated"])
+
     @patch("controller.time.time", return_value=1_794_995_200)
     def test_node_check_in_is_persisted_and_updated(self, _time):
         with tempfile.TemporaryDirectory() as directory:
@@ -149,7 +168,8 @@ class FleetNodeTests(unittest.TestCase):
             self.assertEqual(1, len(nodes))
             self.assertEqual(42, nodes[0]["revision"])
             self.assertEqual(1_794_995_200, nodes[0]["last_updated"])
-            self.assertEqual([{"output": "HDMI-1", "name": "Lobby 3"}], nodes[0]["screens"])
+            self.assertEqual("Lobby 3", nodes[0]["screens"][0]["name"])
+            self.assertEqual("standby", nodes[0]["screens"][0]["kind"])
 
     def test_invalid_node_name_is_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -253,6 +273,8 @@ class DisplayPageTests(unittest.TestCase):
         self.assertIn("current_hostname", page)
         self.assertIn("Push updates to playback nodes", page)
         self.assertIn("/api/sync/push", page)
+        self.assertIn("/api/sync/assignment", page)
+        self.assertIn("Showing:", page)
 
     def test_display_has_quick_channel_menu(self):
         page = display_page("HDMI-A-1", {"kind": "standby", "source": "", "label": "Lobby", "channel": "schedule"}, 2).decode()

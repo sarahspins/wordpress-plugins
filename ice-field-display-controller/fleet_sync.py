@@ -180,7 +180,9 @@ def sync_node(config: dict, store: StateStore, media: MediaStore) -> str:
                 try:
                     state = store.load()
                     screens = [
-                        {"output": str(output), "name": str(assignment.get("label", output))}
+                        {"output": str(output), "name": str(assignment.get("label", output)),
+                         "channel": str(assignment.get("channel", "")),
+                         "kind": str(assignment.get("kind", "standby"))}
                         for output, assignment in state.get("assignments", {}).items()
                         if isinstance(assignment, dict)
                     ]
