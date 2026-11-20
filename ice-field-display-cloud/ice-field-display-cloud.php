@@ -2,7 +2,7 @@
 /*
 Plugin Name: Ice & Field Display Cloud
 Description: Authenticated cloud backup storage for Ice & Field Pi display content.
-Version: 0.1.1
+Version: 0.2.1
 Author: Ice & Field
 Requires at least: 6.4
 Requires PHP: 7.4
@@ -14,7 +14,7 @@ if (!defined('ABSPATH')) {
 }
 
 final class Ice_Field_Display_Cloud {
-    const VERSION = '0.1.1';
+    const VERSION = '0.2.1';
     const REST_NAMESPACE = 'ice-field-display-cloud/v1';
     const MENU_SLUG = 'ifdc-cloud-storage';
     const MAX_MANIFEST_BYTES = 1048576;
@@ -88,6 +88,18 @@ final class Ice_Field_Display_Cloud {
                 'callback' => array(__CLASS__, 'rest_publish_manifest'),
                 'permission_callback' => array(__CLASS__, 'can_publish'),
             ),
+        ));
+
+        register_rest_route(self::REST_NAMESPACE, '/slideshow', array(
+            'methods' => WP_REST_Server::READABLE,
+            'callback' => array(__CLASS__, 'rest_get_slideshow'),
+            'permission_callback' => array(__CLASS__, 'can_publish'),
+        ));
+
+        register_rest_route(self::REST_NAMESPACE, '/master-slideshow', array(
+            'methods' => WP_REST_Server::READABLE,
+            'callback' => array(__CLASS__, 'rest_get_master_slideshow'),
+            'permission_callback' => array(__CLASS__, 'can_publish'),
         ));
     }
 
@@ -267,6 +279,96 @@ final class Ice_Field_Display_Cloud {
         return $response;
     }
 
+    public static function rest_get_slideshow() {
+        if (!class_exists('IFRD_Video_For_Screens') || !class_exists('IFRD_Expiring_Slideshow')) {
+            return new WP_Error('ifdc_slideshow_unavailable', 'Ice & Field Rink Displays is not active.', array('status' => 409));
+        }
+
+        $settings = wp_parse_args(get_option(IFRD_Video_For_Screens::OPTION, array()), array(
+            'slideshow_images' => array(),
+            'slideshow_seconds' => '10',
+        ));
+        $timezone = class_exists('IFRD_Scheduled_Media') ? IFRD_Scheduled_Media::timezone_name() : wp_timezone_string();
+        $rows = IFRD_Expiring_Slideshow::sanitize($settings['slideshow_images'] ?? array(), $timezone);
+        $slides = array();
+        foreach (array_slice($rows, 0, 100) as $row) {
+            $url = esc_url_raw((string) ($row['url'] ?? ''));
+            if ($url === '') {
+                continue;
+            }
+            $slides[] = array(
+                'url' => $url,
+                'starts_at' => sanitize_text_field((string) ($row['starts_at'] ?? '')),
+                'expires_at' => sanitize_text_field((string) ($row['expires_at'] ?? '')),
+            );
+        }
+
+        $response = new WP_REST_Response(array(
+            'schema' => 1,
+            'revision' => (string) IFRD_Video_For_Screens::current_refresh_version(),
+            'generated_at' => gmdate('c'),
+            'timezone' => $timezone,
+            'seconds' => min(120, max(2, (int) ($settings['slideshow_seconds'] ?? 10))),
+            'slides' => $slides,
+        ), 200);
+        $response->header('Cache-Control', 'no-cache, must-revalidate');
+        return $response;
+    }
+
+    public static function master_slideshow_data() {
+        $paths = self::paths();
+        if (!is_file($paths['manifest'])) {
+            return new WP_Error('ifdc_no_manifest', 'Display 01 has not published a cloud manifest yet.', array('status' => 404));
+        }
+        $manifest = json_decode((string) file_get_contents($paths['manifest']), true);
+        if (!is_array($manifest)) {
+            return new WP_Error('ifdc_manifest_broken', 'The stored display manifest is invalid.', array('status' => 500));
+        }
+        $channel = $manifest['channels']['video_for_screens'] ?? array();
+        $settings = array();
+        if (($channel['kind'] ?? '') === 'slideshow') {
+            $settings = json_decode((string) ($channel['source'] ?? ''), true);
+        }
+        $media = array();
+        foreach ((array) ($manifest['media'] ?? array()) as $item) {
+            if (is_array($item) && !empty($item['id']) && !empty($item['file'])) {
+                $media[(string) $item['id']] = $item;
+            }
+        }
+        $base_url = trailingslashit((string) ($manifest['object_base_url'] ?? (trailingslashit($paths['url']) . 'objects/')));
+        $slides = array();
+        foreach (array_slice((array) ($settings['slides'] ?? array()), 0, 100) as $slide) {
+            $source = is_array($slide) ? (string) ($slide['source'] ?? '') : (string) $slide;
+            if (!preg_match('#^/media/([a-f0-9]{32})$#', $source, $match) || empty($media[$match[1]])) {
+                continue;
+            }
+            $slides[] = array(
+                'url' => $base_url . rawurlencode((string) $media[$match[1]]['file']),
+                'starts_at' => is_array($slide) ? sanitize_text_field((string) ($slide['start'] ?? '')) : '',
+                'expires_at' => is_array($slide) ? sanitize_text_field((string) ($slide['end'] ?? '')) : '',
+                'name' => sanitize_text_field((string) ($media[$match[1]]['name'] ?? 'Slide image')),
+            );
+        }
+        return array(
+            'schema' => 1,
+            'revision' => (int) ($manifest['revision'] ?? 0),
+            'published_at' => sanitize_text_field((string) ($manifest['published_at'] ?? '')),
+            'seconds' => min(120, max(2, (int) ($settings['seconds'] ?? 10))),
+            'slides' => $slides,
+            'kind' => sanitize_key((string) ($channel['kind'] ?? 'standby')),
+        );
+    }
+
+    public static function rest_get_master_slideshow() {
+        $data = self::master_slideshow_data();
+        if (is_wp_error($data)) {
+            return $data;
+        }
+        $response = new WP_REST_Response($data, 200);
+        $response->header('Cache-Control', 'no-cache, must-revalidate');
+        return $response;
+    }
+
     public static function rest_status() {
         $paths = self::ensure_directories();
         if (is_wp_error($paths)) {
@@ -310,6 +412,8 @@ final class Ice_Field_Display_Cloud {
                         <tr><th>Stored media objects</th><td><?php echo esc_html(number_format_i18n($status['objects'])); ?></td></tr>
                         <tr><th>Stored media size</th><td><?php echo esc_html(size_format($status['bytes'], 1)); ?></td></tr>
                         <tr><th>Public manifest</th><td><code><?php echo esc_html($status['manifest_url']); ?></code></td></tr>
+                        <tr><th>Authenticated slideshow feed</th><td><code><?php echo esc_html(rest_url(self::REST_NAMESPACE . '/slideshow')); ?></code></td></tr>
+                        <tr><th>Display 01 slideshow</th><td><code><?php echo esc_html(rest_url(self::REST_NAMESPACE . '/master-slideshow')); ?></code></td></tr>
                         <tr><th>Storage folder</th><td><code><?php echo esc_html($paths['base']); ?></code></td></tr>
                         <tr><th>WordPress upload limit</th><td><?php echo esc_html((string) ini_get('upload_max_filesize')); ?> per file; <?php echo esc_html((string) ini_get('post_max_size')); ?> per request</td></tr>
                     </tbody>

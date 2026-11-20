@@ -33,6 +33,7 @@ Self-contained Raspberry Pi display management for Ice & Field. One physical Pi 
 - Waits for the local Controller, paints a fully local branded startup page, and only then transitions to the assigned display so Chromium never needs to expose a prolonged white loading screen.
 - Uses Chromium's local basic password store for kiosk profiles so desktop keyring prompts cannot block unattended startup.
 - Provides a local, beginner-friendly control panel.
+- Uses the Ice & Field favicon in local and Tailscale management-browser tabs without depending on a hosted asset.
 - Provides a local media library for MP4, WebM, PNG, JPEG, WebP, and SVG files, including upload progress, previews, storage reporting, content validation, and safe removal.
 - Accepts multiple media files in one selection and uploads them sequentially with combined progress, avoiding a burst of simultaneous transfers on lower-memory nodes.
 - Builds locally stored image playlists for named channels with a configurable hold time and a continuous, approximately 0.3-second right-to-left Ice & Field four-color wipe between slides. The image swaps at the exact midpoint without pausing the bands. Band widths and the navy, blue, orange, and gold order vary with every transition.
@@ -70,6 +71,8 @@ The installer uses only software already present in a standard Raspberry Pi OS D
 The control panel is available locally at `http://127.0.0.1:8787/`. It is intentionally not exposed to the network until authenticated remote access is implemented.
 
 Fleet settings are available from the control panel under **Fleet synchronization**, or directly at `http://127.0.0.1:8787/sync-settings`. Enter the WordPress username and application password on Display 01 only. The application password is stored locally with owner-only permissions and is never included in a manifest or sent to another node. **Sync now** requests an immediate check without changing the five-minute schedule.
+
+When Ice & Field Display Cloud 0.2.0 or newer is active, Display 01 also polls its authenticated Video for Screens slideshow feed during that five-minute check. A new WordPress slideshow revision is downloaded into Display 01's local media library, converted to the local Ice & Field wipe playlist, and included in the normal master manifest. Playback nodes still pull only from Display 01 or its published recovery manifest; they never need WordPress credentials. If WordPress is unavailable, every display continues using its last verified local slideshow.
 
 The same first-time cloud setup can be completed from Display 01's terminal without exposing the application password on screen:
 

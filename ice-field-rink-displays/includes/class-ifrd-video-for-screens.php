@@ -1,6 +1,6 @@
 <?php
 /**
- * Full-screen looping video display for lobby and rink screens.
+ * Full-screen image slideshow for lobby and rink screens.
  */
 class IFRD_Video_For_Screens {
     const OPTION = 'ifrd_video_screen_settings';
@@ -15,6 +15,7 @@ class IFRD_Video_For_Screens {
         add_filter('option_page_capability_ifrd_video_screen_group', array($this, 'settings_capability'));
         add_action('admin_enqueue_scripts', array($this, 'admin_assets'));
         add_action('admin_post_ifrd_refresh_video_screens', array($this, 'refresh_screens'));
+        add_action('admin_post_ifrd_import_master_slideshow', array($this, 'import_master_slideshow'));
         add_action('init', array($this, 'maybe_refresh_after_update'), 1);
         add_action('wp_ajax_' . self::AJAX_ACTION, array($this, 'refresh_status'));
         add_action('wp_ajax_nopriv_' . self::AJAX_ACTION, array($this, 'refresh_status'));
@@ -25,10 +26,10 @@ class IFRD_Video_For_Screens {
         return array(
             'video_url' => '',
             'video_schedule' => array(),
-            'display_mode' => 'video',
+            'display_mode' => 'slideshow',
             'slideshow_images' => array(),
             'slideshow_seconds' => '10',
-            'slideshow_transition' => 'fade',
+            'slideshow_transition' => 'brand-wipe',
             'slideshow_transition_seconds' => '1',
         );
     }
@@ -119,10 +120,10 @@ class IFRD_Video_For_Screens {
         $old = $this->opts();
         $timezone_name = IFRD_Scheduled_Media::timezone_name();
         $video_schedule = IFRD_Scheduled_Media::sanitize($input['video_schedule'] ?? array(), $timezone_name);
-        $display_mode = (($input['display_mode'] ?? 'video') === 'slideshow') ? 'slideshow' : 'video';
+        $display_mode = 'slideshow';
         $slideshow_images = IFRD_Expiring_Slideshow::sanitize($input['slideshow_images'] ?? array(), $timezone_name);
-        $slideshow_seconds = (string) min(300, max(2, intval($input['slideshow_seconds'] ?? 10)));
-        $slideshow_transition = in_array(($input['slideshow_transition'] ?? 'fade'), array('fade', 'slide', 'none'), true) ? $input['slideshow_transition'] : 'fade';
+        $slideshow_seconds = (string) min(120, max(2, intval($input['slideshow_seconds'] ?? 10)));
+        $slideshow_transition = 'brand-wipe';
         $slideshow_transition_seconds = (string) min(5, max(0.1, floatval($input['slideshow_transition_seconds'] ?? 1)));
 
         if (
@@ -163,6 +164,43 @@ class IFRD_Video_For_Screens {
         exit;
     }
 
+    public function import_master_slideshow() {
+        if (!current_user_can(self::CAPABILITY)) {
+            wp_die(esc_html__('You are not allowed to import this slideshow.', 'ice-field-rink-displays'));
+        }
+        check_admin_referer('ifrd_import_master_slideshow');
+        if (!class_exists('Ice_Field_Display_Cloud') || !method_exists('Ice_Field_Display_Cloud', 'master_slideshow_data')) {
+            wp_die(esc_html__('Ice & Field Display Cloud 0.2.0 or newer is required.', 'ice-field-rink-displays'));
+        }
+        $master = Ice_Field_Display_Cloud::master_slideshow_data();
+        if (is_wp_error($master)) {
+            wp_die(esc_html($master->get_error_message()));
+        }
+        $slides = array();
+        foreach ((array) ($master['slides'] ?? array()) as $slide) {
+            if (!is_array($slide) || empty($slide['url'])) {
+                continue;
+            }
+            $slides[] = array(
+                'url' => esc_url_raw((string) $slide['url']),
+                'starts_at' => sanitize_text_field((string) ($slide['starts_at'] ?? '')),
+                'expires_at' => sanitize_text_field((string) ($slide['expires_at'] ?? '')),
+                'delete_after_expiry' => '0',
+            );
+        }
+        $settings = $this->opts();
+        $settings['display_mode'] = 'slideshow';
+        $settings['slideshow_images'] = $slides;
+        $settings['slideshow_seconds'] = (string) min(120, max(2, (int) ($master['seconds'] ?? 10)));
+        update_option(self::OPTION, $settings, false);
+        self::bump_refresh_version();
+        wp_safe_redirect(add_query_arg(
+            array('page' => 'ifrd-video-for-screens', 'master-imported' => '1'),
+            admin_url('admin.php')
+        ));
+        exit;
+    }
+
     public function refresh_status() {
         nocache_headers();
         wp_send_json_success(array(
@@ -175,40 +213,27 @@ class IFRD_Video_For_Screens {
         ?>
         <div class="wrap">
             <h1>Video for Screens</h1>
+            <p>Manage the ordered image slideshow shown by the Video for Screens channel. Display 01 checks WordPress for saved changes every five minutes, stores the images locally, and then synchronizes the playlist to the fleet.</p>
             <?php if (!empty($_GET['screens-refreshed'])): ?>
-                <div class="notice notice-success is-dismissible"><p>Refresh requested. Open video screens should reload within about 60 seconds.</p></div>
+                <div class="notice notice-success is-dismissible"><p>Refresh requested. Open WordPress slideshow previews should reload within about 60 seconds; display 01 will also collect this revision during its next fleet check.</p></div>
+            <?php endif; ?>
+            <?php if (!empty($_GET['master-imported'])): ?>
+                <div class="notice notice-success is-dismissible"><p>Display 01's slideshow was imported. You can now edit it below; saving will queue it for the next fleet synchronization.</p></div>
             <?php endif; ?>
 
             <form method="post" action="options.php">
                 <?php settings_fields('ifrd_video_screen_group'); ?>
-                <table class="form-table">
-                    <tr><th>Display Mode</th><td><select name="<?php echo esc_attr(self::OPTION); ?>[display_mode]"><option value="video" <?php selected($o['display_mode'], 'video'); ?>>Video</option><option value="slideshow" <?php selected($o['display_mode'], 'slideshow'); ?>>Image slideshow</option></select></td></tr>
-                    <tr>
-                        <th>Full-Screen Video</th>
-                        <td><?php IFRD_Banner_Media::render_picker(self::OPTION, $o, 'video_url', 'ifrd-video-screen-file', array('video'), array(
-                            'title' => 'Choose a screen video',
-                            'button_text' => 'Use this video',
-                            'placeholder' => 'Select a video or paste its URL',
-                            'description' => 'The video fills the browser, starts muted, and repeats continuously. Saving a different video also asks open screens to refresh.',
-                        )); ?></td>
-                    </tr>
-                </table>
                 <?php IFRD_Expiring_Slideshow::render_editor(self::OPTION, 'slideshow_images', $o['slideshow_images'], IFRD_Scheduled_Media::timezone_name(), 'Screen Image Slideshow'); ?>
-                <p><label><strong>Seconds per image</strong> <input type="number" min="2" max="300" class="small-text" name="<?php echo esc_attr(self::OPTION); ?>[slideshow_seconds]" value="<?php echo esc_attr($o['slideshow_seconds']); ?>"></label></p>
-                <p><label><strong>Transition</strong> <select name="<?php echo esc_attr(self::OPTION); ?>[slideshow_transition]"><option value="fade" <?php selected($o['slideshow_transition'], 'fade'); ?>>Fade</option><option value="slide" <?php selected($o['slideshow_transition'], 'slide'); ?>>Slide</option><option value="none" <?php selected($o['slideshow_transition'], 'none'); ?>>None</option></select></label> &nbsp; <label><strong>Duration</strong> <input type="number" min="0.1" max="5" step="0.1" class="small-text" name="<?php echo esc_attr(self::OPTION); ?>[slideshow_transition_seconds]" value="<?php echo esc_attr($o['slideshow_transition_seconds']); ?>"> seconds</label></p>
-                <?php IFRD_Scheduled_Media::render_editor(
-                    self::OPTION,
-                    'video_schedule',
-                    $o['video_schedule'] ?? array(),
-                    IFRD_Scheduled_Media::timezone_name(),
-                    'Scheduled Video Changes'
-                ); ?>
-                <?php submit_button('Save Video'); ?>
+                <p><label><strong>Seconds per image</strong> <input type="number" min="2" max="120" class="small-text" name="<?php echo esc_attr(self::OPTION); ?>[slideshow_seconds]" value="<?php echo esc_attr($o['slideshow_seconds']); ?>"></label></p>
+                <p><strong>Transition:</strong> Ice &amp; Field color wipe <span class="description">— used by both the WordPress shortcode and Pi screens.</span></p>
+                <?php submit_button('Save Slideshow'); ?>
             </form>
+
+            <?php $this->render_master_slideshow(); ?>
 
             <hr>
             <h2>Remote Refresh</h2>
-            <p>Use this after updating the page, changing display settings, or whenever an open screen needs to reload.</p>
+            <p>Use this to reload open WordPress slideshow preview pages. The Pi fleet checks saved slideshow revisions automatically.</p>
             <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
                 <input type="hidden" name="action" value="ifrd_refresh_video_screens">
                 <?php wp_nonce_field('ifrd_refresh_video_screens'); ?>
@@ -223,6 +248,39 @@ class IFRD_Video_For_Screens {
         <?php
     }
 
+    private function render_master_slideshow() {
+        if (!class_exists('Ice_Field_Display_Cloud') || !method_exists('Ice_Field_Display_Cloud', 'master_slideshow_data')) {
+            return;
+        }
+        $master = Ice_Field_Display_Cloud::master_slideshow_data();
+        ?>
+        <hr>
+        <h2>Currently on Display 01</h2>
+        <?php if (is_wp_error($master)) : ?>
+            <p><?php echo esc_html($master->get_error_message()); ?></p>
+        <?php else : ?>
+            <p><strong>Master revision:</strong> <?php echo esc_html((string) $master['revision']); ?>
+                <?php if (!empty($master['published_at'])) : ?> &nbsp; <strong>Published:</strong> <?php echo esc_html(wp_date(get_option('date_format') . ' ' . get_option('time_format'), strtotime((string) $master['published_at']))); ?><?php endif; ?>
+                &nbsp; <strong>Hold:</strong> <?php echo esc_html((string) $master['seconds']); ?> seconds</p>
+            <?php if (!empty($master['slides'])) : ?>
+                <div style="display:flex;flex-wrap:wrap;gap:12px;margin:12px 0 18px">
+                    <?php foreach ($master['slides'] as $slide) : ?>
+                        <figure style="width:160px;margin:0"><img src="<?php echo esc_url($slide['url']); ?>" alt="" style="display:block;width:160px;height:90px;object-fit:contain;background:#071f33;border:1px solid #c3c4c7;border-radius:6px"><figcaption style="margin-top:4px;word-break:break-word"><?php echo esc_html((string) ($slide['name'] ?? 'Slide image')); ?><?php if (!empty($slide['starts_at'])) : ?><br><small>Begins <?php echo esc_html((string) $slide['starts_at']); ?></small><?php endif; ?><?php if (!empty($slide['expires_at'])) : ?><br><small>Stops <?php echo esc_html((string) $slide['expires_at']); ?></small><?php endif; ?></figcaption></figure>
+                    <?php endforeach; ?>
+                </div>
+                <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+                    <input type="hidden" name="action" value="ifrd_import_master_slideshow">
+                    <?php wp_nonce_field('ifrd_import_master_slideshow'); ?>
+                    <?php submit_button('Import from Display 01', 'secondary', 'submit', false); ?>
+                    <p class="description">This replaces the editable WordPress slideshow with the master copy. It does not change display 01 until you save the slideshow above.</p>
+                </form>
+            <?php else : ?>
+                <p>Display 01 is not currently publishing an image slideshow for this channel.</p>
+            <?php endif; ?>
+        <?php endif; ?>
+        <?php
+    }
+
     public function shortcode($atts) {
         return self::render_current();
     }
@@ -231,26 +289,14 @@ class IFRD_Video_For_Screens {
         $o = wp_parse_args(get_option(self::OPTION, array()), array(
             'video_url' => '',
             'video_schedule' => array(),
-            'display_mode' => 'video',
+            'display_mode' => 'slideshow',
             'slideshow_images' => array(),
             'slideshow_seconds' => '10',
-            'slideshow_transition' => 'fade',
+            'slideshow_transition' => 'brand-wipe',
             'slideshow_transition_seconds' => '1',
         ));
-        if (($o['display_mode'] ?? 'video') === 'slideshow') {
-            $slides = IFRD_Expiring_Slideshow::active($o['slideshow_images'] ?? array(), IFRD_Scheduled_Media::timezone_name());
-            return self::render_player('', self::current_display_version(), self::AJAX_ACTION, $id_prefix, $slides, $o['slideshow_seconds'] ?? 10, $o['slideshow_transition'] ?? 'fade', $o['slideshow_transition_seconds'] ?? 1);
-        }
-        $effective = IFRD_Scheduled_Media::effective(
-            $o['video_url'] ?? '',
-            'video',
-            $o['video_schedule'] ?? array(),
-            IFRD_Scheduled_Media::timezone_name()
-        );
-        $video_url = $effective['url'];
-        $refresh_version = self::current_display_version();
-
-        return self::render_player($video_url, $refresh_version, self::AJAX_ACTION, $id_prefix);
+        $slides = IFRD_Expiring_Slideshow::active($o['slideshow_images'] ?? array(), IFRD_Scheduled_Media::timezone_name());
+        return self::render_player('', self::current_display_version(), self::AJAX_ACTION, $id_prefix, $slides, $o['slideshow_seconds'] ?? 10, 'brand-wipe', $o['slideshow_transition_seconds'] ?? 1);
     }
 
     public static function render_player($video_url, $refresh_version, $ajax_action, $id_prefix = 'ifrd-screen-video-', $slides = array(), $slide_seconds = 10, $transition = 'fade', $transition_seconds = 1) {

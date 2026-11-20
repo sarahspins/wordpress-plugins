@@ -25,6 +25,7 @@ from urllib.request import Request, urlopen
 
 APP_NAME = "Ice & Field Display Controller"
 VERSION = "0.1.0-dev"
+FAVICON_DATA_URI = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAADiklEQVRYw+2WXWgUVxTHf7Mzu9nPZDcmatZsQpJqmxhtkUIsakvbgEmeWpBSoZbqk1BSKJU8FEHEt6XWBl9qKYqID31SQUiblrYoFFpJsGltoquYhA2TmElddT8yOzszPszqZrsbXbOBPpgD9+Xe8/G/5/zvuQeedxHo7gsAbYBY5FxmIBzJt7BB14H1QF2ZsQ1gTAK2AN8BriJKJ4HevB2pAuATYF+ZAFTgIyl7cxfgLqLkWMTYsYj+s4gISLb/mwMrAKQnH5uCeWhLJbAOqMkSJ+q4YkiaWRS7CdzJ6pVCwuSiAKpFjf2rox3AeaAVqAQ0QD7dfM13bLqBoUQlBsJ/nfYCf5QAwASUogCaK5IcbYjQU6VstvhqB9MEIwNQ9X71DNt9MY5MNXFaCZLOZcMAZhgITyy5BGsklf6GG/T4FWyiBK1vQctW0DW4NgjjwwiCScihEg7dRDVsnJmrw8zPxNI4IGDyYY1Ml1/BJgD17bC5G349AW4/vPYBKOMQnwPAL2XoC05wOR7gtuqyXMAquvuCJaQ/xkA4lQdgrT3NnhoZ6dFl/EFI/AvydXD5rDI43MDcY5uXnAneCdzh2HQjgBPoB1JPAZABPgUG8wC0u+K0OBfYRv+CjZ3Q3AHr2kC5Dfdn8tuZANu8MY4LITKmTQBCJWReA7wFfaCxYh6XYOQ25h9A6j68exg8Abh8CvSMxQl/Lsu1dg2HYJbfiIyFPpw+ePtjq96/nYFAPfhqYe0G6NidLeOCii5HI7qlukkYIl5Rh9DLFvG+/9J6AboGnb2QScPozxCTH9tNaw7ShlB+BkZTHm7MZz85pxe0edDT1vsfPgeJOajfCNPXc2wy4dKDAJmcKxVIlrD0ggzMZuycUupod8VxTP4Jm7rg1V1WwNom8FTD3z/Cjr0w+BXEZEaSPi7EahcGPwCMlDKMFAAwETir1LHde49dgow42A+bdlrNSE3AT8fh7hS074RgG9HZGAejLUTTFY9c6MAIA+FLS+6Ed3U7n02uJ2GIvGdM4lW+LoR/9SKjKQ+fRzfww71V2f6zjL/hlOakd+JFfo9XDp1oGrsJvJKdmkxg6tvZ4Oov5MYXIqq7rOBPnAeShsg3s/VDwB7gTeB14A2gZ/946y8R1VN28BLmARAOD2tA7s3ZXdDZabJMsjKSrQCQgH+yc1wxQo4V7OhpgLPA0CL/fIQVeQZ5CP3DL7yfnCjEAAAAAElFTkSuQmCC"
 OUTPUT_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 KINDS = {"standby", "web", "image", "video", "slideshow"}
 CHANNELS = {
@@ -331,8 +332,8 @@ class StateStore:
             except json.JSONDecodeError as error:
                 raise ValueError("The slideshow settings are invalid.") from error
             slides = settings.get("slides", [])
-            if not isinstance(slides, list) or not (2 <= len(slides) <= 100):
-                raise ValueError("Choose between 2 and 100 slideshow images.")
+            if not isinstance(slides, list) or not (1 <= len(slides) <= 100):
+                raise ValueError("Choose between 1 and 100 slideshow images.")
             normalized = []
             schedule_re = re.compile(r"^$|^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$")
             for item in slides:
@@ -751,6 +752,7 @@ def page_shell(title: str, body: str, script: str = "") -> bytes:
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{html.escape(title)}</title>
+<link rel="icon" type="image/png" sizes="32x32" href="{FAVICON_DATA_URI}">
 <style>
 :root{{--navy:#064b75;--blue:#087dbb;--orange:#ff7830;--ink:#183241;--muted:#667986;--paper:#f4f7f9;--line:#d9e2e7}}
 *{{box-sizing:border-box}} body{{margin:0;background:var(--paper);color:var(--ink);font:16px/1.45 system-ui,-apple-system,sans-serif}}

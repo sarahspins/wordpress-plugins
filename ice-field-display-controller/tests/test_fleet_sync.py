@@ -3,13 +3,14 @@ import io
 import json
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from controller import MediaStore, StateStore
-from fleet_sync import apply_manifest, heartbeat_url
+from fleet_sync import apply_manifest, heartbeat_url, slideshow_feed_url, sync_wordpress_slideshow
 
 
 class FleetSyncTests(unittest.TestCase):
@@ -49,6 +50,44 @@ class FleetSyncTests(unittest.TestCase):
             manifest = media.sync_manifest(store.load())
             self.assertEqual(hashlib.sha256(payload).hexdigest() + ".png", manifest["media"][0]["file"])
             self.assertEqual(item["id"], manifest["media"][0]["id"])
+
+    def test_wordpress_slideshow_becomes_local_channel_and_skips_same_revision(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            store = StateStore(root / "state.json")
+            media = MediaStore(root / "media")
+            payload = b"\x89PNG\r\n\x1a\ncontent"
+            item = media.upload(io.BytesIO(payload), "slide.png", len(payload))
+            config = {
+                "cloud_api_base": "https://shows.example/wp-json/ice-field-display-cloud/v1",
+                "cloud_username": "display",
+                "cloud_application_password": "secret",
+            }
+            feed = {
+                "schema": 1,
+                "revision": "12345",
+                "seconds": 7,
+                "slides": [{"url": "https://shows.example/slide.png", "starts_at": "2026-11-25T06:00", "expires_at": "2026-12-01T09:15"}],
+            }
+            with patch("fleet_sync.fetch_authenticated_json", return_value=feed), patch(
+                "fleet_sync.import_slideshow_image", return_value=item
+            ) as importer:
+                self.assertTrue(sync_wordpress_slideshow(config, store, media))
+                self.assertFalse(sync_wordpress_slideshow(config, store, media))
+            channel = store.load()["channels"]["video_for_screens"]
+            settings = json.loads(channel["source"])
+            self.assertEqual("slideshow", channel["kind"])
+            self.assertEqual(7, settings["seconds"])
+            self.assertEqual("2026-11-25T06:00", settings["slides"][0]["start"])
+            self.assertEqual("2026-12-01T09:15", settings["slides"][0]["end"])
+            self.assertEqual(f"/media/{item['id']}", settings["slides"][0]["source"])
+            importer.assert_called_once()
+
+    def test_slideshow_feed_uses_cloud_api_base(self):
+        self.assertEqual(
+            "https://shows.example/api/slideshow",
+            slideshow_feed_url({"cloud_api_base": "https://shows.example/api/"}),
+        )
 
 
 if __name__ == "__main__":

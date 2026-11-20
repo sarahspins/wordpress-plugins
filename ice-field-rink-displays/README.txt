@@ -1,4 +1,10 @@
-Ice & Field Rink Displays v2.8.26
+Ice & Field Rink Displays v2.8.29
+
+Version 2.8.29 adds drag-and-drop ordering to the visual slideshow cards. The `[video_for_screens]` WordPress shortcode now uses the same approximately 0.3-second randomized right-to-left Ice & Field color wipe as the Pi fleet, including the same navy, blue, orange, and gold palette and varied band widths.
+
+Version 2.8.28 replaces the raw slideshow URL list with visual image-preview cards and adds optional Begin displaying and Stop displaying date/time controls. Both schedule boundaries synchronize through display 01 and remain available to the local Pi playlist while WordPress is offline.
+
+Version 2.8.27 makes Video for Screens an image-slideshow workflow. Saving queues a new authenticated slideshow revision for display 01, which caches the images locally and distributes the playlist to its playback nodes. The page also previews display 01's most recently published master playlist and can explicitly import it for editing without silently overwriting WordPress changes. The existing WordPress shortcode remains available as a browser preview, while Pi playback remains independent of WordPress after synchronization.
 
 Version 2.8.26 restores uncropped Schedule Display banners. Single images and slideshow images are exactly 100% of the display width with automatic proportional height; no fixed-height box or cover sizing can crop the artwork. The subtle border and rounded corners remain. The large TV clock is explicitly rendered in 12-hour AM/PM format regardless of the kiosk browser's locale preference.
 

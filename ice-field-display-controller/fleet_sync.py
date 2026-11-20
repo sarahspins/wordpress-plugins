@@ -46,6 +46,16 @@ def fetch_json(url: str, timeout: int = 15) -> dict:
         return json.loads(response.read().decode("utf-8"))
 
 
+def fetch_authenticated_json(url: str, config: dict, timeout: int = 30) -> dict:
+    request = Request(url, headers={
+        "Accept": "application/json",
+        "Authorization": authorization(config),
+        "User-Agent": "IceFieldDisplay/0.1",
+    })
+    with urlopen(request, timeout=timeout) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
 def heartbeat_url(manifest_url: str) -> str:
     parsed = urlparse(manifest_url)
     return f"{parsed.scheme}://{parsed.netloc}/api/sync/heartbeat"
@@ -200,6 +210,88 @@ def authorization(config: dict) -> str:
     return "Basic " + base64.b64encode(credentials).decode()
 
 
+def slideshow_feed_url(config: dict) -> str:
+    return f"{str(config.get('cloud_api_base', '')).rstrip('/')}/slideshow"
+
+
+def import_slideshow_image(url: str, media: MediaStore) -> dict:
+    parsed = urlparse(url)
+    original_name = Path(parsed.path).name or "wordpress-slide.jpg"
+    suffix = Path(original_name).suffix.lower()
+    if suffix not in {".png", ".jpg", ".jpeg", ".webp"}:
+        raise ValueError(f"Unsupported slideshow image: {original_name}")
+
+    fd, temporary = tempfile.mkstemp(prefix="wordpress-slide-", suffix=suffix)
+    digest = hashlib.sha256()
+    size = 0
+    try:
+        request = Request(url, headers={"User-Agent": "IceFieldDisplay/0.1"})
+        with os.fdopen(fd, "wb") as handle, urlopen(request, timeout=120) as response:
+            while chunk := response.read(1024 * 1024):
+                size += len(chunk)
+                if size > 100 * 1024 * 1024:
+                    raise ValueError("A WordPress slideshow image exceeds the 100 MB safety limit.")
+                handle.write(chunk)
+                digest.update(chunk)
+        existing = media.get_by_hash(digest.hexdigest())
+        if existing:
+            item = dict(existing[0])
+            item.setdefault("id", existing[0].get("id", ""))
+            return item
+        with open(temporary, "rb") as source:
+            return media.upload(source, original_name, size)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+
+
+def sync_wordpress_slideshow(config: dict, store: StateStore, media: MediaStore) -> bool:
+    if not config.get("cloud_username") or not config.get("cloud_application_password"):
+        raise RuntimeError("WordPress slideshow credentials are incomplete.")
+    feed = fetch_authenticated_json(slideshow_feed_url(config), config)
+    if not isinstance(feed, dict) or int(feed.get("schema", 0)) != 1 or not isinstance(feed.get("slides"), list):
+        raise ValueError("The WordPress slideshow feed is invalid.")
+    revision = str(feed.get("revision", "")).strip()
+    if not revision:
+        raise ValueError("The WordPress slideshow revision is missing.")
+    state = store.load()
+    previous = state.get("wordpress_slideshow", {}) if isinstance(state.get("wordpress_slideshow"), dict) else {}
+    if str(previous.get("revision", "")) == revision:
+        return False
+
+    slides = []
+    for row in feed["slides"][:100]:
+        if not isinstance(row, dict) or not str(row.get("url", "")).startswith(("http://", "https://")):
+            continue
+        item = import_slideshow_image(str(row["url"]), media)
+        media_id = str(item.get("id", ""))
+        if not media_id:
+            raise ValueError("An imported slideshow image has no local media ID.")
+        slides.append({
+            "source": f"/media/{media_id}",
+            "start": str(row.get("starts_at", "")),
+            "end": str(row.get("expires_at", "")),
+        })
+
+    if slides:
+        source = json.dumps({
+            "slides": slides,
+            "seconds": max(2, min(120, int(feed.get("seconds", 10)))),
+            "transition": "brand-wipe",
+        }, separators=(",", ":"))
+        store.save_channel("video_for_screens", "slideshow", source)
+    else:
+        store.save_channel("video_for_screens", "standby", "")
+    state = store.load()
+    state["wordpress_slideshow"] = {
+        "revision": revision,
+        "at": int(time.time()),
+        "source": slideshow_feed_url(config),
+    }
+    store.save(state)
+    return True
+
+
 def upload_object(api_base: str, config: dict, item: dict, path: Path) -> None:
     boundary = "----IceField" + uuid.uuid4().hex
     prefix = (f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{item['file']}\"\r\n"
@@ -267,6 +359,12 @@ def main() -> None:
                 if config.get("mode") == "node":
                     print(f"Display content checked from {sync_node(config, store, media)}", flush=True)
                 elif config.get("mode") == "controller" and config.get("cloud_username"):
+                    try:
+                        changed = sync_wordpress_slideshow(config, store, media)
+                        if changed:
+                            print("Video for Screens updated from WordPress", flush=True)
+                    except Exception as error:
+                        print(f"WordPress slideshow warning: {error}", flush=True)
                     print(f"Cloud backup is current at revision {publish_cloud(config, store, media)}", flush=True)
             except Exception as error:
                 print(f"Fleet synchronization warning: {error}", flush=True)

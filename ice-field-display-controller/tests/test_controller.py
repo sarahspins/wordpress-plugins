@@ -8,7 +8,7 @@ from unittest.mock import patch
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from controller import MediaStore, StateStore, admin_page, detect_outputs, detect_x11_outputs, display_page, load_fleet_nodes, local_fleet_node, master_fleet_node, master_fleet_nodes, record_fleet_node, request_node_assignment, request_node_sync, update_fleet_screen_assignment, valid_media_signature
+from controller import MediaStore, StateStore, admin_page, detect_outputs, detect_x11_outputs, display_page, load_fleet_nodes, local_fleet_node, master_fleet_node, master_fleet_nodes, page_shell, record_fleet_node, request_node_assignment, request_node_sync, update_fleet_screen_assignment, valid_media_signature
 
 
 class StateStoreTests(unittest.TestCase):
@@ -238,6 +238,11 @@ HDMI-1 connected primary 2560x1440+0+0 (normal left inverted right x axis y axis
 
 
 class DisplayPageTests(unittest.TestCase):
+    def test_management_page_has_ice_field_favicon(self):
+        page = page_shell("Test", "").decode("utf-8")
+        self.assertIn('rel="icon"', page)
+        self.assertIn('data:image/png;base64,', page)
+
     def test_master_content_settings_are_expanded(self):
         page = admin_page("controller").decode()
         self.assertIn('id="local-media-settings" class="card wide settings-group" open', page)
